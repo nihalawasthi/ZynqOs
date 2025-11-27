@@ -1,0 +1,73 @@
+name: Build WASM + Frontend
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+
+      - name: Setup pnpm
+        run: npm install -g pnpm
+
+      - name: Install JS deps
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Rust toolchain and target
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          profile: minimal
+          target: wasm32-wasip1
+
+      - name: Build WASM (Linux .sh)
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          if [ -f ./scripts/build-wasm.sh ]; then
+            bash ./scripts/build-wasm.sh
+          else
+            echo "No ./scripts/build-wasm.sh found — skipping wasm build on linux"
+          fi
+
+      - name: Build WASM (Windows .ps1)
+        if: matrix.os == 'windows-latest'
+        shell: pwsh
+        run: |
+          if (Test-Path './scripts/build-wasi.ps1') {
+            pwsh -NoProfile -ExecutionPolicy Bypass ./scripts/build-wasi.ps1
+          } else {
+            Write-Host "No ./scripts/build-wasi.ps1 found — skipping wasm build on windows"
+          }
+
+      - name: Build frontend
+        run: pnpm build
+
+      - name: Commit built WASM artifacts (Linux only)
+        if: matrix.os == 'ubuntu-latest' && github.ref == 'refs/heads/main'
+        env:
+          GIT_COMMITTER_NAME: github-actions[bot]
+          GIT_COMMITTER_EMAIL: 41898282+github-actions[bot]@users.noreply.github.com
+        run: |
+          git config user.name "$GIT_COMMITTER_NAME"
+          git config user.email "$GIT_COMMITTER_EMAIL"
+          git add public/apps/wasm || true
+          git add apps/**/pkg || true
+          git add apps/**/target || true
+          git commit -m "chore(ci): built wasm artifacts" || echo "No wasm artifacts to commit"
+          git push || echo "Push failed or nothing to push"
