@@ -31,12 +31,26 @@ jobs:
       - name: Install JS deps
         run: pnpm install --frozen-lockfile
 
+      - name: Cache cargo (optional)
+        uses: actions/cache@v4
+        id: cargo-cache
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+
       - name: Install Rust toolchain and target
         uses: actions-rs/toolchain@v1
         with:
           toolchain: stable
           profile: minimal
           target: wasm32-wasip1
+
+      - name: Install wasm-pack
+        if: matrix.os == 'ubuntu-latest' || matrix.os == 'windows-latest'
+        run: |
+          cargo install wasm-pack --force
 
       - name: Build WASM (Linux .sh)
         if: matrix.os == 'ubuntu-latest'
@@ -60,16 +74,18 @@ jobs:
       - name: Build frontend
         run: pnpm build
 
-      - name: Commit built WASM artifacts (Linux only)
+      - name: Upload artifact (frontend build)
+        if: matrix.os == 'ubuntu-latest' && success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: microos-dist
+          path: dist
+
+      - name: Upload WASM artifacts (Linux only)
         if: matrix.os == 'ubuntu-latest' && github.ref == 'refs/heads/main'
-        env:
-          GIT_COMMITTER_NAME: github-actions[bot]
-          GIT_COMMITTER_EMAIL: 41898282+github-actions[bot]@users.noreply.github.com
-        run: |
-          git config user.name "$GIT_COMMITTER_NAME"
-          git config user.email "$GIT_COMMITTER_EMAIL"
-          git add public/apps/wasm || true
-          git add apps/**/pkg || true
-          git add apps/**/target || true
-          git commit -m "chore(ci): built wasm artifacts" || echo "No wasm artifacts to commit"
-          git push || echo "Push failed or nothing to push"
+        uses: actions/upload-artifact@v4
+        with:
+          name: wasm-artifacts
+          path: |
+            public/apps/wasm/
+            apps/**/target/**/release/*.wasm

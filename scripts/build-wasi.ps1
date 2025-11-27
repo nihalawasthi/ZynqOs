@@ -64,4 +64,22 @@ if (!(Test-Path "public/apps/wasm")) {
 Copy-Item "apps/wasm/*" "public/apps/wasm/" -Force
 Write-Host "✓ Files copied to public/apps/wasm/" -ForegroundColor Green
 
+# Build calculator-wasm pkg if wasm-pack is available
+if (Test-Path "apps/calculator-wasm") {
+    Write-Host "\nBuilding calculator-wasm (wasm-pack pkg) ..." -ForegroundColor Yellow
+    $wp = Get-Command wasm-pack -ErrorAction SilentlyContinue
+    if ($wp) {
+        Set-Location apps/calculator-wasm
+        wasm-pack build --release --target web
+        Set-Location ../..
+        if (!(Test-Path "public/apps/wasm/calculator-wasm")) {
+            New-Item -ItemType Directory -Path "public/apps/wasm/calculator-wasm" -Force | Out-Null
+        }
+        Copy-Item "apps/calculator-wasm/pkg/*" "public/apps/wasm/calculator-wasm/" -Force
+        Write-Host "✓ calculator-wasm pkg copied to public/apps/wasm/calculator-wasm/" -ForegroundColor Green
+    } else {
+        Write-Host "wasm-pack not found; skipping calculator-wasm pkg build" -ForegroundColor Yellow
+    }
+}
+
 Write-Host "`n✓ All WASI builds complete!" -ForegroundColor Green
