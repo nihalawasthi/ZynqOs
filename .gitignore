@@ -1,0 +1,22 @@
+# Node
+node_modules/
+dist/
+npm-debug.log
+pnpm-lock.yaml
+yarn.lock
+.env
+.vscode/
+
+# Rust
+**/target/
+**/pkg/
+**/*.rs.bk
+
+# wasm-pack / wasm output
+apps/**/pkg/
+apps/**/target/
+*.wasm
+
+# OS
+.DS_Store
+Thumbs.db
