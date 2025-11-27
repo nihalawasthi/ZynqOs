@@ -11,7 +11,7 @@ export default function CalculatorUI() {
       try {
         // path for wasm-pack target web default file name
         // it generates e.g. calculator_wasm.js and calculator_wasm_bg.wasm
-        const mod = await import('/apps/calculator-wasm/pkg/calculator_wasm.js')
+        const mod = await import('../../../apps/calculator-wasm/pkg/calculator_wasm.js')
         // Initialize the WASM module first
         await mod.default()
         if (mod && typeof mod.calculate === 'function') {
