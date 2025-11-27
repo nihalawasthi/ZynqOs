@@ -111,6 +111,17 @@ jobs:
             exit 1
           fi
 
+      - name: Prepare Vercel prebuilt output (Linux only)
+        if: matrix.os == 'ubuntu-latest' && github.ref == 'refs/heads/main'
+        run: |
+          echo "Preparing .vercel/output from ./dist"
+          rm -rf .vercel/output || true
+          mkdir -p .vercel/output/static
+          cp -a dist/. .vercel/output/static/
+          cat > .vercel/output/config.json <<'JSON'
+          {"version":3}
+          JSON
+
       - name: Deploy prebuilt `dist/` to Vercel (Linux only)
         if: matrix.os == 'ubuntu-latest' && github.ref == 'refs/heads/main'
         uses: amondnet/vercel-action@v20
