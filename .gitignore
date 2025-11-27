@@ -20,3 +20,25 @@ apps/**/target/
 # OS
 .DS_Store
 Thumbs.db
+
+# Vite / build
+/.vite
+/.turbo
+/.cache
+
+# IDE/editor
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Temporary files
+*.tmp
+*.temp
+*.swp
