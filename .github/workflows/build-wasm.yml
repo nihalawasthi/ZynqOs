@@ -24,7 +24,9 @@ jobs:
           cache: 'pnpm'
 
       - name: Setup pnpm
-        run: npm install -g pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: 8
 
       - name: Install JS deps
         run: pnpm install --frozen-lockfile
