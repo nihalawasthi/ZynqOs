@@ -40,7 +40,7 @@ A browser-hosted "micro-OS" shell that runs two kinds of sandboxed WASM apps:
 ### 1. Install Dependencies
 
 ```powershell
-pnpm install
+npm install
 ```
 
 ### 2. Build WASM Modules (Optional)
@@ -61,17 +61,17 @@ rustup target add wasm32-wasip1
 ### 3. Run Development Server
 
 ```powershell
-pnpm run dev
+npm run dev
 ```
 
 Open `http://localhost:5173`
 
 ## Scripts
 
-- `pnpm run dev` - Start Vite dev server
-- `pnpm run build` - Build production bundle
-- `pnpm run preview` - Preview production build
-- `pnpm run build-wasm` - Build all WASM modules (calls `build-wasm.ps1`)
+- `npm run dev` - Start Vite dev server
+- `npm run build` - Build production bundle
+- `npm run preview` - Preview production build
+- `npm run build-wasm` - Build all WASM modules (calls `build-wasm.ps1`)
 
 ## WASM Build Scripts
 
