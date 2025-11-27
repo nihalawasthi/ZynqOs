@@ -5,11 +5,9 @@ import Launcher from './components/Launcher'
 
 export default function App() {
   return (
-    <div className="h-screen bg-slate-900 text-slate-100">
-      <div className="p-4">
-        <h1 className="text-2xl font-semibold">MicroOS — MVP</h1>
-      </div>
-
+    <div className="h-screen bg-[url(/assets/wallpaper.png)] bg-[length:60%_60%] bg-no-repeat bg-center bg-black text-slate-100 flex flex-col overflow-hidden relative">
+      {/* Subtle grid pattern overlay */}
+      <div className="absolute inset-0 bg-grid-pattern opacity-5"></div>
       <WindowManager />
       <Taskbar />
       <Launcher />

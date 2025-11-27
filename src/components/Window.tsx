@@ -1,23 +1,200 @@
-import React from 'react'
+import React, { useState, useRef, useEffect } from 'react'
 
 export default function Window({
   title,
   children,
-  onClose
+  onClose,
+  initialPosition = { x: 100, y: 60 },
+  noPadding = false
 }: {
   title: string
   children: React.ReactNode
   onClose?: () => void
+  initialPosition?: { x: number; y: number }
+  noPadding?: boolean
 }) {
+  const [position, setPosition] = useState(initialPosition)
+  const [isDragging, setIsDragging] = useState(false)
+  const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 })
+  const [isMaximized, setIsMaximized] = useState(false)
+  const [prevPosition, setPrevPosition] = useState(initialPosition)
+  const windowRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      if (isDragging) {
+        setPosition({
+          x: e.clientX - dragOffset.x,
+          y: e.clientY - dragOffset.y
+        })
+      }
+    }
+
+    const handleMouseUp = () => {
+      setIsDragging(false)
+    }
+
+    if (isDragging) {
+      document.addEventListener('mousemove', handleMouseMove)
+      document.addEventListener('mouseup', handleMouseUp)
+    }
+
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove)
+      document.removeEventListener('mouseup', handleMouseUp)
+    }
+  }, [isDragging, dragOffset])
+
+  const handleMouseDown = (e: React.MouseEvent) => {
+    if (!isMaximized && windowRef.current) {
+      const rect = windowRef.current.getBoundingClientRect()
+      setDragOffset({
+        x: e.clientX - rect.left,
+        y: e.clientY - rect.top
+      })
+      setIsDragging(true)
+    }
+  }
+
+  const toggleMaximize = () => {
+    if (isMaximized) {
+      // Restore
+      setPosition(prevPosition)
+      setIsMaximized(false)
+    } else {
+      // Maximize
+      setPrevPosition(position)
+      setPosition({ x: 0, y: 0 })
+      setIsMaximized(true)
+    }
+  }
+
+  const windowStyle = isMaximized
+    ? {
+      left: '0',
+      top: '0',
+      width: '100vw',
+      height: 'calc(100vh - 48px)', // Account for taskbar
+      zIndex: 10
+    }
+    : {
+      left: `${position.x}px`,
+      top: `${position.y}px`,
+      width: '600px',
+      maxWidth: '90vw',
+      zIndex: 10
+    }
+
   return (
-    <div className="absolute top-16 left-16 w-96 bg-white rounded-lg shadow-lg text-black p-0">
-      <div className="flex justify-between items-center p-2 bg-gray-100 rounded-t">
-        <div className="font-medium">{title}</div>
-        <div className="flex gap-2">
-          <button onClick={onClose} className="text-xs px-2 py-1 bg-red-500 text-white rounded">Close</button>
+    <div
+      ref={windowRef}
+      role="dialog"
+      aria-label={title}
+      tabIndex={0}
+      className={`absolute select-none will-change-transform transition-all duration-180 bg-[#1F1F1F]
+        ${isMaximized ? 'inset-0 rounded-none' : 'rounded-[5px]'}
+        backdrop-blur-lg`}
+      style={{
+        boxShadow: isMaximized
+          ? '0 10px 30px rgba(2,6,23,0.45)'
+          : '0 6px 30px rgba(11,15,30,0.35), inset 0 1px 0 rgba(255,255,255,0.06)',
+        border: isMaximized ? 'none' : '1px solid #424242',
+        ...windowStyle
+      }}
+      onKeyDown={(e) => {
+        if (e.key === 'Escape') onClose?.()
+        if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') toggleMaximize?.()
+      }}
+    >
+      {/* Slim titlebar */}
+      <div
+        className={`flex items-center overflow-hidden justify-between gap-[0] px-[0] py-[0]
+          ${isMaximized ? 'rounded-t-none' : 'rounded-t-[5px]'}
+          cursor-move`}
+        onMouseDown={handleMouseDown}
+        aria-hidden
+      >
+        {/* Left: drag handle + icon + title */}
+        <div className="flex items-center gap-2 min-w-0 ml-2">
+          {/* App circle icon accent */}
+          <div
+            className="w-5 h-5 rounded-full flex items-center justify-center"
+            style={{
+              background: 'linear-gradient(135deg,#6ee7b7,#60a5fa)',
+              boxShadow: '0 2px 8px rgba(34,197,94,0.12)'
+            }}
+            aria-hidden
+          >
+            {/* tiny glyph (SVG) */}
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden>
+              <path d="M4 12h16M12 4v16" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </div>
+        </div>
+
+        {/* Right: borderless nav buttons (Win11 style) */}
+        <div className="flex items-center gap-[0]">
+          <div className="flex items-center gap-[0] ml-[0]">
+            {/* Maximize */}
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); toggleMaximize?.() }}
+              aria-pressed={isMaximized}
+              aria-label={isMaximized ? 'Restore' : 'Maximize'}
+              title={isMaximized ? 'Restore' : 'Maximize'}
+              className="w-7 h-7 flex items-center justify-center hover:bg-slate-100/40 active:scale-95 transition"
+            >
+              {isMaximized ? (
+                <svg className="w-3 h-3 text-white" viewBox="0 0 24 24" fill="none">
+<path xmlns="http://www.w3.org/2000/svg" fill-rule="evenodd" clip-rule="evenodd" d="M23 4C23 2.34315 21.6569 1 20 1H8C6.34315 1 5 2.34315 5 4V5H4C2.34315 5 1 6.34315 1 8V20C1 21.6569 2.34315 23 4 23H16C17.6569 23 19 21.6569 19 20V19H20C21.6569 19 23 17.6569 23 16V4ZM19 17H20C20.5523 17 21 16.5523 21 16V4C21 3.44772 20.5523 3 20 3H8C7.44772 3 7 3.44772 7 4V5H16C17.6569 5 19 6.34315 19 8V17ZM16 7C16.5523 7 17 7.44772 17 8V20C17 20.5523 16.5523 21 16 21H4C3.44772 21 3 20.5523 3 20V8C3 7.44772 3.44772 7 4 7H16Z" fill="white"/>                </svg>
+              ) : (
+                <svg className="w-3 h-3 text-white" viewBox="0 0 24 24" fill="none">
+                  <rect x="3.5" y="3.5" width="17" height="17" rx="2" stroke="currentColor" strokeWidth="1.6" />
+                </svg>
+              )}
+            </button>
+
+            {/* Close — subtle but visible */}
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); onClose?.() }}
+              aria-label="Close"
+              title="Close"
+              className="w-7 h-7 flex items-center text-white justify-center hover:bg-red-600/80 hover:text-white transition"
+            >
+              <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                <path d="M6 6l12 12M6 18L18 6" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </button>
+          </div>
         </div>
       </div>
-      <div className="p-2">{children}</div>
+
+      {/* Content area — glass sheet with subtle border */}
+      <div
+        className={`bg-white/95 ${isMaximized ? 'h-full' : (noPadding ? '' : 'p-4')} overflow-auto`}
+        style={{
+          borderBottomLeftRadius: isMaximized ? 0 : 14,
+          borderBottomRightRadius: isMaximized ? 0 : 14,
+          minHeight: 80
+        }}
+      >
+        {children}
+      </div>
+
+      {/* bottom-right diagonal resize affordance (tiny and elegant) */}
+      {/* {!isMaximized && (
+        <div
+          onMouseDown={onResizeStart ?? defaultResizeStart}
+          className="absolute right-3 bottom-3 w-5 h-5 cursor-se-resize opacity-80"
+          title="Resize"
+          aria-hidden
+        >
+          <svg className="w-5 h-5 text-slate-400" viewBox="0 0 10 10" fill="none">
+            <path d="M0 10 L10 0 M6 10 L10 6 M2 10 L10 2" stroke="currentColor" strokeWidth="0.9" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        </div>
+      )} */}
     </div>
   )
 }

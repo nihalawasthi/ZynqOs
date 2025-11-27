@@ -12,6 +12,8 @@ export default function CalculatorUI() {
         // path for wasm-pack target web default file name
         // it generates e.g. calculator_wasm.js and calculator_wasm_bg.wasm
         const mod = await import('/apps/calculator-wasm/pkg/calculator_wasm.js')
+        // Initialize the WASM module first
+        await mod.default()
         if (mod && typeof mod.calculate === 'function') {
           const r = mod.calculate(2, 3)
           setWasmExample(`calculate(2,3) = ${r}`)
@@ -33,20 +35,34 @@ export default function CalculatorUI() {
   }
 
   return (
-    <div>
-      <div className="bg-gray-100 text-black p-4 rounded">{result}</div>
-      <div className="text-xs text-slate-400 mt-1">WASM: {wasmAvailable ? 'available' : 'not available'}</div>
-      <div className="text-sm text-slate-400 mt-1">{wasmExample}</div>
-      <div className="grid grid-cols-4 gap-2 mt-2">
+    <div className="space-y-3 p-2">
+      <div className="bg-gradient-to-b from-gray-900 to-black text-white text-right p-5 rounded-xl text-3xl font-mono border border-gray-700 min-h-[70px] flex items-center justify-end shadow-inner">
+        {result}
+      </div>
+      <div className="flex items-center justify-between text-xs px-1">
+        <span className="text-gray-500">WASM: <span className={wasmAvailable ? 'text-emerald-500' : 'text-red-500'}>{wasmAvailable ? '✓ Ready' : '✗ Not loaded'}</span></span>
+        {wasmExample && <span className="text-gray-400">{wasmExample}</span>}
+      </div>
+      <div className="grid grid-cols-4 gap-2">
         {['7','8','9','4','5','6','1','2','3','0'].map(x => (
-          <button key={x} onClick={() => press(x)} className="p-2 bg-slate-700 text-white rounded">{x}</button>
+          <button 
+            key={x} 
+            onClick={() => press(x)} 
+            className="p-4 bg-gradient-to-b from-gray-700 to-gray-800 hover:from-gray-600 hover:to-gray-700 text-white rounded-xl text-xl font-semibold transition-all shadow-lg border border-gray-600 active:scale-95"
+          >
+            {x}
+          </button>
         ))}
-        <button onClick={clear} className="col-span-4 p-2 bg-red-600 text-white rounded">Clear</button>
+        <button 
+          onClick={clear} 
+          className="col-span-4 p-4 bg-gradient-to-b from-red-600 to-red-700 hover:from-red-500 hover:to-red-600 text-white rounded-xl font-semibold transition-all shadow-lg active:scale-95"
+        >
+          Clear
+        </button>
       </div>
     </div>
   )
 }
 
-// attach for quick open via Taskbar
-import ReactDOM from 'react-dom/client'
-window.__CALC_UI__ = <CalculatorUI />
+// attach UI for Taskbar to open
+window.__CALC_UI__ = CalculatorUI

@@ -2,27 +2,19 @@ import React from 'react'
 
 export default function Launcher() {
   return (
-    <div className="fixed top-4 right-4 bg-white/5 p-3 rounded">
-      <div className="text-sm">Launcher</div>
-      <div className="mt-2">
+    <div className="fixed top-4 right-4 bg-gray-800/90 backdrop-blur-sm p-4 rounded-lg shadow-xl border border-gray-700">
+      <div className="text-sm font-semibold mb-3 text-blue-300">Quick Launch</div>
+      <div className="space-y-2">
         <button
-          onClick={async () => {
-            // load the calculator UI component (client dynamic import)
-            try {
-              const mod = await import('../apps/calculator/ui')
-              // default export is a React component function
-              const Comp = mod.default
-              // attach global reference for Taskbar quick open
-              window.__CALC_UI__ = <Comp />
-              (window as any).microos_openWindow?.('Calculator', <Comp />)
-            } catch (e) {
-              console.error('Failed to load calculator UI', e);
-              (window as any).microos_openWindow?.('Calculator', <div>Calculator UI failed to load</div>)
+          onClick={() => {
+            const Comp = window.__MAPP_IMPORTER_UI__
+            if (Comp) {
+              (window as any).microos_openWindow?.('Import Package', Comp)
             }
           }}
-          className="px-2 py-1 bg-slate-700 rounded text-white"
+          className="w-full px-3 py-2 bg-purple-600 hover:bg-purple-700 rounded text-white text-sm transition-colors"
         >
-          Open Calculator (WASM)
+          📦 Import .mapp
         </button>
       </div>
     </div>
