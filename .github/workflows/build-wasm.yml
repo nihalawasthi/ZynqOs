@@ -84,14 +84,31 @@ jobs:
           path: |
             public/apps/wasm/
             apps/**/target/**/release/*.wasm
-      - name: Check Vercel token present
+      - name: Check Vercel secrets present
         if: matrix.os == 'ubuntu-latest' && github.ref == 'refs/heads/main'
         run: |
+          MISSING=0
           if [ -z "${{ secrets.VERCEL_TOKEN }}" ]; then
-            echo "VERCEL_TOKEN not set — skipping deploy step (set repository secret VERCEL_TOKEN).";
-            exit 1
+            echo "VERCEL_TOKEN is missing"
+            MISSING=1
           else
             echo "VERCEL_TOKEN present"
+          fi
+          if [ -z "${{ secrets.VERCEL_ORG_ID }}" ]; then
+            echo "VERCEL_ORG_ID is missing"
+            MISSING=1
+          else
+            echo "VERCEL_ORG_ID present"
+          fi
+          if [ -z "${{ secrets.VERCEL_PROJECT_ID }}" ]; then
+            echo "VERCEL_PROJECT_ID is missing"
+            MISSING=1
+          else
+            echo "VERCEL_PROJECT_ID present"
+          fi
+          if [ "$MISSING" -ne 0 ]; then
+            echo "One or more Vercel secrets are missing. Set VERCEL_TOKEN, VERCEL_ORG_ID and VERCEL_PROJECT_ID in repo secrets.";
+            exit 1
           fi
 
       - name: Deploy to Vercel (Linux only)
@@ -101,5 +118,5 @@ jobs:
           vercel-token: ${{ secrets.VERCEL_TOKEN }}
           vercel-args: '--prod'
           working-directory: 'dist'
-          vercel-org-id: ${{ secrets.VERCEL_ORG_ID || '' }}
-          vercel-project-id: ${{ secrets.VERCEL_PROJECT_ID || '' }}
+          vercel-org-id: ${{ secrets.VERCEL_ORG_ID }}
+          vercel-project-id: ${{ secrets.VERCEL_PROJECT_ID }}
