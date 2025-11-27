@@ -117,11 +117,11 @@ jobs:
           echo "Preparing .vercel/output from ./dist"
           rm -rf .vercel/output || true
           mkdir -p .vercel/output/static
-          cp -a dist/. .vercel/output/static/
+          rsync -a --exclude='.vercel' dist/ .vercel/output/static/
           # Also prepare inside dist so the deploy action (which runs in 'dist') can find it
           rm -rf dist/.vercel/output || true
           mkdir -p dist/.vercel/output/static
-          cp -a dist/. dist/.vercel/output/static/
+          rsync -a --exclude='.vercel' dist/ dist/.vercel/output/static/
           cat > .vercel/output/config.json <<'JSON'
           {"version":3}
           JSON
