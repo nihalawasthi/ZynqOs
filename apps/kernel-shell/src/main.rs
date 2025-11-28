@@ -3,7 +3,7 @@ use std::fs;
 use std::env;
 
 fn main() {
-    println!("MicroOS Kernel Shell v0.1");
+    println!("ZynqOS Kernel Shell v0.1");
     println!("Type 'help' for available commands");
     println!();
 
@@ -127,7 +127,7 @@ fn cmd_stat(args: &[&str]) {
 }
 
 fn cmd_version() {
-    println!("MicroOS Kernel Shell");
+    println!("ZynqOS Kernel Shell");
     println!("Version: 0.1.0");
     println!("Target: wasm32-wasip1");
     println!("Build: Release");

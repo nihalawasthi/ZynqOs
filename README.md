@@ -1,4 +1,4 @@
-# MicroOS — Browser Micro-Runtime
+# ZynqOS — Browser Micro-Runtime
 
 A browser-hosted "micro-OS" shell that runs two kinds of sandboxed WASM apps:
 
@@ -27,7 +27,7 @@ A browser-hosted "micro-OS" shell that runs two kinds of sandboxed WASM apps:
 - **Package Importer** - Import .mapp application bundles
 
 ### WASI Binaries (Terminal)
-- **shell.wasm** - MicroOS kernel shell with built-in commands
+- **shell.wasm** - ZynqOS kernel shell with built-in commands
 - **ls.wasm** - List directory contents
 - **cat.wasm** - Display file contents
 - **mkdir.wasm** - Create directories
@@ -227,7 +227,7 @@ The scripts automatically handle this.
 The window manager exposes a global function for opening windows:
 
 ```typescript
-(window as any).microos_openWindow(title: string, content: ReactNode)
+(window as any).ZynqOS_openWindow(title: string, content: ReactNode)
 ```
 
 Apps are mounted via the Taskbar or Launcher components.

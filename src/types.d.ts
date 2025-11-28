@@ -1,7 +1,7 @@
 // extra global typings used in the demo
 declare global {
   interface Window {
-    microos_openWindow?: (title: string, content: any) => void;
+    ZynqOS_openWindow?: (title: string, content: any) => void;
     __TEXT_EDITOR_UI__?: any;
     __TERMINAL_UI__?: any;
     __CALC_UI__?: any;

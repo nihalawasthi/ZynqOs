@@ -1,0 +1,35 @@
+[
+  {
+    "id": "file-browser",
+    "name": "File Browser",
+    "description": "A simple file browser app to manage your virtual filesystem.",
+    "icon": "📁",
+    "version": "1.0.0",
+    "author": "Core Team",
+    "releaseUrl": "https://example.com/artifacts/file-browser.tar.gz",
+    "tags": ["files", "utils"],
+    "size": "1.8MB"
+  },
+  {
+    "id": "text-editor",
+    "name": "Text Editor",
+    "description": "Lightweight code and text editor with syntax highlighting.",
+    "icon": "📝",
+    "version": "2.1.0",
+    "author": "Community",
+    "releaseUrl": "https://example.com/artifacts/text-editor.tar.gz",
+    "tags": ["editor", "productivity"],
+    "size": "4.3MB"
+  },
+  {
+    "id": "terminal",
+    "name": "Terminal",
+    "description": "Web terminal with WASI support.",
+    "icon": "💻",
+    "version": "0.9.0",
+    "author": "Community",
+    "releaseUrl": "https://example.com/artifacts/terminal.tar.gz",
+    "tags": ["terminal", "dev"],
+    "size": "2.7MB"
+  }
+]

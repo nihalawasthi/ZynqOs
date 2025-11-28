@@ -34,7 +34,7 @@ Write-Host "`nBuilding kernel-shell..." -ForegroundColor Yellow
 Set-Location apps/kernel-shell
 cargo build --target $Target --release
 if ($LASTEXITCODE -eq 0) {
-    Copy-Item "target/$Target/release/microos-shell.wasm" "../wasm/shell.wasm" -Force
+    Copy-Item "target/$Target/release/ZynqOS-shell.wasm" "../wasm/shell.wasm" -Force
     Write-Host "✓ shell.wasm" -ForegroundColor Green
 } else {
     Write-Host "✗ kernel-shell build failed" -ForegroundColor Red

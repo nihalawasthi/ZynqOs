@@ -17,7 +17,7 @@ export default function WindowManager() {
   }
 
   // expose for quick demo usage
-  (window as any).microos_openWindow = openWindow
+  (window as any).ZynqOS_openWindow = openWindow
 
   return (
     <div className="flex-1 relative overflow-hidden">

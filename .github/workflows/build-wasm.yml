@@ -73,7 +73,7 @@ jobs:
         if: matrix.os == 'ubuntu-latest' && success()
         uses: actions/upload-artifact@v4
         with:
-          name: microos-dist
+          name: ZynqOS-dist
           path: dist
 
       - name: Upload WASM artifacts (Linux only)

@@ -32,7 +32,7 @@ export default function MappImporter() {
       <div className="mb-4">
         <h2 className="text-xl font-bold mb-2">Import .mapp Package</h2>
         <p className="text-sm text-gray-600">
-          .mapp files are bundled applications that can be loaded into MicroOS VFS
+          .mapp files are bundled applications that can be loaded into ZynqOS VFS
         </p>
       </div>
 

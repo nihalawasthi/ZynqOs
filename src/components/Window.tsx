@@ -114,22 +114,8 @@ export default function Window({
         onMouseDown={handleMouseDown}
         aria-hidden
       >
-        {/* Left: drag handle + icon + title */}
+        {/* Left */}
         <div className="flex items-center gap-2 min-w-0 ml-2">
-          {/* App circle icon accent */}
-          <div
-            className="w-5 h-5 rounded-full flex items-center justify-center"
-            style={{
-              background: 'linear-gradient(135deg,#6ee7b7,#60a5fa)',
-              boxShadow: '0 2px 8px rgba(34,197,94,0.12)'
-            }}
-            aria-hidden
-          >
-            {/* tiny glyph (SVG) */}
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden>
-              <path d="M4 12h16M12 4v16" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-          </div>
         </div>
 
         {/* Right: borderless nav buttons (Win11 style) */}
@@ -174,8 +160,8 @@ export default function Window({
       <div
         className={`bg-white/95 ${isMaximized ? 'h-full' : (noPadding ? '' : 'p-4')} overflow-auto`}
         style={{
-          borderBottomLeftRadius: isMaximized ? 0 : 14,
-          borderBottomRightRadius: isMaximized ? 0 : 14,
+          borderBottomLeftRadius: isMaximized ? 0 : 5,
+          borderBottomRightRadius: isMaximized ? 0 : 5,
           minHeight: 80
         }}
       >

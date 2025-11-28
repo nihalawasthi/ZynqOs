@@ -1,6 +1,6 @@
 import { openDB } from 'idb'
 
-const DB_NAME = 'microos-vfs'
+const DB_NAME = 'ZynqOS-vfs'
 const DB_VERSION = 1
 const STORE = 'files'
 

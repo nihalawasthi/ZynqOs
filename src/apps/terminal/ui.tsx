@@ -48,7 +48,7 @@ export default function TerminalWasi(_: Props) {
   ]
 
   useEffect(() => {
-    setOut(o => [...o, 'MicroOS WASI Terminal v0.3', 'Type "help" for commands', ''])
+    setOut(o => [...o, 'ZynqOS WASI Terminal v0.3', 'Type "help" for commands', ''])
   }, [])
 
   useEffect(() => {
@@ -227,7 +227,7 @@ export default function TerminalWasi(_: Props) {
       let stderrText = ''
 
       // --- Load files from VFS to mount in WASI filesystem ---
-      const queued: string[] = (window as any).__MICROOS_WASMFS_SEED_PATHS__ || []
+      const queued: string[] = (window as any).__ZynqOS_WASMFS_SEED_PATHS__ || []
       const filesToMount = ['/input.txt', '/home/demo.txt', ...queued]
       
       const vfsFiles: Map<string, Uint8Array> = new Map()
@@ -334,7 +334,7 @@ export default function TerminalWasi(_: Props) {
     }
   }
 
-  // run a wasm blob stored in the MicroOS VFS at /apps/...
+  // run a wasm blob stored in the ZynqOS VFS at /apps/...
   async function runWasiFromVfs(path: string, args: string[] = []) {
     appendLine(`> run-vfs ${path}`)
     try {
@@ -372,7 +372,7 @@ export default function TerminalWasi(_: Props) {
     const c = parts[0]
     
     if (c === 'help') {
-      appendLine('MicroOS Terminal - Available Commands:')
+      appendLine('ZynqOS Terminal - Available Commands:')
       appendLine('')
       appendLine('File System:')
       appendLine('  ls [path]                       # list directory contents')
@@ -525,7 +525,7 @@ export default function TerminalWasi(_: Props) {
     } else if (c === 'date') {
       appendLine(new Date().toString())
     } else if (c === 'uname') {
-      appendLine('MicroOS v0.3 (Browser WASI Runtime)')
+      appendLine('ZynqOS v0.3 (Browser WASI Runtime)')
     } else if (c === 'tree') {
       const path = parts[1] || currentdirectory
       try {

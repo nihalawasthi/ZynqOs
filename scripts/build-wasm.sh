@@ -44,8 +44,8 @@ build_project() {
 # Build terminal-wasi
 build_project "apps/terminal-wasi" "terminal-wasi.wasm" "terminal-wasi.wasm"
 
-# Build kernel shell (microos-shell -> shell.wasm)
-build_project "apps/kernel-shell" "microos-shell.wasm" "shell.wasm"
+# Build kernel shell (ZynqOS-shell -> shell.wasm)
+build_project "apps/kernel-shell" "ZynqOS-shell.wasm" "shell.wasm"
 
 # Build utils
 utils=(ls cat mkdir rm touch)
