@@ -16,6 +16,9 @@ export default function Window({
   const [position, setPosition] = useState(initialPosition)
   const [isDragging, setIsDragging] = useState(false)
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 })
+  const [isResizing, setIsResizing] = useState(false)
+  const [resizeStart, setResizeStart] = useState({ x: 0, y: 0, width: 0 })
+  const [resizedWidth, setResizedWidth] = useState<number | null>(null)
   const [isMaximized, setIsMaximized] = useState(false)
   const [prevPosition, setPrevPosition] = useState(initialPosition)
   const windowRef = useRef<HTMLDivElement>(null)
@@ -28,13 +31,18 @@ export default function Window({
           y: e.clientY - dragOffset.y
         })
       }
+      if (isResizing) {
+        const deltaX = e.clientX - resizeStart.x
+        setResizedWidth(Math.max(300, resizeStart.width + deltaX))
+      }
     }
 
     const handleMouseUp = () => {
       setIsDragging(false)
+      setIsResizing(false)
     }
 
-    if (isDragging) {
+    if (isDragging || isResizing) {
       document.addEventListener('mousemove', handleMouseMove)
       document.addEventListener('mouseup', handleMouseUp)
     }
@@ -43,7 +51,7 @@ export default function Window({
       document.removeEventListener('mousemove', handleMouseMove)
       document.removeEventListener('mouseup', handleMouseUp)
     }
-  }, [isDragging, dragOffset])
+  }, [isDragging, isResizing, dragOffset, resizeStart])
 
   const handleMouseDown = (e: React.MouseEvent) => {
     if (!isMaximized && windowRef.current) {
@@ -74,13 +82,13 @@ export default function Window({
       left: '0',
       top: '0',
       width: '100vw',
-      height: 'calc(100vh - 48px)', // Account for taskbar
+      height: 'calc(100vh - 48px)',
       zIndex: 10
     }
     : {
       left: `${position.x}px`,
       top: `${position.y}px`,
-      width: '600px',
+      width: resizedWidth ? `${resizedWidth}px` : '600px',
       maxWidth: '90vw',
       zIndex: 10
     }
@@ -91,8 +99,9 @@ export default function Window({
       role="dialog"
       aria-label={title}
       tabIndex={0}
-      className={`absolute select-none will-change-transform transition-all duration-180 bg-[#1F1F1F]
+      className={`absolute select-none will-change-transform bg-[#1F1F1F]
         ${isMaximized ? 'inset-0 rounded-none' : 'rounded-[5px]'}
+        ${isDragging || isResizing ? '' : 'transition-all duration-180'}
         backdrop-blur-lg`}
       style={{
         boxShadow: isMaximized
@@ -116,6 +125,7 @@ export default function Window({
       >
         {/* Left */}
         <div className="flex items-center gap-2 min-w-0 ml-2">
+          <span className="text-xs text-gray-300 font-medium truncate">{title}</span>
         </div>
 
         {/* Right: borderless nav buttons (Win11 style) */}
@@ -158,7 +168,7 @@ export default function Window({
 
       {/* Content area — glass sheet with subtle border */}
       <div
-        className={`bg-white/95 ${isMaximized ? 'h-full' : (noPadding ? '' : 'p-4')} overflow-auto`}
+        className={`bg-gray-700 ${isMaximized ? 'h-full' : (noPadding ? '' : 'p-4')} overflow-auto`}
         style={{
           borderBottomLeftRadius: isMaximized ? 0 : 5,
           borderBottomRightRadius: isMaximized ? 0 : 5,
@@ -168,19 +178,27 @@ export default function Window({
         {children}
       </div>
 
-      {/* bottom-right diagonal resize affordance (tiny and elegant) */}
-      {/* {!isMaximized && (
+      {/* bottom-right diagonal resize affordance */}
+      {!isMaximized && (
         <div
-          onMouseDown={onResizeStart ?? defaultResizeStart}
-          className="absolute right-3 bottom-3 w-5 h-5 cursor-se-resize opacity-80"
+          onMouseDown={(e) => {
+            e.preventDefault()
+            setIsResizing(true)
+            setResizeStart({
+              x: e.clientX,
+              y: e.clientY,
+              width: windowRef.current?.offsetWidth || 600
+            })
+          }}
+          className="absolute right-1 bottom-1 w-3 h-3 cursor-se-resize opacity-60 hover:opacity-100 transition"
           title="Resize"
           aria-hidden
         >
-          <svg className="w-5 h-5 text-slate-400" viewBox="0 0 10 10" fill="none">
+          <svg className="w-3 h-3 text-slate-400" viewBox="0 0 10 10" fill="none">
             <path d="M0 10 L10 0 M6 10 L10 6 M2 10 L10 2" stroke="currentColor" strokeWidth="0.9" strokeLinecap="round" strokeLinejoin="round" />
           </svg>
         </div>
-      )} */}
+      )}
     </div>
   )
 }

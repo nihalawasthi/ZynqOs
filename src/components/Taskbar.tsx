@@ -1,42 +1,44 @@
 import React, { useEffect, useState } from 'react'
+import StartMenu from './StartMenu'
 
 export default function Taskbar() {
   return (
-    <div className="fixed bottom-2 left-1/2 transform -translate-x-1/2 w-[calc(65%-48px)] max-w-[980px] px-1 py-1 bg-white/6 backdrop-blur-md border border-white/10 rounded-full shadow-2xl flex items-center gap-4 z-40">
-      <div className="flex items-center gap-3">
-        <img src="/assets/logo.png" 
-        className='aspect-[1/1] h-10 rounded-full ml-2'
-        alt="" />
-      </div>
+    <div className="fixed bottom-2 left-1/2 transform -translate-x-1/2 w-[calc(100%-48px)] max-w-[980px] px-4 py-2 bg-white/10 backdrop-blur-md border border-white/10 rounded-full shadow-2xl flex items-center gap-2 z-40">
+      <StartMenu />
 
       <div className="flex items-center gap-2">
         <button
           onClick={() => (window as any).ZynqOS_openWindow?.('File Browser', window.__FILE_BROWSER_UI__ ?? <div>Loading...</div>)}
-          className="flex items-center gap-2 px-3 py-1 rounded-[2px] bg-transparent hover:bg-gray-800/70 transition transform hover:scale-105 text-white border border-gray-700/80 shadow"
+          title='Files'
+          className="flex items-center gap-2 px-3 py-1 rounded-[2px] bg-transparent hover:bg-gray-200/30 transition transform hover:scale-105 text-white border border-gray-300/20 shadow"
         >
           <span className="text-lg"><i className="fas fa-folder"></i></span>
         </button>
-                <button
-          onClick={() => (window as any).ZynqOS_openWindow?.('Store', window.__FILE_BROWSER_UI__ ?? <div>Loading...</div>)}
-          className="flex items-center gap-2 px-3 py-1 rounded-[2px] bg-transparent hover:bg-gray-800/70 transition transform hover:scale-105 text-white border border-gray-700/80 shadow"
+        <button
+          onClick={() => (window as any).ZynqOS_openWindow?.('Store', window.__STORE_UI__ ?? <div>Loading...</div>)}
+          title='Store'
+          className="flex items-center gap-2 px-3 py-1 rounded-[2px] bg-transparent hover:bg-gray-200/30 transition transform hover:scale-105 text-white border border-gray-300/20 shadow"
         >
           <span className="text-lg"><i className="fa-solid fa-store"></i></span>
         </button>
         <button
           onClick={() => (window as any).ZynqOS_openWindow?.('Text Editor', window.__TEXT_EDITOR_UI__ ?? <div>Loading Editor...</div>)}
-          className="flex items-center gap-2 px-3 py-1 rounded-[2px] bg-transparent hover:bg-gray-800/70 transition transform hover:scale-105 text-white border border-gray-700/80 shadow"
+          title='Text Editor'
+          className="flex items-center gap-2 px-3 py-1 rounded-[2px] bg-transparent hover:bg-gray-200/30 transition transform hover:scale-105 text-white border border-gray-300/20 shadow"
         >
           <span className="text-lg"><i className="fa fa-file-text"></i></span>
         </button>
         <button
           onClick={() => (window as any).ZynqOS_openWindow?.('Terminal', window.__TERMINAL_UI__ ?? <div>Loading Terminal...</div>)}
-          className="flex items-center gap-2 px-3 py-1 rounded-[2px] bg-transparent hover:bg-gray-800/70 transition transform hover:scale-105 text-white border border-gray-700/80 shadow"
+          title='Terminal'
+          className="flex items-center gap-2 px-3 py-1 rounded-[2px] bg-transparent hover:bg-gray-200/30 transition transform hover:scale-105 text-white border border-gray-300/20 shadow"
         >
           <span className="text-lg"><i className="fa fa-terminal"></i></span>
         </button>
         <button
           onClick={() => (window as any).ZynqOS_openWindow?.('Calculator', window.__CALC_UI__ ?? <div>Loading Calculator...</div>)}
-          className="flex items-center gap-2 px-3 py-1 rounded-[2px] bg-transparent hover:bg-gray-800/70 transition transform hover:scale-105 text-white border border-gray-700/80 shadow"
+          title='Calculator'
+          className="flex items-center gap-2 px-3 py-1 rounded-[2px] bg-transparent hover:bg-gray-200/30 transition transform hover:scale-105 text-white border border-gray-300/20 shadow"
         >
           <span className="text-lg font-thin"><i className="fas">&#xf1ec;</i></span>
         </button>

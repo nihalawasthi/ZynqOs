@@ -128,3 +128,4 @@ export default function StoreUI() {
     </div>
   )
 }
+window.__STORE_UI__ = StoreUI

@@ -7,6 +7,7 @@ declare global {
     __CALC_UI__?: any;
     __FILE_BROWSER_UI__?: any;
     __MAPP_IMPORTER_UI__?: any;
+    __STORE_UI__?: any;
   }
 }
 export {};

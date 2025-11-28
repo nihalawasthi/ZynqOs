@@ -1,7 +1,7 @@
 [
   {
     "id": "file-browser",
-    "name": "File Browser",
+    "name": "Files",
     "description": "A simple file browser app to manage your virtual filesystem.",
     "icon": "📁",
     "version": "1.0.0",

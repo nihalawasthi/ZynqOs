@@ -1,8 +1,60 @@
 @import "tailwindcss";
 
-html, body, #root { height: 100%; }
-body { font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial; }
+html,
+body,
+#root {
+  height: 100%;
+}
 
+body {
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
+}
+
+.terminal-scrollbar .xterm-viewport::-webkit-scrollbar-track {
+  background: transparent !important;
+}
+
+.terminal-scrollbar .xterm-viewport::-webkit-scrollbar-thumb {
+  background: #444 !important;
+  border-radius: 1px !important;
+}
+
+.terminal-scrollbar .xterm-viewport::-webkit-scrollbar-thumb:hover {
+  background: #666 !important;
+}
+
+.terminal-scrollbar .xterm-viewport {
+  scrollbar-width: thin !important;
+  scrollbar-color: #444 transparent !important;
+}
+
+.terminal-scrollbar .xterm-viewport::-webkit-scrollbar {
+  width: 2px !important;
+  height: 2px !important;
+}
+
+.terminal-scrollbar .xterm-screen::-webkit-scrollbar {
+  width: 2px !important;
+  height: 2px !important;
+}
+
+/* Force override xterm scrollbar */
+.terminal-scrollbar .xterm .xterm-viewport::-webkit-scrollbar {
+  width: 2px !important;
+}
+
+.xterm-viewport::-webkit-scrollbar {
+  width: 2px !important;
+}
+
+.xterm-viewport::-webkit-scrollbar-thumb {
+  background: #444 !important;
+  border-radius: 1px !important;
+}
+
+.xterm-viewport::-webkit-scrollbar-track {
+  background: transparent !important;
+}
 
 .window-resize-handle {
   touch-action: none;

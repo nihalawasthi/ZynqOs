@@ -14,6 +14,7 @@ import './apps/terminal/ui'
 import './apps/text-editor/ui'
 import './apps/file-browser/ui'
 import './apps/mapp-importer/ui'
+import './apps/store/ui'
 
 // Initialize VFS with sample files
 initializeVFS().catch(console.error)

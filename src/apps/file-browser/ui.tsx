@@ -65,12 +65,12 @@ export default function FileBrowser() {
   }
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col h-full bg-gray-700">
       <div className="flex gap-3 h-full">
         {/* File List */}
         <div className="w-1/3 flex flex-col border-r border-gray-300 pr-3">
           <div className="font-semibold mb-2 text-sm">Files ({files.length})</div>
-          <div className="flex-1 overflow-auto bg-gray-50 rounded border border-gray-300 p-2">
+          <div className="flex-1 overflow-auto bg-gray-800 rounded border border-gray-300 p-2">
             {files.map(file => (
               <div
                 key={file}
