@@ -111,30 +111,22 @@ jobs:
             exit 1
           fi
 
-      - name: Prepare Vercel prebuilt output (Linux only)
+      - name: Prepare Vercel deployment (Linux only)
         if: matrix.os == 'ubuntu-latest' && github.ref == 'refs/heads/main'
         run: |
-          echo "Preparing .vercel/output from ./dist"
-          rm -rf .vercel/output || true
-          mkdir -p .vercel/output/static
-          rsync -a --exclude='.vercel' dist/ .vercel/output/static/
-          # Also prepare inside dist so the deploy action (which runs in 'dist') can find it
-          rm -rf dist/.vercel/output || true
-          mkdir -p dist/.vercel/output/static
-          rsync -a --exclude='.vercel' dist/ dist/.vercel/output/static/
-          cat > .vercel/output/config.json <<'JSON'
-          {"version":3}
-          JSON
-          cat > dist/.vercel/output/config.json <<'JSON'
-          {"version":3}
-          JSON
+          echo "Preparing deployment files"
+          # Ensure vercel.json is in dist for deployment
+          cp vercel.json dist/ || true
+          # Copy API folder for serverless functions
+          mkdir -p dist/api
+          cp -r api/* dist/api/ || true
 
-      - name: Deploy prebuilt `dist/` to Vercel (Linux only)
+      - name: Deploy to Vercel (Linux only)
         if: matrix.os == 'ubuntu-latest' && github.ref == 'refs/heads/main'
         uses: amondnet/vercel-action@v20
         with:
           vercel-token: ${{ secrets.VERCEL_TOKEN }}
-          vercel-args: '--prod --confirm --prebuilt'
-          working-directory: 'dist'
+          vercel-args: '--prod'
+          working-directory: '.'
           vercel-org-id: ${{ secrets.VERCEL_ORG_ID }}
           vercel-project-id: ${{ secrets.VERCEL_PROJECT_ID }}
