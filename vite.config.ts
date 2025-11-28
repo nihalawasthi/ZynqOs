@@ -21,6 +21,14 @@ export default defineConfig({
       // Allow serving files from node_modules for Wasmer SDK
       allow: ['..'],
     },
+    proxy: {
+      // Proxy /api requests to handle wget proxy during development
+      '/api/proxy': {
+        target: 'https://api.allorigins.win',
+        changeOrigin: true,
+        rewrite: (path) => '/raw' + path.replace('/api/proxy', ''),
+      },
+    },
   },
   optimizeDeps: {
     // Exclude wasmer-sdk from pre-bundling as it has WASM files

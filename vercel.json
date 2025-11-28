@@ -2,6 +2,11 @@
   "github": {
     "enabled": false
   },
+  "functions": {
+    "api/proxy.ts": {
+      "maxDuration": 30
+    }
+  },
   "headers": [
     {
       "source": "/(.*)",
@@ -15,6 +20,13 @@
       "headers": [
         { "key": "Content-Type", "value": "application/wasm" },
         { "key": "Cross-Origin-Resource-Policy", "value": "cross-origin" }
+      ]
+    },
+    {
+      "source": "/api/(.*)",
+      "headers": [
+        { "key": "Access-Control-Allow-Origin", "value": "*" },
+        { "key": "Access-Control-Allow-Methods", "value": "GET, POST, OPTIONS" }
       ]
     }
   ]

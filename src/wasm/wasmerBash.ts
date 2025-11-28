@@ -777,12 +777,13 @@ Examples:
   try {
     let fetchUrl = url
     
-    // Use CORS proxy if requested - try multiple proxies
+    // Use CORS proxy if requested - try our own proxy first, then fallbacks
     if (useProxy) {
       // List of CORS proxies to try (in order)
+      // First try our own Vercel serverless proxy, then public fallbacks
       const proxies = [
+        (u: string) => `/api/proxy?url=${encodeURIComponent(u)}`,  // Our own proxy
         (u: string) => `https://api.allorigins.win/raw?url=${encodeURIComponent(u)}`,
-        (u: string) => `https://cors-anywhere.herokuapp.com/${u}`,
         (u: string) => `https://corsproxy.io/?${encodeURIComponent(u)}`,
       ]
       
