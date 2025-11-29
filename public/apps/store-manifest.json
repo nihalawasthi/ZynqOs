@@ -12,7 +12,7 @@
   },
   {
     "id": "text-editor",
-    "name": "Text Editor",
+    "name": "Zynqpad",
     "description": "Lightweight code and text editor with syntax highlighting.",
     "icon": "📝",
     "version": "2.1.0",

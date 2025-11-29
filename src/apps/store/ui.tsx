@@ -62,7 +62,7 @@ export default function StoreUI() {
     // Example: try to open using global window API if available
     const app = installed[id]
     if (!app) return
-    ;(window as any).ZynqOS_openWindow?.(app.name, <div>Launching {app.name}…</div>)
+    ;(window as any).ZynqOS_openWindow?.(app.name, <div>Launching {app.name}…</div>, id)
   }
 
   return (

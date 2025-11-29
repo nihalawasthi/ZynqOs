@@ -9,7 +9,7 @@ export default function Launcher() {
           onClick={() => {
             const Comp = window.__MAPP_IMPORTER_UI__
             if (Comp) {
-              (window as any).ZynqOS_openWindow?.('Import Package', Comp)
+              (window as any).ZynqOS_openWindow?.('Import Package', Comp, 'mapp-importer')
             }
           }}
           className="w-full px-3 py-2 bg-purple-600 hover:bg-purple-700 rounded text-white text-sm transition-colors"

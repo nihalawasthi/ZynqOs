@@ -1458,14 +1458,19 @@ export default function TerminalWasi(_: Props) {
 
     window.addEventListener('resize', handleResize)
 
-    // Use ResizeObserver for container resize
+    // Use ResizeObserver for container resize with debounce to prevent infinite loop
+    let resizeTimeout: ReturnType<typeof setTimeout> | null = null
     const resizeObserver = new ResizeObserver(() => {
-      handleResize()
+      if (resizeTimeout) clearTimeout(resizeTimeout)
+      resizeTimeout = setTimeout(() => {
+        handleResize()
+      }, 50)
     })
     resizeObserver.observe(terminalRef.current)
 
     return () => {
       window.removeEventListener('resize', handleResize)
+      if (resizeTimeout) clearTimeout(resizeTimeout)
       resizeObserver.disconnect()
       term.dispose()
       xtermRef.current = null
@@ -1482,11 +1487,11 @@ export default function TerminalWasi(_: Props) {
   }, [])
 
   return (
-    <div className="flex flex-col h-full bg-black pb-2">
+    <div className="flex flex-col h-full bg-black pb-2 overflow-hidden">
       <div
         ref={terminalRef}
-        className="flex-1 p-2 pr-0 terminal-scrollbar"
-        style={{ minHeight: 0 }}
+        className="flex-1 p-2 pr-0 terminal-scrollbar overflow-hidden"
+        style={{ minHeight: 0, maxHeight: '100%' }}
       />
     </div>
   )

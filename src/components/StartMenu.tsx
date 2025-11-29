@@ -15,25 +15,25 @@ export default function StartMenu() {
             id: 'file-browser',
             name: 'Files',
             icon: '📁',
-            openFn: () => (window as any).ZynqOS_openWindow?.('Files', window.__FILE_BROWSER_UI__ ?? <div>Loading...</div>),
+            openFn: () => (window as any).ZynqOS_openWindow?.('Files', window.__FILE_BROWSER_UI__ ?? <div>Loading...</div>, 'file-browser'),
         },
         {
             id: 'text-editor',
-            name: 'Text Editor',
+            name: 'Zynqpad',
             icon: '📝',
-            openFn: () => (window as any).ZynqOS_openWindow?.('Text Editor', window.__TEXT_EDITOR_UI__ ?? <div>Loading...</div>),
+            openFn: () => (window as any).ZynqOS_openWindow?.('Zynqpad', window.__TEXT_EDITOR_UI__ ?? <div>Loading...</div>, 'text-editor'),
         },
         {
             id: 'terminal',
             name: 'Terminal',
             icon: '💻',
-            openFn: () => (window as any).ZynqOS_openWindow?.('Terminal', window.__TERMINAL_UI__ ?? <div>Loading Terminal...</div>),
+            openFn: () => (window as any).ZynqOS_openWindow?.('Terminal', window.__TERMINAL_UI__ ?? <div>Loading Terminal...</div>, 'terminal'),
         },
         {
             id: 'store',
             name: 'App Store',
             icon: '🛍️',
-            openFn: () => (window as any).ZynqOS_openWindow?.('App Store', window.__STORE_UI__ ?? <div>Loading Store...</div>),
+            openFn: () => (window as any).ZynqOS_openWindow?.('App Store', window.__STORE_UI__ ?? <div>Loading Store...</div>, 'store'),
         },
     ]
 
@@ -45,7 +45,7 @@ export default function StartMenu() {
             openFn: () => {
                 const Comp = window.__MAPP_IMPORTER_UI__
                 if (Comp) {
-                    (window as any).ZynqOS_openWindow?.('Import Package', Comp)
+                    (window as any).ZynqOS_openWindow?.('Import Package', Comp, 'mapp-importer')
                 }
             },
         },

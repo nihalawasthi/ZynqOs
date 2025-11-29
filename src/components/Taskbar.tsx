@@ -8,35 +8,35 @@ export default function Taskbar() {
 
       <div className="flex items-center gap-2">
         <button
-          onClick={() => (window as any).ZynqOS_openWindow?.('File Browser', window.__FILE_BROWSER_UI__ ?? <div>Loading...</div>)}
+          onClick={() => (window as any).ZynqOS_openWindow?.('File Browser', window.__FILE_BROWSER_UI__ ?? <div>Loading...</div>, 'file-browser')}
           title='Files'
           className="flex items-center gap-2 px-3 py-1 rounded-[2px] bg-transparent hover:bg-gray-200/30 transition transform hover:scale-105 text-white border border-gray-300/20 shadow"
         >
           <span className="text-lg"><i className="fas fa-folder"></i></span>
         </button>
         <button
-          onClick={() => (window as any).ZynqOS_openWindow?.('Store', window.__STORE_UI__ ?? <div>Loading...</div>)}
+          onClick={() => (window as any).ZynqOS_openWindow?.('Store', window.__STORE_UI__ ?? <div>Loading...</div>, 'store')}
           title='Store'
           className="flex items-center gap-2 px-3 py-1 rounded-[2px] bg-transparent hover:bg-gray-200/30 transition transform hover:scale-105 text-white border border-gray-300/20 shadow"
         >
           <span className="text-lg"><i className="fa-solid fa-store"></i></span>
         </button>
         <button
-          onClick={() => (window as any).ZynqOS_openWindow?.('Text Editor', window.__TEXT_EDITOR_UI__ ?? <div>Loading Editor...</div>)}
-          title='Text Editor'
+          onClick={() => (window as any).ZynqOS_openWindow?.('Zynqpad', window.__TEXT_EDITOR_UI__ ?? <div>Loading Editor...</div>, 'text-editor')}
+          title='Zynqpad'
           className="flex items-center gap-2 px-3 py-1 rounded-[2px] bg-transparent hover:bg-gray-200/30 transition transform hover:scale-105 text-white border border-gray-300/20 shadow"
         >
           <span className="text-lg"><i className="fa fa-file-text"></i></span>
         </button>
         <button
-          onClick={() => (window as any).ZynqOS_openWindow?.('Terminal', window.__TERMINAL_UI__ ?? <div>Loading Terminal...</div>)}
+          onClick={() => (window as any).ZynqOS_openWindow?.('Terminal', window.__TERMINAL_UI__ ?? <div>Loading Terminal...</div>, 'terminal')}
           title='Terminal'
           className="flex items-center gap-2 px-3 py-1 rounded-[2px] bg-transparent hover:bg-gray-200/30 transition transform hover:scale-105 text-white border border-gray-300/20 shadow"
         >
           <span className="text-lg"><i className="fa fa-terminal"></i></span>
         </button>
         <button
-          onClick={() => (window as any).ZynqOS_openWindow?.('Calculator', window.__CALC_UI__ ?? <div>Loading Calculator...</div>)}
+          onClick={() => (window as any).ZynqOS_openWindow?.('Calculator', window.__CALC_UI__ ?? <div>Loading Calculator...</div>, 'calculator')}
           title='Calculator'
           className="flex items-center gap-2 px-3 py-1 rounded-[2px] bg-transparent hover:bg-gray-200/30 transition transform hover:scale-105 text-white border border-gray-300/20 shadow"
         >
