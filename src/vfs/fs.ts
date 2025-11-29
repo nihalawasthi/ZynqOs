@@ -34,9 +34,21 @@ export async function readdir(prefix = ''): Promise<string[]> {
   const tx = db.transaction(STORE, 'readonly')
   const store = tx.objectStore(STORE)
   let cursor = await store.openCursor()
+  
+  // Normalize prefix - handle both with and without leading slash
+  const normalizedPrefix = prefix.startsWith('/') ? prefix : (prefix ? '/' + prefix : '')
+  const prefixWithoutSlash = prefix.startsWith('/') ? prefix.slice(1) : prefix
+  
   while (cursor) {
     const key = cursor.key.toString()
-    if (key.startsWith(prefix)) keys.push(key)
+    // Match keys that start with either format of the prefix
+    if (prefix === '' || 
+        key.startsWith(normalizedPrefix) || 
+        key.startsWith(prefixWithoutSlash) ||
+        (normalizedPrefix && key.startsWith(normalizedPrefix + '/')) ||
+        (prefixWithoutSlash && key.startsWith(prefixWithoutSlash + '/'))) {
+      keys.push(key)
+    }
     cursor = await cursor.continue()
   }
   await tx.done

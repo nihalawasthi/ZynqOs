@@ -94,20 +94,33 @@ export default function TerminalWasi(_: Props) {
   function extractImmediateChildren(keys: string[], parentNorm: string) {
     const set = new Set<string>()
     const prefix = parentNorm ? parentNorm + '/' : ''
+    const prefixWithSlash = parentNorm ? '/' + parentNorm + '/' : '/'
+    
     for (let k of keys) {
       if (!k) continue
-      if (k.startsWith('/')) k = k.slice(1)
+      
+      // Normalize the key - remove leading slash for consistent comparison
+      let normalizedKey = k.startsWith('/') ? k.slice(1) : k
+      
       if (!parentNorm) {
-        const first = k.split('/')[0]
+        // Root level - get first path component
+        const first = normalizedKey.split('/')[0]
         if (!first) continue
-        const isDir = k.includes('/')
+        const isDir = normalizedKey.includes('/')
         set.add(isDir ? `${first}/` : first)
       } else {
-        if (k === parentNorm) continue
-        if (!k.startsWith(prefix)) continue
-        const remainder = k.slice(prefix.length)
+        // Check if key is exactly the parent (skip it)
+        if (normalizedKey === parentNorm || normalizedKey === parentNorm + '/') continue
+        
+        // Check if key starts with parent prefix
+        if (!normalizedKey.startsWith(prefix)) continue
+        
+        const remainder = normalizedKey.slice(prefix.length)
+        if (!remainder) continue
+        
         const child = remainder.split('/')[0]
         if (!child) continue
+        
         const isDir = remainder.includes('/')
         set.add(isDir ? `${child}/` : child)
       }

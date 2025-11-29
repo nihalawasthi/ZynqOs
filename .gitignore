@@ -44,3 +44,4 @@ yarn-error.log*
 *.swp
 
 Cargo.lock
+todo.md
