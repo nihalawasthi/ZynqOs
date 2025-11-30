@@ -29,13 +29,13 @@ function setCachedProfile(profile: ProfileCache['profile']) {
     try {
         const data: ProfileCache = { profile, timestamp: Date.now() }
         localStorage.setItem(PROFILE_CACHE_KEY, JSON.stringify(data))
-    } catch {}
+    } catch { }
 }
 
 function clearCachedProfile() {
     try {
         localStorage.removeItem(PROFILE_CACHE_KEY)
-    } catch {}
+    } catch { }
 }
 
 type App = {
@@ -83,7 +83,7 @@ export default function StartMenu() {
                             setProfile(profileData)
                             setCachedProfile(profileData)
                         })
-                        .catch(() => {})
+                        .catch(() => { })
                 }
             })
         } else {
@@ -111,7 +111,7 @@ export default function StartMenu() {
                         setProfile(profileData)
                         setCachedProfile(profileData)
                     })
-                    .catch(() => {})
+                    .catch(() => { })
             })
         }
         window.addEventListener('zynqos:storage-connected', onConnected as EventListener)
@@ -497,43 +497,42 @@ export default function StartMenu() {
                         <div className="w-56 bg-[#1a1a1a] backdrop-blur-xl border border-[#333] rounded-xl shadow-2xl overflow-hidden flex flex-col">
                             {/* Profile Header */}
                             <div className="p-5 bg-gradient-to-r from-slate-800/50 to-slate-900/50 border-b border-slate-700/30 relative">
-                                {/* Logout button - top right */}
-                                <button
-                                    onClick={() => {
-                                        if (confirm('Close all windows and clear session?')) {
-                                            localStorage.clear()
-                                            window.location.reload()
-                                        }
-                                    }}
-                                    className="absolute bottom-1 right-2 p-2 rounded-lg hover:bg-[#3a2a2a] transition text-[#f87171] hover:text-[#fca5a5]"
-                                    title="Sign Out"
-                                >
-                                    <i className="fas fa-sign-out-alt text-sm"></i>
-                                </button>
-                                {/*  */}
+                                {/* About & setting */}
+                                <div className="absolute top-2 left-3 flex flex-col gap-1">
+                                    <button
+                                        onClick={() => {
+                                            systemApps[0].openFn()
+                                            setOpen(false)
+                                        }}
+                                        className="transition text-gray-400 hover:text-gray-200"
+                                        title='Settings'
+                                    >
+                                        <i className="fas fa-cog text-sm"></i>
+                                    </button>
 
-                                <button
-                                    onClick={() => {
-                                        systemApps[1].openFn()
-                                        setOpen(false)
-                                    }}
-                                    className="absolute top-2 left-3 transition text-gray-400 hover:text-gray-200"
-                                    title='About'
-                                >
+                                    <button
+                                        onClick={() => {
+                                            systemApps[1].openFn()
+                                            setOpen(false)
+                                        }}
+                                        className="transition text-gray-400 hover:text-gray-200"
+                                        title='About'
+                                    >
                                         <i className="fas fa-info-circle text-sm"></i>
-                                </button>
+                                    </button>
+                                </div>
                                 {/* Profile info - centered */}
                                 <div className="flex flex-col items-center justify-center gap-3">
                                     <div className="w-14 h-14 rounded-full bg-gradient-to-br from-blue-500/40 to-blue-600/30 border border-blue-500/50 flex items-center justify-center text-lg font-bold text-blue-300 shadow-lg shadow-blue-500/20 overflow-hidden">
                                         {profile.avatar ? (
-                                            <img src={profile.avatar} alt={profile.name || 'avatar'} className="w-full h-full object-cover" onError={(e) => { (e.target as HTMLImageElement).style.display='none' }} />
+                                            <img src={profile.avatar} alt={profile.name || 'avatar'} className="w-full h-full object-cover" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }} />
                                         ) : (
                                             <span>{(profile.name || 'Z').charAt(0).toUpperCase()}</span>
                                         )}
                                     </div>
                                     <div className="text-center">
                                         <div className="font-semibold text-slate-100" id="zynqos-profile-name">{profile.name || (storageStatus.connected ? 'Connected User' : 'User')}</div>
-                                        <div className="text-xs text-slate-500" id="zynqos-profile-email">{profile.email || (storageStatus.connected ? (storageStatus.provider === 'github' ? 'GitHub Account' : 'Cloud Account') : 'Local Account')}</div>
+                                        <div className="text-xs text-slate-500 pt-1" id="zynqos-profile-email">{profile.email || (storageStatus.connected ? (storageStatus.provider === 'github' ? 'GitHub Account' : 'Cloud Account') : 'Local Account')}</div>
                                     </div>
                                 </div>
                             </div>
@@ -552,7 +551,7 @@ export default function StartMenu() {
                                         className="text-[#808080] hover:text-[#f87171] transition text-xs"
                                         title="Disconnect"
                                     >
-                                        <i className="fas fa-times"></i>
+                                        <i className="fas fa-sign-out-alt"></i>
                                     </button>
                                 </div>
                             )}
@@ -566,39 +565,27 @@ export default function StartMenu() {
 
                             {/* Quick Actions */}
                             <div className="flex-1 p-3 space-y-1">
-                                <button
-                                    onClick={() => fileInputRef.current?.click()}
-                                    className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-[#2a2a2a] transition text-sm text-[#e0e0e0] hover:text-white group"
-                                >
-                                    <span className="w-8 h-8 rounded-lg bg-[#2a4a3a] flex items-center justify-center text-[#4ade80] group-hover:bg-[#2a5a3a] transition">
-                                        <i className="fas fa-upload text-xs"></i>
-                                    </span>
-                                    <span>Import Files</span>
-                                </button>
+                                <div className='w-full flex items-center'>
+                                    <button
+                                        onClick={() => fileInputRef.current?.click()}
+                                        className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-[#2a2a2a] transition text-sm text-[#e0e0e0] hover:text-white group"
+                                    >
+                                        <span className="w-4 h-4 rounded-lg bg-[#2a4a3a] flex items-center justify-center text-[#4ade80] group-hover:bg-[#2a5a3a] transition">
+                                            <i className="fas fa-upload text-xs"></i>
+                                        </span>
+                                        <span>Import</span>
+                                    </button>
 
-                                <button
-                                    onClick={handleExportFiles}
-                                    className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-[#2a2a2a] transition text-sm text-[#e0e0e0] hover:text-white group"
-                                >
-                                    <span className="w-8 h-8 rounded-lg bg-[#4a3a2a] flex items-center justify-center text-[#fbbf24] group-hover:bg-[#5a3a2a] transition">
-                                        <i className="fas fa-download text-xs"></i>
-                                    </span>
-                                    <span>Export Files</span>
-                                </button>
-
-                                <button
-                                    onClick={() => {
-                                        systemApps[0].openFn()
-                                        setOpen(false)
-                                    }}
-                                    className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-[#2a2a2a] transition text-sm text-[#e0e0e0] hover:text-white group"
-                                >
-                                    <span className="w-8 h-8 rounded-lg bg-[#2a2a2a] flex items-center justify-center text-[#808080] group-hover:bg-[#333] transition">
-                                        <i className="fas fa-cog text-xs"></i>
-                                    </span>
-                                    <span>Settings</span>
-                                </button>
-
+                                    <button
+                                        onClick={handleExportFiles}
+                                        className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-[#2a2a2a] transition text-sm text-[#e0e0e0] hover:text-white group"
+                                    >
+                                        <span className="w-4 h-4 rounded-lg bg-[#4a3a2a] flex items-center justify-center text-[#fbbf24] group-hover:bg-[#5a3a2a] transition">
+                                            <i className="fas fa-download text-xs"></i>
+                                        </span>
+                                        <span>Export</span>
+                                    </button>
+                                </div>
                                 <button
                                     onClick={() => {
                                         (window as any).ZynqOS_openConsent?.()
@@ -609,7 +596,13 @@ export default function StartMenu() {
                                     <span className="w-8 h-8 rounded-lg bg-[#2a2a3a] flex items-center justify-center text-[#4a9eff] group-hover:bg-[#2a2a4a] transition">
                                         <i className="fas fa-cloud text-xs"></i>
                                     </span>
-                                    <span>Connect Storage</span>
+                                    <span>
+                                        {!storageStatus.connected
+                                            ? 'Connect Storage'
+                                            : storageStatus.provider === 'google'
+                                                ? 'Connect GitHub'
+                                                : 'Connect Google'}
+                                    </span>
                                 </button>
                             </div>
 
