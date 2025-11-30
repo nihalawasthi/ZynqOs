@@ -89,7 +89,24 @@ async function authExchangeGoogle(req: VercelRequest, res: VercelResponse) {
     const { code, redirectUri, codeVerifier } = req.body || {}
     const clientId = process.env.GOOGLE_CLIENT_ID
     const clientSecret = process.env.GOOGLE_CLIENT_SECRET
-    if (!clientId || !code || !redirectUri || !codeVerifier) return res.status(400).json({ error: 'Missing parameters' })
+    
+    // Detailed validation logging
+    if (!clientId) {
+      console.error('authExchangeGoogle: Missing GOOGLE_CLIENT_ID env var')
+      return res.status(500).json({ error: 'Server configuration error: Missing GOOGLE_CLIENT_ID' })
+    }
+    if (!code) {
+      console.error('authExchangeGoogle: Missing code in request body', { body: req.body })
+      return res.status(400).json({ error: 'Missing authorization code' })
+    }
+    if (!redirectUri) {
+      console.error('authExchangeGoogle: Missing redirectUri in request body', { body: req.body })
+      return res.status(400).json({ error: 'Missing redirect URI' })
+    }
+    if (!codeVerifier) {
+      console.error('authExchangeGoogle: Missing codeVerifier in request body', { body: req.body })
+      return res.status(400).json({ error: 'Missing PKCE code verifier' })
+    }
     const body = new URLSearchParams({ client_id: clientId, grant_type: 'authorization_code', code, redirect_uri: redirectUri, code_verifier: codeVerifier })
     if (clientSecret) body.set('client_secret', clientSecret)
     const tokenRes = await fetch('https://oauth2.googleapis.com/token', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body })
@@ -109,7 +126,20 @@ async function authExchangeGitHub(req: VercelRequest, res: VercelResponse) {
     const { code, redirectUri } = req.body || {}
     const clientId = process.env.GITHUB_CLIENT_ID
     const clientSecret = process.env.GITHUB_CLIENT_SECRET
-    if (!clientId || !clientSecret || !code) return res.status(400).json({ error: 'Missing parameters' })
+    
+    // Detailed validation logging
+    if (!clientId) {
+      console.error('authExchangeGitHub: Missing GITHUB_CLIENT_ID env var')
+      return res.status(500).json({ error: 'Server configuration error: Missing GITHUB_CLIENT_ID' })
+    }
+    if (!clientSecret) {
+      console.error('authExchangeGitHub: Missing GITHUB_CLIENT_SECRET env var')
+      return res.status(500).json({ error: 'Server configuration error: Missing GITHUB_CLIENT_SECRET' })
+    }
+    if (!code) {
+      console.error('authExchangeGitHub: Missing code in request body', { body: req.body })
+      return res.status(400).json({ error: 'Missing authorization code' })
+    }
     const tokenRes = await fetch('https://github.com/login/oauth/access_token', { method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'application/json' }, body: JSON.stringify({ client_id: clientId, client_secret: clientSecret, code, redirect_uri: redirectUri }) })
     const json = await tokenRes.json()
     if (json.error) return res.status(400).json(json)
@@ -317,6 +347,30 @@ async function githubWebhook(req: VercelRequest, res: VercelResponse) {
 // ========== ROUTER ==========
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const { route, action } = req.query
+  
+  // CORS preflight
+  if (req.method === 'OPTIONS') {
+    res.setHeader('Access-Control-Allow-Origin', '*')
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS')
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization')
+    res.setHeader('Access-Control-Allow-Credentials', 'true')
+    return res.status(200).end()
+  }
+  
+  // Add CORS headers to all responses
+  res.setHeader('Access-Control-Allow-Origin', req.headers.origin || '*')
+  res.setHeader('Access-Control-Allow-Credentials', 'true')
+  
+  // Log request details for debugging
+  console.log('API Request:', {
+    method: req.method,
+    route,
+    action,
+    hasBody: !!req.body,
+    bodyKeys: req.body ? Object.keys(req.body) : [],
+    contentType: req.headers['content-type']
+  })
+  
   try {
     // Route-based dispatch
     if (route === 'proxy') return proxy(req, res)
