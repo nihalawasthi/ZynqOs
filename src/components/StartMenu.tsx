@@ -2,6 +2,42 @@ import React, { useState, useMemo, useEffect, useRef } from 'react'
 import { writeFile, readFile, readdir } from '../vfs/fs'
 import { getStorageStatus, disconnectStorage, type StorageStatus } from '../auth/storage'
 
+const PROFILE_CACHE_KEY = 'zynqos_profile_cache'
+const CACHE_TTL = 5 * 60 * 1000 // 5 minutes
+
+type ProfileCache = {
+    profile: { name?: string; email?: string; avatar?: string; provider?: string }
+    timestamp: number
+}
+
+function getCachedProfile(): ProfileCache['profile'] | null {
+    try {
+        const cached = localStorage.getItem(PROFILE_CACHE_KEY)
+        if (!cached) return null
+        const data: ProfileCache = JSON.parse(cached)
+        if (Date.now() - data.timestamp > CACHE_TTL) {
+            localStorage.removeItem(PROFILE_CACHE_KEY)
+            return null
+        }
+        return data.profile
+    } catch {
+        return null
+    }
+}
+
+function setCachedProfile(profile: ProfileCache['profile']) {
+    try {
+        const data: ProfileCache = { profile, timestamp: Date.now() }
+        localStorage.setItem(PROFILE_CACHE_KEY, JSON.stringify(data))
+    } catch {}
+}
+
+function clearCachedProfile() {
+    try {
+        localStorage.removeItem(PROFILE_CACHE_KEY)
+    } catch {}
+}
+
 type App = {
     id: string
     name: string
@@ -16,6 +52,7 @@ export default function StartMenu() {
     const [activeSection, setActiveSection] = useState<'pinned' | 'all'>('pinned')
     const [importStatus, setImportStatus] = useState<string>('')
     const [storageStatus, setStorageStatus] = useState<StorageStatus>({ connected: false })
+    const [profile, setProfile] = useState<{ name?: string; email?: string; avatar?: string; provider?: string }>(getCachedProfile() || {})
     const searchInputRef = useRef<HTMLInputElement>(null)
     const fileInputRef = useRef<HTMLInputElement>(null)
 
@@ -26,19 +63,25 @@ export default function StartMenu() {
             getStorageStatus().then(status => {
                 setStorageStatus(status)
                 if (status.connected) {
+                    // Check cache first
+                    const cached = getCachedProfile()
+                    if (cached) {
+                        setProfile(cached)
+                    }
                     // Fetch profile proactively when menu opens
                     fetch('/api?route=auth&action=profile', { credentials: 'include' })
                         .then(r => r.ok ? r.json() : Promise.reject(new Error('Profile fetch failed')))
                         .then(data => {
-                            const nameEl = document.getElementById('zynqos-profile-name')
-                            const emailEl = document.getElementById('zynqos-profile-email')
-                            const profile = data?.profile || {}
+                            const p = data?.profile || {}
                             const provider = data?.provider
-                            // Prefer explicit name, fall back to login/id/email/provider label
-                            const name = profile.name || profile.login || profile.id || (provider === 'github' ? 'GitHub User' : provider === 'google' ? 'Google User' : 'Connected User')
-                            const email = profile.email || (provider === 'github' ? 'GitHub Account' : provider === 'google' ? 'Google Account' : '')
-                            if (nameEl) nameEl.textContent = name
-                            if (emailEl) emailEl.textContent = email
+                            const profileData = {
+                                name: p.name || p.login || p.id || (provider === 'github' ? 'GitHub User' : provider === 'google' ? 'Google User' : 'Connected User'),
+                                email: p.email || (provider === 'github' ? 'GitHub Account' : provider === 'google' ? 'Google Account' : ''),
+                                avatar: p.avatar_url || p.picture,
+                                provider
+                            }
+                            setProfile(profileData)
+                            setCachedProfile(profileData)
                         })
                         .catch(() => {})
                 }
@@ -57,14 +100,16 @@ export default function StartMenu() {
                 fetch('/api?route=auth&action=profile', { credentials: 'include' })
                     .then(r => r.ok ? r.json() : Promise.reject(new Error('Profile fetch failed')))
                     .then(data => {
-                        const nameEl = document.getElementById('zynqos-profile-name')
-                        const emailEl = document.getElementById('zynqos-profile-email')
-                        const profile = data?.profile || {}
+                        const p = data?.profile || {}
                         const provider = data?.provider
-                        const name = profile.name || profile.login || profile.id || (provider === 'github' ? 'GitHub User' : provider === 'google' ? 'Google User' : 'Connected User')
-                        const email = profile.email || (provider === 'github' ? 'GitHub Account' : provider === 'google' ? 'Google Account' : '')
-                        if (nameEl) nameEl.textContent = name
-                        if (emailEl) emailEl.textContent = email
+                        const profileData = {
+                            name: p.name || p.login || p.id || (provider === 'github' ? 'GitHub User' : provider === 'google' ? 'Google User' : 'Connected User'),
+                            email: p.email || (provider === 'github' ? 'GitHub Account' : provider === 'google' ? 'Google Account' : ''),
+                            avatar: p.avatar_url || p.picture,
+                            provider
+                        }
+                        setProfile(profileData)
+                        setCachedProfile(profileData)
                     })
                     .catch(() => {})
             })
@@ -83,6 +128,8 @@ export default function StartMenu() {
         const success = await disconnectStorage()
         if (success) {
             setStorageStatus({ connected: false })
+            setProfile({})
+            clearCachedProfile()
             setImportStatus('✓ Storage disconnected')
             setTimeout(() => setImportStatus(''), 2000)
         } else {
@@ -478,16 +525,15 @@ export default function StartMenu() {
                                 {/* Profile info - centered */}
                                 <div className="flex flex-col items-center justify-center gap-3">
                                     <div className="w-14 h-14 rounded-full bg-gradient-to-br from-blue-500/40 to-blue-600/30 border border-blue-500/50 flex items-center justify-center text-lg font-bold text-blue-300 shadow-lg shadow-blue-500/20 overflow-hidden">
-                                        {storageStatus.connected && storageStatus.provider === 'github' && (
-                                            <img src="https://github.githubassets.com/images/modules/logos_page/GitHub-Mark.png" alt="avatar" className="w-full h-full object-cover" />
-                                        )}
-                                        {!storageStatus.connected && (
-                                            <>Z</>
+                                        {profile.avatar ? (
+                                            <img src={profile.avatar} alt={profile.name || 'avatar'} className="w-full h-full object-cover" onError={(e) => { (e.target as HTMLImageElement).style.display='none' }} />
+                                        ) : (
+                                            <span>{(profile.name || 'Z').charAt(0).toUpperCase()}</span>
                                         )}
                                     </div>
                                     <div className="text-center">
-                                        <div className="font-semibold text-slate-100" id="zynqos-profile-name">{storageStatus.connected ? 'Connected User' : 'User'}</div>
-                                        <div className="text-xs text-slate-500" id="zynqos-profile-email">{storageStatus.connected ? 'Cloud Account' : 'Local Account'}</div>
+                                        <div className="font-semibold text-slate-100" id="zynqos-profile-name">{profile.name || (storageStatus.connected ? 'Connected User' : 'User')}</div>
+                                        <div className="text-xs text-slate-500" id="zynqos-profile-email">{profile.email || (storageStatus.connected ? (storageStatus.provider === 'github' ? 'GitHub Account' : 'Cloud Account') : 'Local Account')}</div>
                                     </div>
                                 </div>
                             </div>
