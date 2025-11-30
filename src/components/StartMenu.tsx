@@ -23,7 +23,26 @@ export default function StartMenu() {
         if (open) {
             setTimeout(() => searchInputRef.current?.focus(), 100)
             // Check storage status
-            getStorageStatus().then(setStorageStatus)
+            getStorageStatus().then(status => {
+                setStorageStatus(status)
+                if (status.connected) {
+                    // Fetch profile proactively when menu opens
+                    fetch('/api?route=auth&action=profile', { credentials: 'include' })
+                        .then(r => r.ok ? r.json() : Promise.reject(new Error('Profile fetch failed')))
+                        .then(data => {
+                            const nameEl = document.getElementById('zynqos-profile-name')
+                            const emailEl = document.getElementById('zynqos-profile-email')
+                            const profile = data?.profile || {}
+                            const provider = data?.provider
+                            // Prefer explicit name, fall back to login/id/email/provider label
+                            const name = profile.name || profile.login || profile.id || (provider === 'github' ? 'GitHub User' : provider === 'google' ? 'Google User' : 'Connected User')
+                            const email = profile.email || (provider === 'github' ? 'GitHub Account' : provider === 'google' ? 'Google Account' : '')
+                            if (nameEl) nameEl.textContent = name
+                            if (emailEl) emailEl.textContent = email
+                        })
+                        .catch(() => {})
+                }
+            })
         } else {
             setSearchQuery('')
             setImportStatus('')
@@ -33,19 +52,22 @@ export default function StartMenu() {
     // Listen for storage connection events to update UI instantly
     useEffect(() => {
         const onConnected = () => {
-            getStorageStatus().then(setStorageStatus)
-                        // Fetch user profile and update UI labels
-                        fetch('/api?route=auth&action=profile', { credentials: 'include' })
-                            .then(r => r.ok ? r.json() : Promise.reject(new Error('Profile fetch failed')))
-                            .then(data => {
-                                const nameEl = document.getElementById('zynqos-profile-name')
-                                const emailEl = document.getElementById('zynqos-profile-email')
-                                const name = data?.profile?.name || 'Connected User'
-                                const email = data?.profile?.email || (data?.provider === 'github' ? 'GitHub Account' : 'Google Account')
-                                if (nameEl) nameEl.textContent = name
-                                if (emailEl) emailEl.textContent = email
-                            })
-                            .catch(() => {})
+            getStorageStatus().then(status => {
+                setStorageStatus(status)
+                fetch('/api?route=auth&action=profile', { credentials: 'include' })
+                    .then(r => r.ok ? r.json() : Promise.reject(new Error('Profile fetch failed')))
+                    .then(data => {
+                        const nameEl = document.getElementById('zynqos-profile-name')
+                        const emailEl = document.getElementById('zynqos-profile-email')
+                        const profile = data?.profile || {}
+                        const provider = data?.provider
+                        const name = profile.name || profile.login || profile.id || (provider === 'github' ? 'GitHub User' : provider === 'google' ? 'Google User' : 'Connected User')
+                        const email = profile.email || (provider === 'github' ? 'GitHub Account' : provider === 'google' ? 'Google Account' : '')
+                        if (nameEl) nameEl.textContent = name
+                        if (emailEl) emailEl.textContent = email
+                    })
+                    .catch(() => {})
+            })
         }
         window.addEventListener('zynqos:storage-connected', onConnected as EventListener)
         return () => window.removeEventListener('zynqos:storage-connected', onConnected as EventListener)

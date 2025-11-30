@@ -1,7 +1,9 @@
 import { openDB } from 'idb'
 
 const DB_NAME = 'ZynqOS-vfs'
-const DB_VERSION = 1
+// Keep DB version in sync with map.ts (currently 2) to avoid VersionError
+// Previously this was 1 while map.ts used 2, causing: VersionError: requested version (1) < existing version (2)
+const DB_VERSION = 2
 const STORE = 'files'
 
 async function getDB() {
