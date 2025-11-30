@@ -379,6 +379,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         case 'exchange_google': return authExchangeGoogle(req, res)
         case 'exchange_github': return authExchangeGitHub(req, res)
         case 'status': return authStatus(req, res)
+        case 'env_status':
+          return res.status(200).json({
+            google: {
+              clientId: !!process.env.GOOGLE_CLIENT_ID,
+              clientSecret: !!process.env.GOOGLE_CLIENT_SECRET
+            },
+            github: {
+              clientId: !!process.env.GITHUB_CLIENT_ID,
+              clientSecret: !!process.env.GITHUB_CLIENT_SECRET
+            }
+          })
         case 'refresh': return authRefresh(req, res)
         case 'disconnect': return authDisconnect(req, res)
         case 'profile': return authProfile(req, res)
