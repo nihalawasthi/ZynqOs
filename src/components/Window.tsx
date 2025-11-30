@@ -94,7 +94,7 @@ export default function Window({
       left: '0',
       top: '0',
       width: '100vw',
-      height: 'calc(100vh - 48px)',
+      height: '100vh',
       zIndex: 10
     }
     : {

@@ -40,7 +40,7 @@ export function stopSync() {
 
 async function startDrivePolling() {
   // Get initial startPageToken
-  const res = await fetch('/api/storage/drive?action=changes', { credentials: 'include' })
+  const res = await fetch('/api?route=storage&provider=drive&action=changes', { credentials: 'include' })
   const json = await res.json()
   drivePageToken = json.startPageToken
   
@@ -48,7 +48,7 @@ async function startDrivePolling() {
   pollingInterval = setInterval(async () => {
     if (!drivePageToken) return
     try {
-      const changesRes = await fetch(`/api/storage/drive?action=changes&pageToken=${drivePageToken}`, { credentials: 'include' })
+      const changesRes = await fetch(`/api?route=storage&provider=drive&action=changes&pageToken=${drivePageToken}`, { credentials: 'include' })
       const changesJson = await changesRes.json()
       
       if (changesJson.changes?.length > 0) {
@@ -88,7 +88,7 @@ async function processUploadQueue() {
       if (!root) continue
       
       if (root.provider === 'google-drive') {
-        const res = await fetch('/api/storage/drive?action=upload', {
+        const res = await fetch('/api?route=storage&provider=drive&action=upload', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           credentials: 'include',

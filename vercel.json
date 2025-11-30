@@ -3,7 +3,7 @@
     "enabled": false
   },
   "functions": {
-    "api/proxy.ts": {
+    "api/index.ts": {
       "maxDuration": 30
     }
   },

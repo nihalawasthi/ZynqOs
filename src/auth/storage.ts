@@ -7,7 +7,7 @@ export type StorageStatus = {
 
 export async function getStorageStatus(): Promise<StorageStatus> {
   try {
-    const res = await fetch('/api/auth?action=status', { credentials: 'include' })
+    const res = await fetch('/api?route=auth&action=status', { credentials: 'include' })
     const contentType = res.headers.get('content-type') || ''
     if (contentType.includes('application/json')) {
       return await res.json()
@@ -24,7 +24,7 @@ export async function getStorageStatus(): Promise<StorageStatus> {
 
 export async function disconnectStorage(): Promise<boolean> {
   try {
-    const res = await fetch('/api/auth?action=disconnect', {
+    const res = await fetch('/api?route=auth&action=disconnect', {
       method: 'POST',
       credentials: 'include'
     })
@@ -38,7 +38,7 @@ export async function disconnectStorage(): Promise<boolean> {
 
 export async function refreshToken(): Promise<boolean> {
   try {
-    const res = await fetch('/api/auth?action=refresh', {
+    const res = await fetch('/api?route=auth&action=refresh', {
       method: 'POST',
       credentials: 'include'
     })

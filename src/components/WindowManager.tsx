@@ -90,7 +90,7 @@ export default function WindowManager() {
       {windowGroups.map((group, idx) => {
         const activeWindow = group.windows.find(w => w.id === group.activeTabId) || group.windows[0]
         const hasTabs = group.windows.length > 1
-        const noPadding = group.appType === 'Terminal' || group.appType === 'Zynqpad' || group.appType === 'terminal' || group.appType === 'text-editor'
+        const noPadding = group.appType === 'Terminal' || group.appType === 'Zynqpad' || group.appType === 'terminal' || group.appType === 'text-editor' || group.appType === 'wednesday'
         
         return (
           <Window 

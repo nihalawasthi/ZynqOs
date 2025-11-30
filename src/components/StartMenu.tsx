@@ -35,7 +35,7 @@ export default function StartMenu() {
         const onConnected = () => {
             getStorageStatus().then(setStorageStatus)
                         // Fetch user profile and update UI labels
-                        fetch('/api/auth?action=profile', { credentials: 'include' })
+                        fetch('/api?route=auth&action=profile', { credentials: 'include' })
                             .then(r => r.ok ? r.json() : Promise.reject(new Error('Profile fetch failed')))
                             .then(data => {
                                 const nameEl = document.getElementById('zynqos-profile-name')
@@ -144,6 +144,13 @@ export default function StartMenu() {
             icon: <i className="fa fa-terminal"></i>,
             description: 'WASI terminal emulator',
             openFn: () => (window as any).ZynqOS_openWindow?.('Terminal', window.__TERMINAL_UI__ ?? <div>Loading Terminal...</div>, 'terminal'),
+        },
+        {
+            id: 'wednesday',
+            name: 'Wednesday',
+            icon: <i className="scale-80 fa-solid fa-wand-magic-sparkles"></i>,
+            description: 'AI Assistant with terminal integration',
+            openFn: () => (window as any).ZynqOS_openWindow?.('Wednesday AI', window.__WEDNESDAY_UI__ ?? <div>Loading Wednesday...</div>, 'wednesday'),
         },
         {
             id: 'store',

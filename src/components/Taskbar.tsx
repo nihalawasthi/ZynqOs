@@ -36,11 +36,11 @@ export default function Taskbar() {
           <span className="text-lg"><i className="fa fa-terminal"></i></span>
         </button>
         <button
-          onClick={() => (window as any).ZynqOS_openWindow?.('Calculator', window.__CALC_UI__ ?? <div>Loading Calculator...</div>, 'calculator')}
-          title='Calculator'
+          onClick={() => (window as any).ZynqOS_openWindow?.('Wednesday', window.__WEDNESDAY_UI__ ?? <div>Loading Wednesday...</div>, 'wednesday')}
+          title='Wednesday'
           className="flex items-center gap-2 px-3 py-1 rounded-[2px] bg-transparent hover:bg-gray-200/30 transition text-white border border-gray-300/20"
         >
-          <span className="text-lg font-thin"><i className="fas">&#xf1ec;</i></span>
+          <span className="text-lg font-thin"><i className="scale-90 fa-solid fa-wand-magic-sparkles"></i></span>
         </button>
       </div>
 
