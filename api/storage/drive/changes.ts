@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
-import { getSessionFromCookie } from '../../lib/session.ts'
+import { getSessionFromCookie } from '../../lib/session'
 
 // Google Drive changes polling endpoint
 // Uses Drive API v3 changes.list with startPageToken for incremental sync

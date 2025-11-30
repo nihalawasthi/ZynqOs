@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
-import { setSessionCookie } from '../../lib/session.ts'
+import { setSessionCookie } from '../../lib/session'
 
 // Server-side Google token exchange using env-stored client ID/secret.
 // IMPORTANT: For a public SPA you can omit the client secret and treat the app as a public client.
