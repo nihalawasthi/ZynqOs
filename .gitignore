@@ -45,3 +45,6 @@ yarn-error.log*
 
 Cargo.lock
 todo.md
+.vercel
+.env*.local
+STORAGE_SETUP.md

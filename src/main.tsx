@@ -19,6 +19,10 @@ import './apps/store/ui'
 // Initialize VFS with sample files
 initializeVFS().catch(console.error)
 
+// Auth helpers and redirect bootstrap
+import { bootstrapAuthRedirect } from './auth/init'
+bootstrapAuthRedirect().catch(console.error)
+
 createRoot(document.getElementById('root') as HTMLElement).render(
   <React.StrictMode>
     <App />

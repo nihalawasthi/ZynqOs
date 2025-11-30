@@ -1,5 +1,6 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react'
 import { writeFile, readFile, readdir } from '../vfs/fs'
+import { getStorageStatus, disconnectStorage, type StorageStatus } from '../auth/storage'
 
 type App = {
     id: string
@@ -14,21 +15,57 @@ export default function StartMenu() {
     const [searchQuery, setSearchQuery] = useState('')
     const [activeSection, setActiveSection] = useState<'pinned' | 'all'>('pinned')
     const [importStatus, setImportStatus] = useState<string>('')
+    const [storageStatus, setStorageStatus] = useState<StorageStatus>({ connected: false })
     const searchInputRef = useRef<HTMLInputElement>(null)
     const fileInputRef = useRef<HTMLInputElement>(null)
 
     useEffect(() => {
         if (open) {
             setTimeout(() => searchInputRef.current?.focus(), 100)
+            // Check storage status
+            getStorageStatus().then(setStorageStatus)
         } else {
             setSearchQuery('')
             setImportStatus('')
         }
     }, [open])
 
+    // Listen for storage connection events to update UI instantly
+    useEffect(() => {
+        const onConnected = () => {
+            getStorageStatus().then(setStorageStatus)
+                        // Fetch user profile and update UI labels
+                        fetch('/api/auth/profile', { credentials: 'include' })
+                            .then(r => r.ok ? r.json() : Promise.reject(new Error('Profile fetch failed')))
+                            .then(data => {
+                                const nameEl = document.getElementById('zynqos-profile-name')
+                                const emailEl = document.getElementById('zynqos-profile-email')
+                                const name = data?.profile?.name || 'Connected User'
+                                const email = data?.profile?.email || (data?.provider === 'github' ? 'GitHub Account' : 'Google Account')
+                                if (nameEl) nameEl.textContent = name
+                                if (emailEl) emailEl.textContent = email
+                            })
+                            .catch(() => {})
+        }
+        window.addEventListener('zynqos:storage-connected', onConnected as EventListener)
+        return () => window.removeEventListener('zynqos:storage-connected', onConnected as EventListener)
+    }, [])
+
     const handleAppOpen = (app: App) => {
         app.openFn()
         setOpen(false)
+    }
+
+    const handleDisconnectStorage = async () => {
+        if (!confirm('Disconnect cloud storage? Local files will remain.')) return
+        const success = await disconnectStorage()
+        if (success) {
+            setStorageStatus({ connected: false })
+            setImportStatus('✓ Storage disconnected')
+            setTimeout(() => setImportStatus(''), 2000)
+        } else {
+            setImportStatus('✗ Failed to disconnect')
+        }
     }
 
     const handleImportFiles = async (files: FileList | null) => {
@@ -411,15 +448,39 @@ export default function StartMenu() {
                                 </button>
                                 {/* Profile info - centered */}
                                 <div className="flex flex-col items-center justify-center gap-3">
-                                    <div className="w-14 h-14 rounded-full bg-gradient-to-br from-blue-500/40 to-blue-600/30 border border-blue-500/50 flex items-center justify-center text-lg font-bold text-blue-300 shadow-lg shadow-blue-500/20">
-                                        Z
+                                    <div className="w-14 h-14 rounded-full bg-gradient-to-br from-blue-500/40 to-blue-600/30 border border-blue-500/50 flex items-center justify-center text-lg font-bold text-blue-300 shadow-lg shadow-blue-500/20 overflow-hidden">
+                                        {storageStatus.connected && storageStatus.provider === 'github' && (
+                                            <img src="https://github.githubassets.com/images/modules/logos_page/GitHub-Mark.png" alt="avatar" className="w-full h-full object-cover" />
+                                        )}
+                                        {!storageStatus.connected && (
+                                            <>Z</>
+                                        )}
                                     </div>
                                     <div className="text-center">
-                                        <div className="font-semibold text-slate-100">User</div>
-                                        <div className="text-xs text-slate-500">Local Account</div>
+                                        <div className="font-semibold text-slate-100" id="zynqos-profile-name">{storageStatus.connected ? 'Connected User' : 'User'}</div>
+                                        <div className="text-xs text-slate-500" id="zynqos-profile-email">{storageStatus.connected ? 'Cloud Account' : 'Local Account'}</div>
                                     </div>
                                 </div>
                             </div>
+
+                            {/* Storage Status */}
+                            {storageStatus.connected && (
+                                <div className="px-4 py-2 bg-[#2a3a2a]/50 border-b border-[#333] flex items-center justify-between">
+                                    <div className="flex items-center gap-2 text-xs">
+                                        <i className={`fab fa-${storageStatus.provider === 'google' ? 'google' : 'github'} text-[#4ade80]`}></i>
+                                        <span className="text-[#4ade80] font-medium">
+                                            {storageStatus.provider === 'google' ? 'Google Drive' : 'GitHub'} connected
+                                        </span>
+                                    </div>
+                                    <button
+                                        onClick={handleDisconnectStorage}
+                                        className="text-[#808080] hover:text-[#f87171] transition text-xs"
+                                        title="Disconnect"
+                                    >
+                                        <i className="fas fa-times"></i>
+                                    </button>
+                                </div>
+                            )}
 
                             {/* Import Status */}
                             {importStatus && (
@@ -461,6 +522,19 @@ export default function StartMenu() {
                                         <i className="fas fa-cog text-xs"></i>
                                     </span>
                                     <span>Settings</span>
+                                </button>
+
+                                <button
+                                    onClick={() => {
+                                        (window as any).ZynqOS_openConsent?.()
+                                        setOpen(false)
+                                    }}
+                                    className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-[#2a2a2a] transition text-sm text-[#e0e0e0] hover:text-white group"
+                                >
+                                    <span className="w-8 h-8 rounded-lg bg-[#2a2a3a] flex items-center justify-center text-[#4a9eff] group-hover:bg-[#2a2a4a] transition">
+                                        <i className="fas fa-cloud text-xs"></i>
+                                    </span>
+                                    <span>Connect Storage</span>
                                 </button>
                             </div>
 
