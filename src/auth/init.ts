@@ -37,7 +37,7 @@ export async function bootstrapAuthRedirect() {
   try {
     if (state === 'google') {
       // Server-side exchange preserves confidentiality of client secret (if set)
-      const res = await fetch('/api/auth/google/exchange', {
+      const res = await fetch('/api/auth?action=exchange_google', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ code, redirectUri: AUTH_REDIRECT_URI, codeVerifier: sessionStorage.getItem('google_pkce_verifier') || '' })
@@ -53,7 +53,7 @@ export async function bootstrapAuthRedirect() {
       if (!res.ok) throw new Error(json.error || 'Google exchange failed')
       
       // Session is now stored in httpOnly cookie; fetch token for immediate provider init
-      const statusRes = await fetch('/api/auth/status', { credentials: 'include' })
+      const statusRes = await fetch('/api/auth?action=status', { credentials: 'include' })
       const copy2 = statusRes.clone()
       let statusJson: any
       try { statusJson = await statusRes.json() } catch { const t = await copy2.text(); throw new Error(`Status not JSON: ${t.slice(0,120)}...`) }
@@ -70,7 +70,7 @@ export async function bootstrapAuthRedirect() {
       }
     } else if (state === 'github') {
       // Exchange via server to avoid exposing secret
-      const res = await fetch('/api/auth/github/exchange', {
+      const res = await fetch('/api/auth?action=exchange_github', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ code, redirectUri: AUTH_REDIRECT_URI })
@@ -81,7 +81,7 @@ export async function bootstrapAuthRedirect() {
       if (!res.ok) throw new Error(json.error || 'GitHub exchange failed')
       
       // Session is now stored in httpOnly cookie
-      const statusRes = await fetch('/api/auth/status', { credentials: 'include' })
+      const statusRes = await fetch('/api/auth?action=status', { credentials: 'include' })
       const copy4 = statusRes.clone()
       let statusJson: any
       try { statusJson = await statusRes.json() } catch { const t = await copy4.text(); throw new Error(`Status not JSON: ${t.slice(0,120)}...`) }

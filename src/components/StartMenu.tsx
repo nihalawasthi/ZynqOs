@@ -35,7 +35,7 @@ export default function StartMenu() {
         const onConnected = () => {
             getStorageStatus().then(setStorageStatus)
                         // Fetch user profile and update UI labels
-                        fetch('/api/auth/profile', { credentials: 'include' })
+                        fetch('/api/auth?action=profile', { credentials: 'include' })
                             .then(r => r.ok ? r.json() : Promise.reject(new Error('Profile fetch failed')))
                             .then(data => {
                                 const nameEl = document.getElementById('zynqos-profile-name')
