@@ -325,7 +325,7 @@ export default function StartMenu() {
                         onClick={() => setOpen(false)}
                     />
 
-                    <div className="flex fixed bottom-20 left-4 gap-3 z-50 animate-slideUp">
+                    <div className="flex fixed bottom-20 left-1/2 -translate-x-1/2 min-w-[calc(60%-48px)] max-w-[980px] gap-1 z-50">
                         {/* Hidden file input for imports */}
                         <input
                             ref={fileInputRef}
@@ -336,7 +336,7 @@ export default function StartMenu() {
                         />
 
                         {/* Main Menu */}
-                        <div className="w-[420px] bg-[#1a1a1a] backdrop-blur-xl border border-[#333] rounded-xl shadow-2xl overflow-hidden">
+                        <div className="w-[420px] bg-black backdrop-blur-xl border border-[#333] rounded-xl shadow-2xl overflow-hidden">
                             {/* Search bar */}
                             <div className="px-5 py-4">
                                 <div className="relative">
@@ -428,16 +428,16 @@ export default function StartMenu() {
 
                                     {/* Pinned Apps Grid */}
                                     {activeSection === 'pinned' && (
-                                        <div className="px-5 pb-4">
-                                            <div className="grid grid-cols-4 gap-2">
+                                        <div className="px-5 min-h-[30vh] pb-4">
+                                            <div className="grid grid-cols-5 gap-2">
                                                 {pinnedApps.map((app) => (
                                                     <button
                                                         key={app.id}
                                                         onClick={() => handleAppOpen(app)}
-                                                        className="flex flex-col items-center gap-1.5 p-3 rounded-lg hover:bg-[#2a2a2a] transition-all duration-200 group hover:scale-105"
+                                                        className="flex flex-col items-center gap-1 p-2 rounded-lg hover:bg-[#2a2a2a] transition-all duration-200 group hover:scale-105"
                                                         title={app.description}
                                                     >
-                                                        <div className="text-3xl group-hover:scale-110 transition-transform">{app.icon}</div>
+                                                        <div className="text-2xl group-hover:scale-110 transition-transform">{app.icon}</div>
                                                         <div className="text-xs text-center text-[#808080] group-hover:text-[#e0e0e0] transition line-clamp-1">{app.name}</div>
                                                     </button>
                                                 ))}
@@ -447,7 +447,7 @@ export default function StartMenu() {
 
                                     {/* All Apps List */}
                                     {activeSection === 'all' && (
-                                        <div className="px-5 pb-4 max-h-56 overflow-y-auto">
+                                        <div className="px-5 pb-4 max-h-56 overflow-y-auto scrollbar">
                                             <div className="space-y-1">
                                                 {allApps.map((app) => (
                                                     <button
@@ -455,48 +455,43 @@ export default function StartMenu() {
                                                         onClick={() => handleAppOpen(app)}
                                                         className="w-full flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-[#2a2a2a] transition group"
                                                     >
-                                                        <span className="text-xl">{app.icon}</span>
+                                                        <span className="text-l">{app.icon}</span>
                                                         <div className="text-left flex-1">
                                                             <div className="text-sm text-[#e0e0e0] group-hover:text-white">{app.name}</div>
                                                         </div>
-                                                        <i className="fas fa-chevron-right text-xs text-[#666] group-hover:text-[#999] transition"></i>
                                                     </button>
                                                 ))}
                                             </div>
                                         </div>
                                     )}
 
-                                    {/* Quick Launch */}
-                                    {activeSection === 'pinned' && (
-                                        <div className="px-5 pb-4 border-t border-[#333] pt-3">
-                                            <div className="text-xs font-semibold text-[#666] uppercase tracking-wider mb-2">Quick Launch</div>
-                                            <div className="flex flex-wrap gap-2">
-                                                <button
-                                                    onClick={() => {
-                                                        const Comp = window.__MAPP_IMPORTER_UI__
-                                                        if (Comp) {
-                                                            (window as any).ZynqOS_openWindow?.('Import Package', Comp, 'mapp-importer')
-                                                        }
-                                                        setOpen(false)
-                                                    }}
-                                                    className="flex items-center gap-2 px-3 py-2 rounded-lg bg-[#2a2a2a] hover:bg-[#333] transition text-sm text-[#e0e0e0] hover:text-white"
-                                                >
-                                                    <i className="fas fa-box-open"></i>
-                                                    <span>Import .mapp</span>
-                                                </button>
-                                            </div>
+                                    <div className="text-xs font-semibold text-[#666] uppercase tracking-wider p-2">Quick Launch</div>
+                                    <div className="px-5 py-2 border-t border-[#333] h-[56px]">
+                                        <div className="flex flex-wrap gap-2">
+                                            <button
+                                                onClick={() => {
+                                                    const Comp = window.__MAPP_IMPORTER_UI__
+                                                    if (Comp) {
+                                                        (window as any).ZynqOS_openWindow?.('Import Package', Comp, 'mapp-importer')
+                                                    }
+                                                    setOpen(false)
+                                                }}
+                                                className="flex items-center gap-2 px-3 py-2 rounded-lg bg-[#2a2a2a] hover:bg-[#333] transition text-[12px] text-[#e0e0e0] hover:text-white"
+                                            >
+                                                <i className="fas fa-box-open"></i>
+                                                <span>Import .mapp</span>
+                                            </button>
                                         </div>
-                                    )}
-
+                                    </div>
 
                                 </>
                             )}
                         </div>
 
                         {/* User Profile Panel */}
-                        <div className="w-56 bg-[#1a1a1a] backdrop-blur-xl border border-[#333] rounded-xl shadow-2xl overflow-hidden flex flex-col">
+                        <div className="w-56 bg-black backdrop-blur-xl border border-[#333] rounded-xl shadow-2xl overflow-hidden flex flex-col">
                             {/* Profile Header */}
-                            <div className="p-5 bg-gradient-to-r from-slate-800/50 to-slate-900/50 border-b border-slate-700/30 relative">
+                            <div className="p-5 pb-0 bg-black relative border-b border-[#333]">
                                 {/* About & setting */}
                                 <div className="absolute top-2 left-3 flex flex-col gap-1">
                                     <button
@@ -520,10 +515,21 @@ export default function StartMenu() {
                                     >
                                         <i className="fas fa-info-circle text-sm"></i>
                                     </button>
+                                    <button
+                                        onClick={() => {
+                                            if (confirm('Refresh the system?')) {
+                                                window.location.reload()
+                                            }
+                                        }}
+                                        className="transition text-gray-400 hover:text-gray-200"
+                                        title="Restart"
+                                    >
+                                        <i className="fas fa-redo text-xs"></i>
+                                    </button>
                                 </div>
                                 {/* Profile info - centered */}
-                                <div className="flex flex-col items-center justify-center gap-3">
-                                    <div className="w-14 h-14 rounded-full bg-gradient-to-br from-blue-500/40 to-blue-600/30 border border-blue-500/50 flex items-center justify-center text-lg font-bold text-blue-300 shadow-lg shadow-blue-500/20 overflow-hidden">
+                                <div className="flex flex-col pb-2 items-center bg-black justify-center gap-3">
+                                    <div className="w-14 h-14 rounded-full border border-blue-500/50 flex items-center justify-center text-lg font-bold text-blue-300 shadow-lg shadow-blue-500/20 overflow-hidden">
                                         {profile.avatar ? (
                                             <img src={profile.avatar} alt={profile.name || 'avatar'} className="w-full h-full object-cover" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }} />
                                         ) : (
@@ -535,26 +541,26 @@ export default function StartMenu() {
                                         <div className="text-xs text-slate-500 pt-1" id="zynqos-profile-email">{profile.email || (storageStatus.connected ? (storageStatus.provider === 'github' ? 'GitHub Account' : 'Cloud Account') : 'Local Account')}</div>
                                     </div>
                                 </div>
-                            </div>
 
-                            {/* Storage Status */}
-                            {storageStatus.connected && (
-                                <div className="px-4 py-2 bg-[#2a3a2a]/50 border-b border-[#333] flex items-center justify-between">
-                                    <div className="flex items-center gap-2 text-xs">
-                                        <i className={`fab fa-${storageStatus.provider === 'google' ? 'google' : 'github'} text-[#4ade80]`}></i>
-                                        <span className="text-[#4ade80] font-medium">
-                                            {storageStatus.provider === 'google' ? 'Google Drive' : 'GitHub'} connected
-                                        </span>
+                                {/* Storage Status */}
+                                {storageStatus.connected && (
+                                    <div className="px-4 py-2 flex items-center justify-between">
+                                        <div className="flex items-center gap-2 text-xs">
+                                            <i className={`fab fa-${storageStatus.provider === 'google' ? 'google' : 'github'} text-[#4ade80]`}></i>
+                                            <span className="text-[#4ade80] font-medium">
+                                                {storageStatus.provider === 'google' ? 'Google Drive' : 'GitHub'} connected
+                                            </span>
+                                        </div>
+                                        <button
+                                            onClick={handleDisconnectStorage}
+                                            className="text-[#808080] hover:text-[#f87171] transition text-xs"
+                                            title="Disconnect"
+                                        >
+                                            <i className="fas fa-sign-out-alt"></i>
+                                        </button>
                                     </div>
-                                    <button
-                                        onClick={handleDisconnectStorage}
-                                        className="text-[#808080] hover:text-[#f87171] transition text-xs"
-                                        title="Disconnect"
-                                    >
-                                        <i className="fas fa-sign-out-alt"></i>
-                                    </button>
-                                </div>
-                            )}
+                                )}
+                            </div>
 
                             {/* Import Status */}
                             {importStatus && (
@@ -564,13 +570,13 @@ export default function StartMenu() {
                             )}
 
                             {/* Quick Actions */}
-                            <div className="flex-1 p-3 space-y-1">
+                            <div className="flex-1 px-2 py-1 space-y-1">
                                 <div className='w-full flex items-center'>
                                     <button
                                         onClick={() => fileInputRef.current?.click()}
-                                        className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-[#2a2a2a] transition text-sm text-[#e0e0e0] hover:text-white group"
+                                        className="w-[50%] flex items-center gap-2 px-2 py-2 rounded-lg hover:bg-[#2a2a2a] transition text-sm text-[#e0e0e0] hover:text-white group"
                                     >
-                                        <span className="w-4 h-4 rounded-lg bg-[#2a4a3a] flex items-center justify-center text-[#4ade80] group-hover:bg-[#2a5a3a] transition">
+                                        <span className="w-6 h-6 rounded-lg bg-[#2a4a3a] flex items-center justify-center text-[#4ade80] group-hover:bg-[#2a5a3a] transition">
                                             <i className="fas fa-upload text-xs"></i>
                                         </span>
                                         <span>Import</span>
@@ -578,49 +584,45 @@ export default function StartMenu() {
 
                                     <button
                                         onClick={handleExportFiles}
-                                        className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-[#2a2a2a] transition text-sm text-[#e0e0e0] hover:text-white group"
+                                        className="w-[50%] flex items-center gap-2 px-2 py-2 rounded-lg hover:bg-[#2a2a2a] transition text-sm text-[#e0e0e0] hover:text-white group"
                                     >
-                                        <span className="w-4 h-4 rounded-lg bg-[#4a3a2a] flex items-center justify-center text-[#fbbf24] group-hover:bg-[#5a3a2a] transition">
+                                        <span className="w-6 h-6 rounded-lg bg-[#4a3a2a] flex items-center justify-center text-[#fbbf24] group-hover:bg-[#5a3a2a] transition">
                                             <i className="fas fa-download text-xs"></i>
                                         </span>
                                         <span>Export</span>
                                     </button>
                                 </div>
-                                <button
-                                    onClick={() => {
-                                        (window as any).ZynqOS_openConsent?.()
-                                        setOpen(false)
-                                    }}
-                                    className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-[#2a2a2a] transition text-sm text-[#e0e0e0] hover:text-white group"
-                                >
-                                    <span className="w-8 h-8 rounded-lg bg-[#2a2a3a] flex items-center justify-center text-[#4a9eff] group-hover:bg-[#2a2a4a] transition">
-                                        <i className="fas fa-cloud text-xs"></i>
-                                    </span>
-                                    <span>
-                                        {!storageStatus.connected
-                                            ? 'Connect Storage'
-                                            : storageStatus.provider === 'google'
-                                                ? 'Connect GitHub'
-                                                : 'Connect Google'}
-                                    </span>
-                                </button>
                             </div>
 
-                            {/* Power Options */}
-                            <div className="p-3 border-t border-[#333]">
+                            {/* Signin/Signup */}
+                            <div className="p-2 border-t border-[#333] h-[56px]">
                                 <div className="flex gap-2">
                                     <button
                                         onClick={() => {
-                                            if (confirm('Refresh the system?')) {
-                                                window.location.reload()
-                                            }
+                                            (window as any).ZynqOS_openConsent?.()
+                                            setOpen(false)
                                         }}
-                                        className="flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-lg bg-[#2a2a2a] hover:bg-[#333] transition text-sm text-[#808080] hover:text-[#e0e0e0]"
-                                        title="Restart"
+                                        className="w-full flex items-center gap-3 px-3 py-1 rounded-lg hover:bg-[#2a2a2a] transition text-sm text-[#e0e0e0] hover:text-white group"
                                     >
-                                        <i className="fas fa-redo text-xs"></i>
-                                        <span>Restart</span>
+                                        <span className="w-8 h-8 rounded-lg flex items-center justify-center text-[#4a9eff] transition">
+                                            {!storageStatus.connected ? (
+                                                <i className="fa fa-sign-in" aria-hidden="true"></i>
+                                            ) : storageStatus.provider === 'google' ? (
+                                                <i className="fab fa-github" aria-hidden="true"></i>
+                                            ) : (
+                                                <i className="fab fa-google" aria-hidden="true"></i>
+                                            )}
+                                        </span>
+                                        <span>
+                                            {!storageStatus.connected
+                                                ? 'Signin / Signup'
+                                                : storageStatus.provider === 'google'
+                                                    ? 'Connect GitHub'
+                                                    : 'Connect Google'}
+                                        </span>
                                     </button>
+                                    {/* 
+                                    */}
                                 </div>
                             </div>
                         </div>
@@ -637,11 +639,11 @@ export default function StartMenu() {
                 @keyframes slideUp {
                     from { 
                         opacity: 0; 
-                        transform: translateY(20px); 
+                        transform: translate(-50%, 20px);
                     }
                     to { 
                         opacity: 1; 
-                        transform: translateY(0); 
+                        transform: translate(-50%, 0);
                     }
                 }
                 .animate-fadeIn {

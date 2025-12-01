@@ -107,11 +107,40 @@ async function authExchangeGoogle(req: VercelRequest, res: VercelResponse) {
       console.error('authExchangeGoogle: Missing codeVerifier in request body', { body: req.body })
       return res.status(400).json({ error: 'Missing PKCE code verifier' })
     }
+    
     const body = new URLSearchParams({ client_id: clientId, grant_type: 'authorization_code', code, redirect_uri: redirectUri, code_verifier: codeVerifier })
     if (clientSecret) body.set('client_secret', clientSecret)
-    const tokenRes = await fetch('https://oauth2.googleapis.com/token', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body })
-    const json = await tokenRes.json()
-    if (json.error) return res.status(400).json(json)
+    
+    let tokenRes: Response
+    try {
+      tokenRes = await fetch('https://oauth2.googleapis.com/token', { 
+        method: 'POST', 
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, 
+        body,
+        signal: AbortSignal.timeout(10000) // 10s timeout
+      })
+    } catch (fetchError: any) {
+      console.error('authExchangeGoogle: Fetch failed', fetchError)
+      return res.status(500).json({ error: 'Failed to contact Google: ' + (fetchError.message || 'Network error') })
+    }
+    
+    let json: any
+    try {
+      json = await tokenRes.json()
+    } catch (parseError: any) {
+      console.error('authExchangeGoogle: JSON parse failed', parseError)
+      return res.status(500).json({ error: 'Invalid response from Google' })
+    }
+    
+    if (json.error) {
+      console.error('authExchangeGoogle: Google returned error', json)
+      return res.status(400).json(json)
+    }
+    if (!json.access_token) {
+      console.error('authExchangeGoogle: No access_token in response', json)
+      return res.status(400).json({ error: 'No access token received from Google' })
+    }
+    
     const expiresAt = json.expires_in ? Date.now() + json.expires_in * 1000 : undefined
     setSessionCookie(res, { provider: 'google', accessToken: json.access_token, refreshToken: json.refresh_token, expiresAt })
     return res.status(200).json({ success: true, provider: 'google', expiresAt })
@@ -140,9 +169,37 @@ async function authExchangeGitHub(req: VercelRequest, res: VercelResponse) {
       console.error('authExchangeGitHub: Missing code in request body', { body: req.body })
       return res.status(400).json({ error: 'Missing authorization code' })
     }
-    const tokenRes = await fetch('https://github.com/login/oauth/access_token', { method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'application/json' }, body: JSON.stringify({ client_id: clientId, client_secret: clientSecret, code, redirect_uri: redirectUri }) })
-    const json = await tokenRes.json()
-    if (json.error) return res.status(400).json(json)
+    
+    let tokenRes: Response
+    try {
+      tokenRes = await fetch('https://github.com/login/oauth/access_token', { 
+        method: 'POST', 
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json' }, 
+        body: JSON.stringify({ client_id: clientId, client_secret: clientSecret, code, redirect_uri: redirectUri }),
+        signal: AbortSignal.timeout(10000) // 10s timeout
+      })
+    } catch (fetchError: any) {
+      console.error('authExchangeGitHub: Fetch failed', fetchError)
+      return res.status(500).json({ error: 'Failed to contact GitHub: ' + (fetchError.message || 'Network error') })
+    }
+    
+    let json: any
+    try {
+      json = await tokenRes.json()
+    } catch (parseError: any) {
+      console.error('authExchangeGitHub: JSON parse failed', parseError)
+      return res.status(500).json({ error: 'Invalid response from GitHub' })
+    }
+    
+    if (json.error) {
+      console.error('authExchangeGitHub: GitHub returned error', json)
+      return res.status(400).json(json)
+    }
+    if (!json.access_token) {
+      console.error('authExchangeGitHub: No access_token in response', json)
+      return res.status(400).json({ error: 'No access token received from GitHub' })
+    }
+    
     setSessionCookie(res, { provider: 'github', accessToken: json.access_token })
     return res.status(200).json({ success: true, provider: 'github' })
   } catch (e: any) {

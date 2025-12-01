@@ -1296,7 +1296,15 @@ export default function TerminalWasi(_: Props) {
     term.loadAddon(webLinksAddon)
 
     term.open(terminalRef.current)
-    fitAddon.fit()
+    
+    // Wait for DOM to settle before fitting
+    setTimeout(() => {
+      try {
+        fitAddon.fit()
+      } catch (err) {
+        console.warn('Initial fit failed, will retry on resize:', err)
+      }
+    }, 0)
 
     // Apply custom scrollbar width via JS (CSS doesn't always work with xterm)
     const viewport = terminalRef.current.querySelector('.xterm-viewport') as HTMLElement
@@ -1494,7 +1502,11 @@ export default function TerminalWasi(_: Props) {
   // Fit terminal when container changes
   useEffect(() => {
     const timeout = setTimeout(() => {
-      fitAddonRef.current?.fit()
+      try {
+        fitAddonRef.current?.fit()
+      } catch (err) {
+        console.warn('Delayed fit failed:', err)
+      }
     }, 100)
     return () => clearTimeout(timeout)
   }, [])

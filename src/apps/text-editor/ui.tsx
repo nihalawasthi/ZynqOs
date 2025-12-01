@@ -776,7 +776,7 @@ export default function TextEditor() {
       <div className="flex-1 min-h-[200px] relative overflow-hidden">
         <textarea
           ref={textareaRef}
-          className="absolute inset-0 w-full h-full p-2 editor-scrollbar bg-black text-gray-400 font-mono text-sm focus:outline-none resize-none border-none overflow-auto"
+          className="absolute inset-0 w-full h-full p-2 scrollbar bg-black text-gray-400 font-mono text-sm focus:outline-none resize-none border-none overflow-auto"
           value={text}
           onChange={handleTextChange}
           onKeyDown={handleKeyDown}
