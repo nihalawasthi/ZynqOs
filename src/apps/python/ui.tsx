@@ -1,16 +1,22 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { getPyodide, runPython, runPythonFile, cancelPythonExecution, requestPythonCancel } from '../../wasm/pyodideLoader'
+import { readFile as readVfsFile, readdir } from '../../vfs/fs'
 
 export default function PythonUI() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [code, setCode] = useState('print("Hello from Python")')
   const [output, setOutput] = useState('')
-  const [scriptPath, setScriptPath] = useState('/home/demo.py')
   const [running, setRunning] = useState(false)
   const [timeoutMs, setTimeoutMs] = useState(8000)
   const [stopRequested, setStopRequested] = useState(false)
   const [copied, setCopied] = useState(false)
+  const [showFilePicker, setShowFilePicker] = useState(false)
+  const [vfsFiles, setVfsFiles] = useState<string[]>([])
+  const [scriptPath, setScriptPath] = useState<string>('')
+  const runningRef = useRef(false)
+
+  useEffect(() => { runningRef.current = running }, [running])
 
   useEffect(() => {
     (async () => {
@@ -26,29 +32,36 @@ export default function PythonUI() {
 
   async function handleRunCode() {
     setRunning(true)
-    setOutput('')
     setStopRequested(false)
+    let streamedOutput = ''
+    setOutput('')
     try {
-      let gotStream = false
       const result = await runPython(code, timeoutMs, (chunk, stream) => {
-        gotStream = true
-        setOutput(prev => prev + (chunk === '' ? '\n' : chunk + '\n'))
+        const line = chunk === '' ? '\n' : chunk + '\n'
+        streamedOutput += line
+        setOutput(prev => prev + line)
       })
-      // Merge final buffer (result) even if we streamed
-      setOutput(prev => {
-        const normalizedPrev = prev
-        const finalNormalized = result.endsWith('\n') ? result : result + '\n'
-        if (normalizedPrev && finalNormalized.startsWith(normalizedPrev)) {
-          return finalNormalized
-        }
-        // Append missing part if some overlap
-        return normalizedPrev.includes(finalNormalized) ? normalizedPrev : (normalizedPrev + finalNormalized)
-      })
+      // On stop, prefer final accumulated output if non-empty; otherwise keep streamed content
       if (stopRequested) {
-        setOutput(prev => prev + '[stopped]\n')
+        const trimmed = (result || '').trim()
+        if (trimmed && trimmed !== '(no output)') {
+          const finalNormalized = result.endsWith('\n') ? result : result + '\n'
+          setOutput(finalNormalized)
+        } // else keep already-streamed output
+      } else if (result && result !== '(no output)') {
+        // If result is non-empty, merge it; otherwise keep streamed output
+        setOutput(prev => {
+          const normalizedPrev = prev
+          const finalNormalized = result.endsWith('\n') ? result : result + '\n'
+          if (normalizedPrev && finalNormalized.startsWith(normalizedPrev)) {
+            return finalNormalized
+          }
+          return normalizedPrev.includes(finalNormalized) ? normalizedPrev : (normalizedPrev + finalNormalized)
+        })
       }
+      // If stopped early and we have streamed output, keep it
     } catch (e: any) {
-      setOutput(`Error: ${String(e)}`)
+      setOutput(prev => prev || `Error: ${String(e)}`)
     } finally {
       setRunning(false)
     }
@@ -59,21 +72,31 @@ export default function PythonUI() {
     setOutput('')
     setStopRequested(false)
     try {
+      if (!scriptPath) {
+        setRunning(false)
+        setOutput('')
+        return
+      }
       let gotStream = false
       const result = await runPythonFile(scriptPath, (chunk, stream) => {
         gotStream = true
         setOutput(prev => prev + (chunk === '' ? '\n' : chunk + '\n'))
       }, timeoutMs)
-      setOutput(prev => {
-        const normalizedPrev = prev
-        const finalNormalized = result.endsWith('\n') ? result : result + '\n'
-        if (normalizedPrev && finalNormalized.startsWith(normalizedPrev)) {
-          return finalNormalized
-        }
-        return normalizedPrev.includes(finalNormalized) ? normalizedPrev : (normalizedPrev + finalNormalized)
-      })
       if (stopRequested) {
-        setOutput(prev => prev + '[stopped]\n')
+        const trimmed = (result || '').trim()
+        if (trimmed && trimmed !== '(no output)') {
+          const finalNormalized = result.endsWith('\n') ? result : result + '\n'
+          setOutput(finalNormalized)
+        }
+      } else {
+        setOutput(prev => {
+          const normalizedPrev = prev
+          const finalNormalized = result.endsWith('\n') ? result : result + '\n'
+          if (normalizedPrev && finalNormalized.startsWith(normalizedPrev)) {
+            return finalNormalized
+          }
+          return normalizedPrev.includes(finalNormalized) ? normalizedPrev : (normalizedPrev + finalNormalized)
+        })
       }
     } catch (e: any) {
       setOutput(`Error: ${String(e)}`)
@@ -87,23 +110,44 @@ export default function PythonUI() {
       {/* Left: Editor */}
       <div className="flex flex-col gap-3 min-h-0">
         <div className="flex items-center justify-between">
-          <div className="font-semibold">Python</div>
+          <button
+            className="px-3 py-1 bg-purple-600 rounded disabled:opacity-50"
+            onClick={async () => {
+              const files = await readdir('')
+              setVfsFiles(files.filter(f => f.endsWith('.py') || !f.includes('.')))
+              setShowFilePicker(true)
+            }}
+            disabled={loading || running}
+          >Import</button>
+          <div className="flex items-center gap-2">
+            <label className="text-xs text-gray-400">Timeout (ms)</label>
+            <input
+              className="w-24 bg-[#151515] border border-[#333] rounded px-2 py-1 text-sm"
+              type="number"
+              min={1000}
+              step={1000}
+              value={timeoutMs}
+              onChange={(e) => setTimeoutMs(parseInt((e.target as HTMLInputElement).value || '8000', 10))}
+            />
+          </div>
           <button
             className={`px-3 py-1 rounded disabled:opacity-50 ${running ? 'bg-red-600' : 'bg-green-600'}`}
             onClick={async () => {
               if (running) {
                 setStopRequested(true)
-                const ok = await requestPythonCancel()
-                if (!ok) {
-                  cancelPythonExecution()
-                  setOutput(prev => prev ? prev + '\n[stopped]\n' : '[stopped]\n')
-                  setRunning(false)
-                }
+                try { await requestPythonCancel() } catch {}
+                // Give the worker a moment to return final buffers;
+                // if still running after the grace period, force-cancel.
+                setTimeout(() => {
+                  if (runningRef.current) {
+                    cancelPythonExecution()
+                  }
+                }, 500)
               } else {
                 handleRunCode()
               }
             }}
-            disabled={loading || stopRequested}
+            disabled={loading}
           >{running ? 'Stop' : 'Run Code'}</button>
           {loading && <div className="text-yellow-400">Loading Pyodide...</div>}
           {error && <div className="text-red-400">{error}</div>}
@@ -169,42 +213,7 @@ export default function PythonUI() {
           }}
           placeholder="Enter Python code here"
         />
-        <div className="flex gap-2 items-center">
-          <label className="text-xs text-gray-400">Timeout (ms)</label>
-          <input
-            className="w-24 bg-[#151515] border border-[#333] rounded px-2 py-1 text-sm"
-            type="number"
-            min={1000}
-            step={1000}
-            value={timeoutMs}
-            onChange={(e) => setTimeoutMs(parseInt(e.target.value || '8000', 10))}
-          />
-          <div className="flex items-center gap-2 ml-auto">
-            <input
-              className="flex-1 bg-[#151515] border border-[#333] rounded px-2 py-1 text-sm"
-              value={scriptPath}
-              onChange={(e) => setScriptPath(e.target.value)}
-              placeholder="/home/demo.py"
-            />
-            <button
-              className={`px-3 py-1 rounded disabled:opacity-50 ${running ? 'bg-red-600' : 'bg-blue-600'}`}
-              onClick={async () => {
-                if (running) {
-                  setStopRequested(true)
-                  const ok = await requestPythonCancel()
-                  if (!ok) {
-                    cancelPythonExecution()
-                    setOutput(prev => prev ? prev + '\n[stopped]\n' : '[stopped]\n')
-                    setRunning(false)
-                  }
-                } else {
-                  handleRunScript()
-                }
-              }}
-              disabled={loading || stopRequested}
-            >{running ? 'Stop' : 'Run Script'}</button>
-          </div>
-        </div>
+
       </div>
 
       {/* Right: Output */}
@@ -228,6 +237,60 @@ export default function PythonUI() {
         </div>
         <pre className="flex-1 min-h-0 max-h-full font-mono text-sm bg-[#111] border border-[#333] rounded p-3 whitespace-pre-wrap select-text overflow-y-auto scrollbar">{output || (running ? 'Running…' : 'No output')}</pre>
       </div>
+
+      {/* File Picker Modal */}
+      {showFilePicker && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50" onClick={() => setShowFilePicker(false)}>
+          <div className="bg-[#1a1a1a] border border-[#333] rounded-lg p-4 w-96 max-h-[60vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-3">
+              <div className="font-semibold text-lg">Import Python File</div>
+              <button onClick={() => setShowFilePicker(false)} className="text-gray-400 hover:text-white">
+                <i className="fas fa-times"></i>
+              </button>
+            </div>
+            {vfsFiles.length === 0 ? (
+              <div className="text-gray-500 text-center py-8">No Python files found in VFS</div>
+            ) : (
+              <div className="space-y-1">
+                {vfsFiles.map(file => (
+                  <button
+                    key={file}
+                    className="w-full text-left px-3 py-2 rounded bg-[#222] hover:bg-[#2a2a2a] transition text-sm"
+                    onClick={async () => {
+                      try {
+                        const content = await readVfsFile(file)
+                        if (content === undefined) {
+                          setError(`File not found: ${file}`)
+                          setShowFilePicker(false)
+                          return
+                        }
+                        if (content instanceof Uint8Array) {
+                          try {
+                            setCode(new TextDecoder('utf-8', { fatal: true }).decode(content))
+                          } catch {
+                            setCode(new TextDecoder('latin1').decode(content))
+                          }
+                        } else {
+                          setCode(content)
+                        }
+                        setOutput('')
+                        setError(null)
+                        setShowFilePicker(false)
+                      } catch (e: any) {
+                        setError(String(e))
+                        setShowFilePicker(false)
+                      }
+                    }}
+                  >
+                    <i className="fas fa-file-code mr-2 text-purple-400"></i>
+                    {file}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   )
 }

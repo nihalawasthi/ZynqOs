@@ -16,33 +16,44 @@ async function runCode(code, reqId) {
   const p = await ensurePyodide();
   try {
   await p.runPythonAsync(`
-import sys, traceback, js, builtins
+import sys, traceback, js
 from io import StringIO
 
 _orig_stdout = sys.stdout
 _orig_stderr = sys.stderr
 _buf_out = StringIO()
 _buf_err = StringIO()
-sys.stdout = _buf_out
-sys.stderr = _buf_err
 
-_orig_print = builtins.print
-def print(*args, **kwargs):
-  _orig_print(*args, **kwargs)
-  # Emit streamed chunk (line + separator newline signal)
-  try:
-    text = ' '.join(str(a) for a in args)
-    js.globalThis.postMessage({ 'id': ${reqId}, 'type': 'stream', 'stream': 'stdout', 'data': text })
-    js.globalThis.postMessage({ 'id': ${reqId}, 'type': 'stream', 'stream': 'stdout', 'data': '' })
-  except Exception:
-    pass
-  # Cooperative cancel check via attribute access (more reliable than getattr)
-  try:
-    if js.globalThis.workerCancelFlag:
-      raise SystemExit('Stopped')
-  except AttributeError:
-    pass
-builtins.print = print
+class _StreamingWriter:
+  def __init__(self, buf, stream_name):
+    self._buf = buf
+    self._stream = stream_name
+  def write(self, s):
+    try:
+      self._buf.write(s)
+      # emit as-is (may be partial line)
+      try:
+        js.globalThis.postMessage({ 'id': ${reqId}, 'type': 'stream', 'stream': self._stream, 'data': str(s) })
+      except Exception:
+        pass
+      try:
+        if js.globalThis.workerCancelFlag:
+          raise SystemExit('Stopped')
+      except AttributeError:
+        pass
+      return len(s)
+    except SystemExit:
+      raise
+    except Exception:
+      return 0
+  def flush(self):
+    try:
+      self._buf.flush()
+    except Exception:
+      pass
+
+sys.stdout = _StreamingWriter(_buf_out, 'stdout')
+sys.stderr = _StreamingWriter(_buf_err, 'stderr')
 
 code_to_run = ${JSON.stringify(code)}
 try:
@@ -53,7 +64,6 @@ except SystemExit:
 except Exception:
   traceback.print_exc()
 finally:
-  builtins.print = _orig_print
   sys.stdout = _orig_stdout
   sys.stderr = _orig_stderr
 `);
@@ -107,6 +117,8 @@ self.onmessage = async (evt) => {
       return;
     }
     if (type === 'run') {
+      // Clear any previous cancel flag before new execution
+      globalThis.workerCancelFlag = false;
       const { code } = msg;
       const r = await runCode(code, id);
       self.postMessage({ id, type: 'result', ...r });

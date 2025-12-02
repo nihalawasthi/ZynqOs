@@ -4,7 +4,14 @@ import { readFile } from '../vfs/fs'
 let worker: Worker | null = null
 let readyPromise: Promise<void> | null = null
 let reqId = 0
-type PendingReq = { resolve: (v: any) => void; reject: (e: any) => void; onData?: (chunk: string, stream: 'stdout'|'stderr') => void; timeout?: any }
+type PendingReq = { 
+  resolve: (v: any) => void; 
+  reject: (e: any) => void; 
+  onData?: (chunk: string, stream: 'stdout'|'stderr') => void; 
+  timeout?: any;
+  accumulatedOut?: string;
+  accumulatedErr?: string;
+}
 const pending = new Map<number, PendingReq>()
 const DEFAULT_TIMEOUT_MS = 10000
 
@@ -45,7 +52,15 @@ function startWorker(): Promise<void> {
     if (!entry) return
     // Handle streaming messages without resolving
     if (msg.type === 'stream') {
-      try { entry.onData?.(String(msg.data ?? ''), msg.stream) } catch {}
+      try { 
+        entry.onData?.(String(msg.data ?? ''), msg.stream) 
+        // Accumulate for partial output on termination
+        if (msg.stream === 'stdout') {
+          entry.accumulatedOut = (entry.accumulatedOut || '') + (msg.data === '' ? '\n' : String(msg.data) + '\n')
+        } else if (msg.stream === 'stderr') {
+          entry.accumulatedErr = (entry.accumulatedErr || '') + (msg.data === '' ? '\n' : String(msg.data) + '\n')
+        }
+      } catch {}
       return
     }
     if (msg.type === 'stream-end') {
@@ -68,14 +83,22 @@ function callWorker<T=any>(message: any, timeoutMs = DEFAULT_TIMEOUT_MS, onData?
     }
     const id = ++reqId
     const timeout = setTimeout(() => {
+      const entry = pending.get(id)
       pending.delete(id)
+      // Resolve with accumulated output instead of rejecting on timeout
+      if (entry) {
+        entry.resolve({ 
+          ok: true, 
+          stdout: entry.accumulatedOut || '', 
+          stderr: entry.accumulatedErr || '' 
+        })
+      }
       // Kill and restart worker on timeout (likely infinite loop)
       try { worker?.terminate() } catch {}
       worker = null
       readyPromise = null
-      reject(new Error('Python execution timed out'))
     }, timeoutMs)
-    pending.set(id, { resolve, reject, timeout, onData })
+    pending.set(id, { resolve, reject, timeout, onData, accumulatedOut: '', accumulatedErr: '' })
     worker!.postMessage({ ...message, id })
   })
 }
@@ -156,6 +179,16 @@ export async function listPackages(): Promise<string[]> {
 }
 
 export function cancelPythonExecution() {
+  // Resolve any pending requests with their accumulated output before terminating
+  for (const [id, req] of pending.entries()) {
+    clearTimeout(req.timeout)
+    req.resolve({ 
+      ok: true, 
+      stdout: req.accumulatedOut || '', 
+      stderr: req.accumulatedErr || '' 
+    })
+  }
+  pending.clear()
   if (worker) {
     try { worker.terminate() } catch {}
   }
