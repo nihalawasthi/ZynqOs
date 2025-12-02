@@ -52,6 +52,7 @@ export default function TerminalWasi(_: Props) {
   const currentDirRef = useRef('~')
   const bashSessionRef = useRef<InteractiveBashSession | null>(null)
   const inBashModeRef = useRef(false)
+  const inPythonModeRef = useRef(false)
   const wasmerReadyRef = useRef(false)
 
   const username = 'nihal'
@@ -409,6 +410,16 @@ export default function TerminalWasi(_: Props) {
       writeLine(term, '  zip -r archive.zip folder/      # zip folder recursively')
       writeLine(term, '  unzip archive.zip               # extract zip archive')
       writeLine(term, '  unzip -l archive.zip            # list zip contents')
+      writeLine(term, '')
+      writeLine(term, '\x1b[1;35mPython (Pyodide):\x1b[0m')
+      writeLine(term, '  python                          # start interactive Python REPL')
+      writeLine(term, '  python <script.py>              # run a Python script')
+      writeLine(term, '  python -c "print(\'Hello\')"      # execute Python code')
+      writeLine(term, '  pip install <package>           # install Python package')
+      writeLine(term, '  pip list                        # list installed packages')
+      writeLine(term, '')
+      writeLine(term, '\x1b[1;36mApps:\x1b[0m')
+      writeLine(term, '  Launch by name: files | terminal | zynqpad | python | calculator | store | wednesday')
       writeLine(term, '')
       writeLine(term, '\x1b[1;36mWASI Programs:\x1b[0m')
       writeLine(term, '  run <path> [args...]            # run WASI binary')
@@ -920,6 +931,111 @@ export default function TerminalWasi(_: Props) {
       }
     } else if (c === 'clear') {
       term.clear()
+    } else if (c === 'python' || c === 'python3' || c === 'py') {
+      // Python REPL or script execution
+      const args = parts.slice(1)
+      
+      if (args.length === 0) {
+        // Interactive REPL
+        writeLine(term, '\x1b[1;33mPython REPL - Enter Python code (type "exit()" to quit)\x1b[0m')
+        writeLine(term, 'Loading Pyodide...')
+        
+        try {
+          const { getPyodide, runPython } = await import('../../wasm/pyodideLoader')
+          await getPyodide() // Load Pyodide
+          writeLine(term, '\x1b[1;32m✓ Pyodide loaded. Type your Python code:\x1b[0m')
+          
+          // Enter Python REPL mode
+          inPythonModeRef.current = true
+          term.write('\r\n>>> ')
+        } catch (e: any) {
+          writeLine(term, `\x1b[31mError loading Python: ${String(e)}\x1b[0m`)
+        }
+      } else if (args[0] === '-c' && args.length > 1) {
+        // Execute code from command line
+        const code = args.slice(1).join(' ')
+        writeLine(term, 'Running Python code...')
+        
+        try {
+          const { runPython } = await import('../../wasm/pyodideLoader')
+          let streamed = false
+          const result = await runPython(code, undefined, (chunk, stream) => {
+            streamed = true
+            chunk.split('\n').forEach(line => writeLine(term, line))
+          })
+          if (!streamed && result) {
+            result.split('\n').forEach(line => writeLine(term, line))
+          }
+        } catch (e: any) {
+          writeLine(term, `\x1b[31m${String(e)}\x1b[0m`)
+        }
+      } else {
+        // Execute Python file
+        const scriptPath = args[0]
+        const filePath = scriptPath.startsWith('/') ? scriptPath : '/' + scriptPath
+        
+        writeLine(term, `Running ${filePath}...`)
+        
+        try {
+          const { runPythonFile } = await import('../../wasm/pyodideLoader')
+          let streamed = false
+          const result = await runPythonFile(filePath, (chunk, stream) => {
+            streamed = true
+            chunk.split('\n').forEach(line => writeLine(term, line))
+          })
+          if (!streamed && result) {
+            result.split('\n').forEach(line => writeLine(term, line))
+          }
+        } catch (e: any) {
+          writeLine(term, `\x1b[31m${String(e)}\x1b[0m`)
+        }
+      }
+    } else if (['files','terminal','zynqpad','text-editor','python','calculator','store','wednesday'].includes(c)) {
+      const openWindow = (window as any).ZynqOS_openWindow
+      const mappings: Record<string, {title: string, comp?: any, key: string}> = {
+        'files': { title: 'Files', comp: (window as any).__FILE_BROWSER_UI__, key: 'file-browser' },
+        'terminal': { title: 'Terminal', comp: (window as any).__TERMINAL_UI__, key: 'terminal' },
+        'zynqpad': { title: 'Zynqpad', comp: (window as any).__TEXT_EDITOR_UI__, key: 'text-editor' },
+        'text-editor': { title: 'Zynqpad', comp: (window as any).__TEXT_EDITOR_UI__, key: 'text-editor' },
+        'python': { title: 'Python REPL', comp: (window as any).__PYTHON_UI__, key: 'python' },
+        'calculator': { title: 'Calculator', comp: (window as any).__CALC_UI__, key: 'calculator' },
+        'store': { title: 'App Store', comp: (window as any).__STORE_UI__, key: 'store' },
+        'wednesday': { title: 'Wednesday AI', comp: (window as any).__WEDNESDAY_UI__, key: 'wednesday' },
+      }
+      const m = mappings[c]
+      if (!m || !m.comp) { writeLine(term, `${c}: app not available`) ; return }
+      openWindow?.(m.title, m.comp, m.key)
+      writeLine(term, `opened: ${m.title}`)
+    } else if (c === 'pip' || c === 'pip3') {
+      // Package installation
+      const args = parts.slice(1)
+      
+      if (args[0] === 'install' && args.length > 1) {
+        const packageName = args[1]
+        writeLine(term, `Installing ${packageName} via micropip...`)
+        
+        try {
+          const { installPackage } = await import('../../wasm/pyodideLoader')
+          const result = await installPackage(packageName)
+          writeLine(term, result)
+        } catch (e: any) {
+          writeLine(term, `\x1b[31m${String(e)}\x1b[0m`)
+        }
+      } else if (args[0] === 'list') {
+        writeLine(term, 'Installed Python packages:')
+        
+        try {
+          const { listPackages } = await import('../../wasm/pyodideLoader')
+          const packages = await listPackages()
+          packages.forEach(pkg => writeLine(term, `  ${pkg}`))
+        } catch (e: any) {
+          writeLine(term, `\x1b[31m${String(e)}\x1b[0m`)
+        }
+      } else {
+        writeLine(term, 'Usage:')
+        writeLine(term, '  pip install <package>  # Install a Python package')
+        writeLine(term, '  pip list               # List installed packages')
+      }
     } else {
       // Check if it might be a .sh file being executed directly
       if (c.endsWith('.sh')) {
@@ -1378,6 +1494,37 @@ export default function TerminalWasi(_: Props) {
         const line = currentLineRef.current
         term.write('\r\n')
 
+        // Handle Python REPL mode
+        if (inPythonModeRef.current) {
+          if (line.trim() === 'exit()' || line.trim() === 'quit()') {
+            inPythonModeRef.current = false
+            writeLine(term, 'Exiting Python REPL...')
+            currentLineRef.current = ''
+            writePrompt(term)
+            return
+          }
+          
+          if (line.trim()) {
+            try {
+              const { runPython } = await import('../../wasm/pyodideLoader')
+              let streamed = false
+              const result = await runPython(line, undefined, (chunk, stream) => {
+                streamed = true
+                chunk.split('\n').forEach(l => writeLine(term, l))
+              })
+              if (!streamed && result && result !== '(no output)') {
+                result.split('\n').forEach(l => writeLine(term, l))
+              }
+            } catch (e: any) {
+              writeLine(term, `\x1b[31m${String(e)}\x1b[0m`)
+            }
+          }
+          
+          currentLineRef.current = ''
+          term.write('>>> ')
+          return
+        }
+
         if (line.trim()) {
           localHistory.push(line)
           localHistoryIndex = -1
@@ -1385,8 +1532,8 @@ export default function TerminalWasi(_: Props) {
           await handleCommandLine(term, line)
         }
 
-        // Only show prompt if not in bash mode (bash shows its own prompt)
-        if (!inBashModeRef.current) {
+        // Only show prompt if not in bash or python mode
+        if (!inBashModeRef.current && !inPythonModeRef.current) {
           currentLineRef.current = ''
           writePrompt(term)
         }

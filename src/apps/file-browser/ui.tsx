@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { readFile, writeFile, removeFile, readdir } from '../../vfs/fs'
+import { isEditable, tryDecodeText, getFileTypeDescription } from '../../vfs/fileTypes'
 
 export default function FileBrowser() {
   const [files, setFiles] = useState<string[]>([])
@@ -24,7 +25,13 @@ export default function FileBrowser() {
     if (typeof content === 'string') {
       setFileContent(content)
     } else if (content instanceof Uint8Array) {
-      setFileContent(`[Binary file: ${content.length} bytes]`)
+      // Try to decode as text
+      const decoded = tryDecodeText(content)
+      if (decoded !== null && isEditable(path, content)) {
+        setFileContent(decoded)
+      } else {
+        setFileContent(`[Binary file: ${content.length} bytes - ${getFileTypeDescription(path)}]`)
+      }
     } else {
       setFileContent('[File not found]')
     }

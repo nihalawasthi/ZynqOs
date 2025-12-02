@@ -9,13 +9,15 @@ A browser-hosted "micro-OS" shell that runs two kinds of sandboxed WASM apps:
 
 - 🪟 **Window Manager** with draggable windows
 - 📁 **File Browser** for VFS management (create, edit, delete files)
-- 📝 **Text Editor** with IndexedDB VFS persistence
+- 📝 **Zynqpad Text Editor** - Edit all text file types (HTML, CSS, JS, Python, etc.)
 - 🔢 **Calculator** (WASM via wasm-bindgen)
 - 💻 **WASI Terminal** with command history (↑/↓ arrows)
+- 🐍 **Python Support** - Pyodide integration with REPL and package manager
 - 🐚 **Kernel Shell** - Command-line shell as WASI binary
 - 💾 **Virtual File System** (IndexedDB-based with WASI sync)
 - 📦 **.mapp Package Importer** for bundled applications
 - 🛠️ **WASI Utilities** (ls, cat, mkdir, rm, touch)
+- ☁️ **Cloud Storage** - Google Drive & GitHub repo sync
 
 ## Available Applications
 
@@ -154,16 +156,52 @@ run /apps/wasm/rm.wasm /test.txt
 This means you can:
 1. Create files with `touch` or `mkdir`
 2. Check them in the File Browser app
-3. Edit them in the Text Editor
+3. Edit them in Zynqpad (supports HTML, CSS, JS, Python, Markdown, and more!)
 4. Read them with `cat` in future terminal sessions
 
 Default mounted files:
 - `/input.txt` - Sample text file
 - `/home/demo.txt` - Demo file
 
+### Python Support (Pyodide)
+
+ZynqOS includes full Python support via Pyodide:
+
+```bash
+# Interactive Python REPL
+python
+
+# Run Python scripts from VFS
+python /home/script.py
+
+# Execute Python code directly
+python -c "print('Hello from Python!')"
+
+# Install Python packages
+pip install numpy
+pip install requests
+
+# List installed packages
+pip list
+```
+
+Python can access ZynqOS VFS files using the built-in `open_vfs()` function:
+
+```python
+# Read a file from VFS
+content = open_vfs('/home/data.txt', 'r')
+
+# Write to VFS
+with open_vfs('/home/output.txt', 'w') as f:
+    f.write('Hello from Python!')
+```
+
 ### Terminal Commands
 
 - `help` - Show available commands
+- `python` / `python3` - Start Python REPL or run scripts
+- `pip install <pkg>` - Install Python packages
+- `pip list` - List installed Python packages
 - `run <url|path> [args...]` - Run WASI binary
 - `upload` - Upload and run local .wasm file
 - `clear` - Clear terminal output

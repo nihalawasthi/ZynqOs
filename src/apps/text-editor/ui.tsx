@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react'
 import { readFile, writeFile } from '../../vfs/fs'
+import { isEditable, tryDecodeText, getFileTypeDescription } from '../../vfs/fileTypes'
 
 interface SearchState {
   active: boolean
@@ -102,6 +103,19 @@ export default function TextEditor() {
         setFileName(path)
         setModified(false)
         showStatusMessage(`Loaded ${path}`)
+      } else if (v instanceof Uint8Array) {
+        // Try to decode as text if it's a text file type
+        const decoded = tryDecodeText(v)
+        if (decoded !== null && isEditable(path, v)) {
+          setText(decoded)
+          setFileName(path)
+          setModified(false)
+          showStatusMessage(`Loaded ${path} (${getFileTypeDescription(path)})`)
+        } else {
+          setText('')
+          setModified(false)
+          showStatusMessage(`Cannot edit binary file: ${path}`, 3000)
+        }
       }
     } catch {
       setText('')

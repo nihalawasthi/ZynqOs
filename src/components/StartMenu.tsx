@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react'
 import { writeFile, readFile, readdir } from '../vfs/fs'
 import { getStorageStatus, disconnectStorage, type StorageStatus } from '../auth/storage'
+import { isTextFile } from '../vfs/fileTypes'
 
 const PROFILE_CACHE_KEY = 'zynqos_profile_cache'
 const CACHE_TTL = 5 * 60 * 1000 // 5 minutes
@@ -142,20 +143,17 @@ export default function StartMenu() {
 
         setImportStatus(`Importing ${files.length} file(s)...`)
 
-        // Text file extensions that should be stored as strings
-        const textExtensions = ['.txt', '.md', '.json', '.js', '.ts', '.tsx', '.jsx', '.html', '.css', '.xml', '.csv', '.yaml', '.yml', '.toml', '.ini', '.cfg', '.conf', '.sh', '.bash', '.zsh', '.py', '.rs', '.c', '.cpp', '.h', '.hpp', '.java', '.go', '.rb', '.php', '.sql', '.log', '.env']
-
         try {
             // Create the imports directory marker if it doesn't exist
             await writeFile('/home/imports/', '')
 
             for (const file of Array.from(files)) {
-                const fileName = file.name.toLowerCase()
-                const isTextFile = textExtensions.some(ext => fileName.endsWith(ext)) || file.type.startsWith('text/')
+                const fileName = file.name
+                const isText = isTextFile(fileName) || file.type.startsWith('text/')
 
                 const filePath = `/home/imports/${file.name}`
 
-                if (isTextFile) {
+                if (isText) {
                     // Store text files as strings
                     const text = await file.text()
                     await writeFile(filePath, text)
@@ -213,6 +211,13 @@ export default function StartMenu() {
             icon: <i className="fa fa-terminal"></i>,
             description: 'WASI terminal emulator',
             openFn: () => (window as any).ZynqOS_openWindow?.('Terminal', window.__TERMINAL_UI__ ?? <div>Loading Terminal...</div>, 'terminal'),
+        },
+        {
+            id: 'python',
+            name: 'Python',
+            icon: <i className="fab fa-python"></i>,
+            description: 'Python REPL powered by Pyodide',
+            openFn: () => (window as any).ZynqOS_openWindow?.('Python', window.__PYTHON_UI__ ?? <div>Loading Python...</div>, 'python'),
         },
         {
             id: 'wednesday',
