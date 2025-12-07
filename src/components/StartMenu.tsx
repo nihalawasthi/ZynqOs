@@ -3,6 +3,20 @@ import { writeFile, readFile, readdir } from '../vfs/fs'
 import { getStorageStatus, disconnectStorage, type StorageStatus } from '../auth/storage'
 import { isTextFile } from '../vfs/fileTypes'
 
+type App = {
+    id: string
+    name: string
+    icon: React.ReactNode
+    description?: string
+    openFn: () => void
+}
+
+type ContextMenu = {
+    x: number
+    y: number
+    app: App
+} | null
+
 const PROFILE_CACHE_KEY = 'zynqos_profile_cache'
 const CACHE_TTL = 5 * 60 * 1000 // 5 minutes
 
@@ -39,14 +53,6 @@ function clearCachedProfile() {
     } catch { }
 }
 
-type App = {
-    id: string
-    name: string
-    icon: React.ReactNode
-    description?: string
-    openFn: () => void
-}
-
 export default function StartMenu() {
     const [open, setOpen] = useState(false)
     const [searchQuery, setSearchQuery] = useState('')
@@ -54,6 +60,7 @@ export default function StartMenu() {
     const [importStatus, setImportStatus] = useState<string>('')
     const [storageStatus, setStorageStatus] = useState<StorageStatus>({ connected: false })
     const [profile, setProfile] = useState<{ name?: string; email?: string; avatar?: string; provider?: string }>(getCachedProfile() || {})
+    const [contextMenu, setContextMenu] = useState<ContextMenu>(null)
     const searchInputRef = useRef<HTMLInputElement>(null)
     const fileInputRef = useRef<HTMLInputElement>(null)
 
@@ -90,8 +97,18 @@ export default function StartMenu() {
         } else {
             setSearchQuery('')
             setImportStatus('')
+            setContextMenu(null)
         }
     }, [open])
+
+    // Close context menu on click outside
+    useEffect(() => {
+        const handleClick = () => setContextMenu(null)
+        if (contextMenu) {
+            document.addEventListener('click', handleClick)
+            return () => document.removeEventListener('click', handleClick)
+        }
+    }, [contextMenu])
 
     // Listen for storage connection events to update UI instantly
     useEffect(() => {
@@ -251,6 +268,13 @@ export default function StartMenu() {
                     (window as any).ZynqOS_openWindow?.('Import Package', Comp, 'mapp-importer')
                 }
             },
+        },
+        {
+            id: 'phantomsurf',
+            name: 'PhantomSurf',
+            icon: <i className="fas fa-globe"></i>,
+            description: 'Secure browser with VPN/Tor and HTML viewer',
+            openFn: () => (window as any).ZynqOS_openWindow?.('PhantomSurf', window.__PHANTOMSURF_UI__ ?? <div>Loading PhantomSurf...</div>, 'phantomsurf'),
         },
     ]
 
@@ -439,6 +463,10 @@ export default function StartMenu() {
                                                     <button
                                                         key={app.id}
                                                         onClick={() => handleAppOpen(app)}
+                                                        onContextMenu={(e) => {
+                                                            e.preventDefault()
+                                                            setContextMenu({ x: e.clientX, y: e.clientY, app })
+                                                        }}
                                                         className="flex flex-col items-center gap-1 p-2 rounded-lg hover:bg-[#2a2a2a] transition-all duration-200 group hover:scale-105"
                                                         title={app.description}
                                                     >
@@ -458,6 +486,10 @@ export default function StartMenu() {
                                                     <button
                                                         key={app.id}
                                                         onClick={() => handleAppOpen(app)}
+                                                        onContextMenu={(e) => {
+                                                            e.preventDefault()
+                                                            setContextMenu({ x: e.clientX, y: e.clientY, app })
+                                                        }}
                                                         className="w-full flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-[#2a2a2a] transition group"
                                                     >
                                                         <span className="text-l">{app.icon}</span>
@@ -597,6 +629,21 @@ export default function StartMenu() {
                                         <span>Export</span>
                                     </button>
                                 </div>
+
+                                {/* New Window Button */}
+                                <button
+                                    onClick={() => {
+                                        window.open(window.location.href, '_blank', 'width=1200,height=800,menubar=no,toolbar=no,location=no')
+                                        setOpen(false)
+                                    }}
+                                    className="w-full flex items-center gap-2 px-2 py-2 rounded-lg hover:bg-[#2a2a2a] transition text-sm text-[#e0e0e0] hover:text-white group"
+                                    title="Open new window for multi-window support"
+                                >
+                                    <span className="w-6 h-6 rounded-lg bg-[#2a3a4a] flex items-center justify-center text-[#4a9eff] group-hover:bg-[#2a4a5a] transition">
+                                        <i className="fas fa-window-restore text-xs"></i>
+                                    </span>
+                                    <span>New Window</span>
+                                </button>
                             </div>
 
                             {/* Signin/Signup */}
@@ -633,6 +680,79 @@ export default function StartMenu() {
                         </div>
                     </div>
                 </>
+            )}
+
+            {/* Right-click Context Menu */}
+            {contextMenu && (
+                <div
+                    className="fixed z-[9999] bg-[#2a2a2a] border border-[#444] rounded-lg shadow-2xl py-1 min-w-[180px] animate-fadeIn"
+                    style={{
+                        left: `${contextMenu.x}px`,
+                        top: `${contextMenu.y}px`,
+                    }}
+                    onClick={(e) => e.stopPropagation()}
+                >
+                    <button
+                        onClick={() => {
+                            contextMenu.app.openFn()
+                            setContextMenu(null)
+                            setOpen(false)
+                        }}
+                        className="w-full flex items-center gap-3 px-4 py-2 text-sm text-[#e0e0e0] hover:bg-[#333] transition text-left"
+                    >
+                        <i className="fas fa-window-maximize text-xs w-4"></i>
+                        <span>Open</span>
+                    </button>
+                    <button
+                        onClick={() => {
+                            // Open as a new child window in the same parent window with a unique ID
+                            const appUIMap: Record<string, any> = {
+                                'file-browser': window.__FILE_BROWSER_UI__ ?? <div>Loading...</div>,
+                                'text-editor': window.__TEXT_EDITOR_UI__ ?? <div>Loading...</div>,
+                                'terminal': window.__TERMINAL_UI__ ?? <div>Loading Terminal...</div>,
+                                'python': window.__PYTHON_UI__ ?? <div>Loading Python...</div>,
+                                'wednesday': window.__WEDNESDAY_UI__ ?? <div>Loading Wednesday...</div>,
+                                'store': window.__STORE_UI__ ?? <div>Loading Store...</div>,
+                                'calculator': window.__CALC_UI__ ?? <div>Loading Calculator...</div>,
+                                'mapp-importer': window.__MAPP_IMPORTER_UI__ ?? <div>Loading...</div>,
+                                'phantomsurf': window.__PHANTOMSURF_UI__ ?? <div>Loading PhantomSurf...</div>,
+                            }
+                            
+                            const appTitleMap: Record<string, string> = {
+                                'file-browser': 'Files',
+                                'text-editor': 'Zynqpad',
+                                'terminal': 'Terminal',
+                                'python': 'Python',
+                                'wednesday': 'Wednesday AI',
+                                'store': 'App Store',
+                                'calculator': 'Calculator',
+                                'mapp-importer': 'Import Package',
+                                'phantomsurf': 'PhantomSurf',
+                            }
+                            
+                            const ui = appUIMap[contextMenu.app.id]
+                            const title = appTitleMap[contextMenu.app.id] || contextMenu.app.name
+                            
+                            if (ui) {
+                                ;(window as any).ZynqOS_openWindow?.(
+                                    title,
+                                    ui,
+                                    `${contextMenu.app.id}-${Date.now()}`
+                                )
+                            }
+                            setContextMenu(null)
+                            setOpen(false)
+                        }}
+                        className="w-full flex items-center gap-3 px-4 py-2 text-sm text-[#e0e0e0] hover:bg-[#333] transition text-left"
+                    >
+                        <i className="fas fa-external-link-alt text-xs w-4"></i>
+                        <span>Open in New Window</span>
+                    </button>
+                    <div className="border-t border-[#444] my-1"></div>
+                    <div className="px-4 py-1 text-xs text-[#666]">
+                        {contextMenu.app.description || contextMenu.app.name}
+                    </div>
+                </div>
             )}
 
             {/* CSS for animations */}

@@ -106,7 +106,7 @@ export default function PythonUI() {
   }
 
   return (
-    <div className="h-full w-full bg-[#0f0f0f] text-[#e0e0e0] p-4 grid grid-cols-2 gap-4 overflow-hidden">
+    <div className="h-full w-full bg-black text-[#e0e0e0] p-4 m-0 grid grid-cols-2 gap-4 overflow-hidden">
       {/* Left: Editor */}
       <div className="flex flex-col gap-3 min-h-0">
         <div className="flex items-center justify-between">

@@ -10,6 +10,7 @@ declare global {
     __STORE_UI__?: any;
     __WEDNESDAY_UI__?: any;
     __PYTHON_UI__?: any;
+    __PHANTOMSURF_UI__?: any;
     ZynqOS_startGoogleAuth?: () => void;
     ZynqOS_startGitHubAuth?: () => void;
     ZynqOS_openConsent?: () => void;

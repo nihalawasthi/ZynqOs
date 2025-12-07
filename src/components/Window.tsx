@@ -1,4 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react'
+import { detectSnapZone, getSnapPosition, snapToEdge, constrainToBounds, getSnapZoneFromShortcut, type SnapZone } from '../utils/WindowSnap'
+import SharedWindowPool from '../utils/SharedWindowPool'
 
 type Tab = {
   id: string
@@ -8,13 +10,25 @@ type Tab = {
   onClose: () => void
 }
 
+type ForcedPosition = {
+  x: number
+  y: number
+  width: number
+  height: number
+}
+
 export default function Window({
   title,
   children,
   onClose,
   onCloseAll,
   initialPosition = { x: 100, y: 60 },
-  noPadding = false,
+  forcedPosition,
+  isTiled = false,
+  isActive = false,
+  onActivate,
+  onTransfer,
+  windowPool,
   tabs
 }: {
   title: string
@@ -22,7 +36,12 @@ export default function Window({
   onClose?: () => void
   onCloseAll?: () => void
   initialPosition?: { x: number; y: number }
-  noPadding?: boolean
+  forcedPosition?: ForcedPosition
+  isTiled?: boolean
+  isActive?: boolean
+  onActivate?: () => void
+  onTransfer?: (toParentId: number) => void
+  windowPool?: SharedWindowPool | null
   tabs?: Tab[]
 }) {
   const [position, setPosition] = useState(initialPosition)
@@ -33,25 +52,115 @@ export default function Window({
   const [resizedWidth, setResizedWidth] = useState<number | null>(null)
   const [isMaximized, setIsMaximized] = useState(false)
   const [prevPosition, setPrevPosition] = useState(initialPosition)
+  const [snapZone, setSnapZone] = useState<SnapZone>(null)
+  const [isSnapped, setIsSnapped] = useState(false)
+  const [transferTarget, setTransferTarget] = useState<{parentId: number; x: number; y: number} | null>(null)
+  const [dragStartPos, setDragStartPos] = useState({ x: 0, y: 0 })
+  const [hoverStartTime, setHoverStartTime] = useState<number | null>(null)
   const windowRef = useRef<HTMLDivElement>(null)
+
+  // Apply forced position from tiling layout
+  useEffect(() => {
+    if (forcedPosition && isTiled) {
+      setPosition({ x: forcedPosition.x, y: forcedPosition.y })
+      setResizedWidth(forcedPosition.width)
+      if (windowRef.current) {
+        windowRef.current.style.height = `${forcedPosition.height}px`
+      }
+    }
+  }, [forcedPosition, isTiled])
 
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
       if (isDragging) {
-        setPosition({
-          x: e.clientX - dragOffset.x,
-          y: e.clientY - dragOffset.y
-        })
+        const newX = e.clientX - dragOffset.x
+        const newY = e.clientY - dragOffset.y
+
+        // Don't allow dragging when tiled
+        if (isTiled) return
+
+        // Calculate distance moved from start
+        const distance = Math.sqrt(
+          Math.pow(e.clientX - dragStartPos.x, 2) + 
+          Math.pow(e.clientY - dragStartPos.y, 2)
+        )
+
+        // Check for window transfer only after moving threshold distance (50px)
+        if (windowPool && onTransfer && distance > 50) {
+          const target = windowPool.isNearParentWindow(e.clientX, e.clientY)
+          if (target) {
+            // Require sustained hover for 500ms before showing transfer target
+            if (hoverStartTime === null) {
+              setHoverStartTime(Date.now())
+            } else if (Date.now() - hoverStartTime > 500) {
+              setTransferTarget({ parentId: target.parentId, x: target.position.x, y: target.position.y })
+            }
+          } else {
+            setTransferTarget(null)
+            setHoverStartTime(null)
+          }
+        } else {
+          setTransferTarget(null)
+          setHoverStartTime(null)
+        }
+
+        // Detect snap zone
+        const zone = detectSnapZone(e.clientX, e.clientY, window.innerWidth, window.innerHeight)
+        setSnapZone(zone)
+
+        // Apply edge snapping if not in a snap zone
+        if (!zone) {
+          const snapped = snapToEdge(
+            newX,
+            newY,
+            windowRef.current?.offsetWidth || 600,
+            windowRef.current?.offsetHeight || 400,
+            window.innerWidth,
+            window.innerHeight
+          )
+          setPosition(snapped)
+        } else {
+          setPosition({ x: newX, y: newY })
+        }
       }
       if (isResizing) {
+        if (isTiled) return // Don't allow resizing when tiled
         const deltaX = e.clientX - resizeStart.x
         setResizedWidth(Math.max(300, resizeStart.width + deltaX))
       }
     }
 
     const handleMouseUp = () => {
+      // Handle window transfer
+      if (isDragging && transferTarget && onTransfer) {
+        onTransfer(transferTarget.parentId)
+        setTransferTarget(null)
+        setHoverStartTime(null)
+        setIsDragging(false)
+        return
+      }
+
+      // Apply snap if in snap zone
+      if (isDragging && snapZone && !isTiled) {
+        const snapPos = getSnapPosition(snapZone, window.innerWidth, window.innerHeight)
+        if (snapPos) {
+          setPosition({ x: snapPos.x, y: snapPos.y })
+          setResizedWidth(snapPos.width)
+          setPrevPosition({ x: snapPos.x, y: snapPos.y })
+          setIsSnapped(true)
+          
+          // Update window height via custom property
+          if (windowRef.current) {
+            windowRef.current.style.height = `${snapPos.height}px`
+          }
+        }
+      }
+      
       setIsDragging(false)
       setIsResizing(false)
+      setSnapZone(null)
+      setTransferTarget(null)
+      setHoverStartTime(null)
     }
 
     if (isDragging || isResizing) {
@@ -63,16 +172,19 @@ export default function Window({
       document.removeEventListener('mousemove', handleMouseMove)
       document.removeEventListener('mouseup', handleMouseUp)
     }
-  }, [isDragging, isResizing, dragOffset, resizeStart])
+  }, [isDragging, isResizing, dragOffset, resizeStart, snapZone, isTiled, windowPool, onTransfer, transferTarget])
 
   const handleMouseDown = (e: React.MouseEvent) => {
-    if (!isMaximized && windowRef.current) {
+    if (!isMaximized && !isTiled && windowRef.current) {
       const rect = windowRef.current.getBoundingClientRect()
       setDragOffset({
         x: e.clientX - rect.left,
         y: e.clientY - rect.top
       })
+      setDragStartPos({ x: e.clientX, y: e.clientY })
       setIsDragging(true)
+      setIsSnapped(false) // Unsnap when starting to drag
+      onActivate?.()
     }
   }
 
@@ -81,13 +193,45 @@ export default function Window({
       // Restore
       setPosition(prevPosition)
       setIsMaximized(false)
+      setIsSnapped(false)
+      if (windowRef.current) {
+        windowRef.current.style.height = '400px'
+      }
     } else {
       // Maximize
       setPrevPosition(position)
       setPosition({ x: 0, y: 0 })
       setIsMaximized(true)
+      setIsSnapped(false)
     }
   }
+
+  // Keyboard shortcuts for snapping
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (!windowRef.current?.matches(':focus-within')) return
+
+      const zone = getSnapZoneFromShortcut(e.key, e.ctrlKey, e.shiftKey)
+      if (zone) {
+        e.preventDefault()
+        const snapPos = getSnapPosition(zone, window.innerWidth, window.innerHeight)
+        if (snapPos) {
+          setPosition({ x: snapPos.x, y: snapPos.y })
+          setResizedWidth(snapPos.width)
+          setPrevPosition({ x: snapPos.x, y: snapPos.y })
+          setIsSnapped(true)
+          setIsMaximized(zone === 'maximize')
+          
+          if (windowRef.current) {
+            windowRef.current.style.height = `${snapPos.height}px`
+          }
+        }
+      }
+    }
+
+    document.addEventListener('keydown', handleKeyDown)
+    return () => document.removeEventListener('keydown', handleKeyDown)
+  }, [])
 
   const windowStyle = isMaximized
     ? {
@@ -106,27 +250,50 @@ export default function Window({
     }
 
   return (
-    <div
-      ref={windowRef}
-      role="dialog"
-      aria-label={title}
-      tabIndex={0}
-      className={`absolute select-none will-change-transform bg-[#1F1F1F] flex flex-col
-        ${isMaximized ? 'inset-0 rounded-none' : 'rounded-[5px]'}
-        ${isDragging || isResizing ? '' : 'transition-all duration-180'}
-        backdrop-blur-lg`}
-      style={{
-        boxShadow: isMaximized
-          ? '0 10px 30px rgba(2,6,23,0.45)'
-          : '0 6px 30px rgba(11,15,30,0.35), inset 0 1px 0 rgba(255,255,255,0.06)',
-        border: isMaximized ? 'none' : '1px solid #424242',
-        height: isMaximized ? undefined : '400px',
-        ...windowStyle
-      }}
-      onKeyDown={(e) => {
-        if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') toggleMaximize?.()
-      }}
-    >
+    <>
+      {/* Transfer Target Indicator */}
+      {transferTarget && (
+        <div className="fixed inset-0 z-[9997] pointer-events-none">
+          <div className="absolute bg-green-500/30 border-4 border-green-500 border-dashed rounded-lg animate-pulse"
+            style={{
+              left: `${transferTarget.x - window.screenX}px`,
+              top: `${transferTarget.y - window.screenY}px`,
+              width: '300px',
+              height: '200px',
+            }}
+          >
+            <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-green-500 text-white px-4 py-2 rounded-lg font-medium">
+              Release to transfer
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div
+        ref={windowRef}
+        role="dialog"
+        aria-label={title}
+        tabIndex={0}
+        className={`absolute select-none will-change-transform bg-[#1F1F1F] flex flex-col
+          ${isMaximized ? 'inset-0 rounded-none' : 'rounded-[5px]'}
+          ${isDragging || isResizing ? '' : 'transition-all duration-180'}
+          ${isTiled ? 'pointer-events-auto' : ''}
+          backdrop-blur-lg`}
+        style={{
+          boxShadow: isMaximized
+            ? '0 10px 30px rgba(2,6,23,0.45)'
+            : isActive 
+              ? '0 8px 40px rgba(74, 158, 255, 0.5), inset 0 1px 0 rgba(255,255,255,0.06)'
+              : '0 6px 30px rgba(11,15,30,0.35), inset 0 1px 0 rgba(255,255,255,0.06)',
+          border: isMaximized ? 'none' : (isTiled && isActive) ? '2px solid #4a9eff' : isTiled ? '1px solid #424242' : isActive ? '2px solid #4a9eff' : '1px solid #424242',
+          height: isMaximized ? undefined : '400px',
+          ...windowStyle
+        }}
+        onClick={() => onActivate?.()}
+        onKeyDown={(e) => {
+          if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') toggleMaximize?.()
+        }}
+      >
       {/* Title bar with integrated tabs */}
       <div
         className={`flex items-center overflow-hidden justify-between gap-[0] px-[0] py-[0]
@@ -268,7 +435,7 @@ export default function Window({
 
       {/* Content area — glass sheet with subtle border */}
       <div
-        className={`bg-gray-700 flex-1 overflow-hidden ${noPadding ? '' : 'p-1'}`}
+        className="bg-gray-700 flex-1 overflow-hidden"
         style={{
           borderBottomLeftRadius: isMaximized ? 0 : 5,
           borderBottomRightRadius: isMaximized ? 0 : 5,
@@ -279,7 +446,7 @@ export default function Window({
       </div>
 
       {/* bottom-right diagonal resize affordance */}
-      {!isMaximized && (
+      {!isMaximized && !isTiled && (
         <div
           onMouseDown={(e) => {
             e.preventDefault()
@@ -299,6 +466,7 @@ export default function Window({
           </svg>
         </div>
       )}
-    </div>
+      </div>
+    </>
   )
 }

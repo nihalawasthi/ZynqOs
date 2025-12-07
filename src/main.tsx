@@ -17,6 +17,7 @@ import './apps/mapp-importer/ui'
 import './apps/store/ui'
 import './apps/wednesday/ui'
 import './apps/python/ui'
+import './apps/phantomsurf/ui'
 // Initialize VFS with sample files
 initializeVFS().catch(console.error)
 
