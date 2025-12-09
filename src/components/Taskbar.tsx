@@ -1,10 +1,14 @@
 import React, { useEffect, useState } from 'react'
 import StartMenu from './StartMenu'
 import MultiWindowIndicator from './MultiWindowIndicator'
+import { formatDuration, useSessionTimer, SESSION_IDLE_THRESHOLD_MS } from '../utils/SessionTimer'
 
 export default function Taskbar() {
   return (
     <div className="fixed bottom-0 left-0 w-[100%] h-16 max-w-[100vw] p-0 bg-none flex items-center justify-center gap-2 z-40">
+      <div className="mr-auto ml-4">
+        {/* future components */}
+      </div>
       <div className="absolute bottom-1 left-1/2 transform -translate-x-1/2 w-[calc(60%-48px)] max-w-[980px] px-4 py-2 bg-white/10 backdrop-blur-md border border-white/10 rounded-full shadow-2xl flex items-center gap-2">
         <StartMenu />
 
@@ -50,9 +54,35 @@ export default function Taskbar() {
           <Clock />
         </div>
       </div>
-      <div className="ml-auto mr-4">
+      <div className="ml-auto mr-4 flex items-center gap-2">
+        <SessionTimerBadge />
         <MultiWindowIndicator />
       </div>
+    </div>
+  )
+}
+
+function SessionTimerBadge() {
+  const session = useSessionTimer()
+  const [now, setNow] = useState(() => Date.now())
+
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 1000)
+    return () => clearInterval(id)
+  }, [])
+
+  if (!session) return null
+
+  const isActive = now - session.lastActivityTs < SESSION_IDLE_THRESHOLD_MS
+  const liveMs = session.totalActiveMs + (isActive ? Math.max(0, now - session.lastUpdateTs) : 0)
+
+  return (
+    <div
+      title="Total active time across this session"
+      className="text-xs text-gray-100 bg-gray-800/40 px-3 py-1 rounded-full border border-gray-700/30 flex items-center gap-2"
+    >
+      <span className="opacity-70">Active</span>
+      <span className="font-mono">{formatDuration(liveMs)}</span>
     </div>
   )
 }
