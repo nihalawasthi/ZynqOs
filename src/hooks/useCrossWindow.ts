@@ -41,10 +41,16 @@ export function useCrossWindow(enabled: boolean = true, metaData?: any) {
     // Initial update
     handleWindowsUpdate();
 
+    // Poll occasionally in case storage events are missed (keeps display list fresh)
+    const syncInterval = window.setInterval(() => {
+      handleWindowsUpdate();
+    }, 500);
+
     // Cleanup on unmount
     return () => {
       // Don't destroy the manager, just clean up callbacks
       // The manager will clean up on window unload
+      window.clearInterval(syncInterval);
     };
   }, [enabled, metaData]);
 

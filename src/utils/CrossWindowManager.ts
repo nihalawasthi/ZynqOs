@@ -138,7 +138,7 @@ class CrossWindowManager {
    */
   private cleanupStaleWindows() {
     const now = Date.now();
-    const staleThreshold = 5000; // 5 seconds
+    const staleThreshold = 5000; // 5 seconds — avoid dropping active windows when tabs are throttled
 
     const initialLength = this.windows.length;
     this.windows = this.windows.filter((win) => {

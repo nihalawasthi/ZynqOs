@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react'
 import { detectSnapZone, getSnapPosition, snapToEdge, constrainToBounds, getSnapZoneFromShortcut, type SnapZone } from '../utils/WindowSnap'
 import SharedWindowPool from '../utils/SharedWindowPool'
+import DisplaySelector from './DisplaySelector'
 
 type Tab = {
   id: string
@@ -23,6 +24,7 @@ export default function Window({
   onClose,
   onCloseAll,
   initialPosition = { x: 100, y: 60 },
+  initialWidth,
   forcedPosition,
   isTiled = false,
   isActive = false,
@@ -36,11 +38,12 @@ export default function Window({
   onClose?: () => void
   onCloseAll?: () => void
   initialPosition?: { x: number; y: number }
+  initialWidth?: number
   forcedPosition?: ForcedPosition
   isTiled?: boolean
   isActive?: boolean
   onActivate?: () => void
-  onTransfer?: (toParentId: number) => void
+  onTransfer?: (toParentId: number, position: { x: number; y: number }, width: number) => void
   windowPool?: SharedWindowPool | null
   tabs?: Tab[]
 }) {
@@ -49,15 +52,31 @@ export default function Window({
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 })
   const [isResizing, setIsResizing] = useState(false)
   const [resizeStart, setResizeStart] = useState({ x: 0, y: 0, width: 0 })
-  const [resizedWidth, setResizedWidth] = useState<number | null>(null)
+  const [resizedWidth, setResizedWidth] = useState<number | null>(initialWidth ?? null)
   const [isMaximized, setIsMaximized] = useState(false)
   const [prevPosition, setPrevPosition] = useState(initialPosition)
   const [snapZone, setSnapZone] = useState<SnapZone>(null)
   const [isSnapped, setIsSnapped] = useState(false)
-  const [transferTarget, setTransferTarget] = useState<{parentId: number; x: number; y: number} | null>(null)
   const [dragStartPos, setDragStartPos] = useState({ x: 0, y: 0 })
-  const [hoverStartTime, setHoverStartTime] = useState<number | null>(null)
+  const [isTransferring, setIsTransferring] = useState(false)
+  const [showDisplaySelector, setShowDisplaySelector] = useState(false)
+  const [selectedDisplayId, setSelectedDisplayId] = useState<number | null>(null)
+  const [dragDisplayPosition, setDragDisplayPosition] = useState<{ x: number; y: number } | null>(null)
   const windowRef = useRef<HTMLDivElement>(null)
+  const windowIdRef = useRef<string | null>(null)
+  const transferredRef = useRef(false) // Prevent multiple transfers in one drag
+  const displayTransferInitiatedRef = useRef(false) // Track if display transfer is in progress
+  const showDisplaySelectorRef = useRef(false)
+  const selectedDisplayIdRef = useRef<number | null>(null)
+
+  // Keep refs in sync with state
+  useEffect(() => {
+    showDisplaySelectorRef.current = showDisplaySelector
+  }, [showDisplaySelector])
+
+  useEffect(() => {
+    selectedDisplayIdRef.current = selectedDisplayId
+  }, [selectedDisplayId])
 
   // Apply forced position from tiling layout
   useEffect(() => {
@@ -71,6 +90,8 @@ export default function Window({
   }, [forcedPosition, isTiled])
 
   useEffect(() => {
+    const BOTTOM_THRESHOLD = 150; // Distance from bottom to show display selector
+    
     const handleMouseMove = (e: MouseEvent) => {
       if (isDragging) {
         const newX = e.clientX - dragOffset.x
@@ -79,29 +100,21 @@ export default function Window({
         // Don't allow dragging when tiled
         if (isTiled) return
 
-        // Calculate distance moved from start
-        const distance = Math.sqrt(
-          Math.pow(e.clientX - dragStartPos.x, 2) + 
-          Math.pow(e.clientY - dragStartPos.y, 2)
-        )
-
-        // Check for window transfer only after moving threshold distance (50px)
-        if (windowPool && onTransfer && distance > 50) {
-          const target = windowPool.isNearParentWindow(e.clientX, e.clientY)
-          if (target) {
-            // Require sustained hover for 500ms before showing transfer target
-            if (hoverStartTime === null) {
-              setHoverStartTime(Date.now())
-            } else if (Date.now() - hoverStartTime > 500) {
-              setTransferTarget({ parentId: target.parentId, x: target.position.x, y: target.position.y })
-            }
-          } else {
-            setTransferTarget(null)
-            setHoverStartTime(null)
-          }
-        } else {
-          setTransferTarget(null)
-          setHoverStartTime(null)
+        // Check if dragging near bottom of screen (for display transfer)
+        const distanceFromBottom = window.innerHeight - e.clientY
+        const isNearBottom = distanceFromBottom < BOTTOM_THRESHOLD
+        
+        if (isNearBottom && !displayTransferInitiatedRef.current && !showDisplaySelector) {
+          // Show display selector when dragging near bottom
+          setShowDisplaySelector(true)
+          setDragDisplayPosition({ x: e.clientX, y: e.clientY })
+        }
+        
+        // Update drag position while selector is visible
+        if (showDisplaySelector) {
+          setDragDisplayPosition({ x: e.clientX, y: e.clientY })
+          // Don't allow normal dragging while selector is active
+          return
         }
 
         // Detect snap zone
@@ -131,15 +144,45 @@ export default function Window({
     }
 
     const handleMouseUp = () => {
-      // Handle window transfer
-      if (isDragging && transferTarget && onTransfer) {
-        onTransfer(transferTarget.parentId)
-        setTransferTarget(null)
-        setHoverStartTime(null)
-        setIsDragging(false)
-        return
+      const currentShowSelector = showDisplaySelectorRef.current
+      const currentSelectedId = selectedDisplayIdRef.current
+      
+      if (isDragging) {
+        console.log('[Window] MouseUp', {
+          showDisplaySelector: currentShowSelector,
+          selectedDisplayId: currentSelectedId,
+          hasOnTransfer: !!onTransfer,
+          hasWindowPool: !!windowPool,
+        })
       }
 
+      // Reset transfer flag on drag end
+      transferredRef.current = false
+      
+      // Handle display-based transfer
+      if (isDragging && currentShowSelector && currentSelectedId && onTransfer && windowPool) {
+        console.log(`[Window] Display transfer initiated to display ${currentSelectedId}`);
+        displayTransferInitiatedRef.current = true
+        setIsTransferring(true)
+        
+        // Get target window position
+        const targetWindowPos = windowPool.getParentWindowPosition(currentSelectedId)
+        console.log(`[Window] Target window position:`, targetWindowPos);
+        
+        if (targetWindowPos) {
+          // Calculate center position in target window
+          const relativeX = (targetWindowPos.w - (windowRef.current?.offsetWidth || 600)) / 2
+          const relativeY = (targetWindowPos.h - (windowRef.current?.offsetHeight || 400)) / 2
+          
+          console.log(`[Window] Transferring to display ${currentSelectedId}. Target position: (${relativeX}, ${relativeY})`);
+          
+          // Call the transfer handler with proper parameters
+          onTransfer(currentSelectedId, { x: Math.max(0, relativeX), y: Math.max(0, relativeY) }, windowRef.current?.offsetWidth || 600)
+        } else {
+          console.warn(`[Window] Could not get target window position for display ${currentSelectedId}`);
+        }
+      }
+      
       // Apply snap if in snap zone
       if (isDragging && snapZone && !isTiled) {
         const snapPos = getSnapPosition(snapZone, window.innerWidth, window.innerHeight)
@@ -156,11 +199,14 @@ export default function Window({
         }
       }
       
+      // Reset display selector
+      setShowDisplaySelector(false)
+      setSelectedDisplayId(null)
+      setDragDisplayPosition(null)
+      
       setIsDragging(false)
       setIsResizing(false)
       setSnapZone(null)
-      setTransferTarget(null)
-      setHoverStartTime(null)
     }
 
     if (isDragging || isResizing) {
@@ -172,7 +218,7 @@ export default function Window({
       document.removeEventListener('mousemove', handleMouseMove)
       document.removeEventListener('mouseup', handleMouseUp)
     }
-  }, [isDragging, isResizing, dragOffset, resizeStart, snapZone, isTiled, windowPool, onTransfer, transferTarget])
+  }, [isDragging, isResizing, dragOffset, resizeStart, snapZone, isTiled, windowPool, onTransfer])
 
   const handleMouseDown = (e: React.MouseEvent) => {
     if (!isMaximized && !isTiled && windowRef.current) {
@@ -251,24 +297,6 @@ export default function Window({
 
   return (
     <>
-      {/* Transfer Target Indicator */}
-      {transferTarget && (
-        <div className="fixed inset-0 z-[9997] pointer-events-none">
-          <div className="absolute bg-green-500/30 border-4 border-green-500 border-dashed rounded-lg animate-pulse"
-            style={{
-              left: `${transferTarget.x - window.screenX}px`,
-              top: `${transferTarget.y - window.screenY}px`,
-              width: '300px',
-              height: '200px',
-            }}
-          >
-            <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-green-500 text-white px-4 py-2 rounded-lg font-medium">
-              Release to transfer
-            </div>
-          </div>
-        </div>
-      )}
-
       <div
         ref={windowRef}
         role="dialog"
@@ -276,15 +304,16 @@ export default function Window({
         tabIndex={0}
         className={`absolute select-none will-change-transform bg-[#1F1F1F] flex flex-col
           ${isMaximized ? 'inset-0 rounded-none' : 'rounded-[5px]'}
-          ${isDragging || isResizing ? '' : 'transition-all duration-180'}
+          ${isDragging || isResizing ? '' : 'transition-all duration-300'}
+          ${isTransferring ? 'opacity-70' : 'opacity-100'}
           ${isTiled ? 'pointer-events-auto' : ''}
           backdrop-blur-lg`}
         style={{
           boxShadow: isMaximized
             ? '0 10px 30px rgba(2,6,23,0.45)'
             : isActive 
-              ? '0 8px 40px rgba(74, 158, 255, 0.5), inset 0 1px 0 rgba(255,255,255,0.06)'
-              : '0 6px 30px rgba(11,15,30,0.35), inset 0 1px 0 rgba(255,255,255,0.06)',
+              ? '0 8px 24px rgba(74, 158, 255, 0.2), inset 0 1px 0 rgba(255,255,255,0.06)'
+              : '0 6px 20px rgba(11,15,30,0.25), inset 0 1px 0 rgba(255,255,255,0.06)',
           border: isMaximized ? 'none' : (isTiled && isActive) ? '2px solid #4a9eff' : isTiled ? '1px solid #424242' : isActive ? '2px solid #4a9eff' : '1px solid #424242',
           height: isMaximized ? undefined : '400px',
           ...windowStyle
@@ -467,6 +496,14 @@ export default function Window({
         </div>
       )}
       </div>
+      
+      {/* Display Selector for cross-display window transfer */}
+      <DisplaySelector 
+        isVisible={showDisplaySelector}
+        dragPosition={dragDisplayPosition}
+        selectedDisplayId={selectedDisplayId}
+        onDisplaySelect={(displayId) => setSelectedDisplayId(displayId)}
+      />
     </>
   )
 }
