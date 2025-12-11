@@ -13,6 +13,8 @@ type Win = {
   appType: string  // For grouping tabs (e.g., 'text-editor', 'terminal', 'file-browser')
   position?: { x: number; y: number }
   width?: number
+  maximized?: boolean
+  minimized?: boolean
 }
 
 type WindowGroup = {
@@ -27,11 +29,26 @@ export default function WindowManager() {
   const [tilingLayout, setTilingLayout] = useState<TilingLayout>('free')
   const [windowPool, setWindowPool] = useState<SharedWindowPool | null>(null)
   const [activeWindowId, setActiveWindowId] = useState<string | null>(null)
+  const [isAnyWindowMaximized, setIsAnyWindowMaximized] = useState(false)
+  
+  // Ref to store current windowGroups for use in exposed functions
+  const windowGroupsRef = React.useRef<WindowGroup[]>([])
+  const setWindowGroupsRef = React.useRef<typeof setWindowGroups | null>(null)
+  
+  // Store setState functions in refs so they're accessible everywhere
+  React.useEffect(() => {
+    windowGroupsRef.current = windowGroups
+  }, [windowGroups])
+  
+  React.useEffect(() => {
+    setWindowGroupsRef.current = setWindowGroups
+  }, [])
   
   // Add device identifier to metadata for cross-window identification
   const userIdentifier = getDeviceIdentifierSync()
   const { currentWindow } = useCrossWindow(true, { userId: userIdentifier, timestamp: Date.now() })
   const processingWindowsRef = React.useRef(new Set<string>()) // Track windows being processed
+  const maximizedWindowsRef = React.useRef(new Set<string>()) // Track which windows are maximized
 
   // Initialize shared window pool
   useEffect(() => {
@@ -93,12 +110,12 @@ export default function WindowManager() {
     }
   }, [currentWindow?.id])
 
-  function openWindow(title: string, content: React.ReactNode | (() => React.ReactElement), appType?: string, initialPos?: { x: number; y: number }, initialWidth?: number, preserveId?: string) {
+  function openWindow(title: string, content: React.ReactNode | (() => React.ReactElement), appType?: string, initialPos?: { x: number; y: number }, initialWidth?: number, preserveId?: string, maximized?: boolean) {
     const id = preserveId || uuidv4()
-    const newWindow: Win = { id, title, content, appType: appType || title, position: initialPos, width: initialWidth }
+    const newWindow: Win = { id, title, content, appType: appType || title, position: initialPos, width: initialWidth, maximized, minimized: false }
     
     // Check if this is a transferred window by checking if the ID already exists somewhere
-    const existingWindowLocation = windowGroups.find(g => g.windows.some(w => w.id === id))
+    const existingWindowLocation = windowGroupsRef.current.find(g => g.windows.some(w => w.id === id))
     if (existingWindowLocation) {
       // This window is being transferred - don't create a duplicate
       console.log(`[WindowManager] Window ${id} already exists, skipping duplicate creation`);
@@ -106,11 +123,11 @@ export default function WindowManager() {
     }
     
     // Check if there's an existing group for this app type
-    const existingGroupIndex = windowGroups.findIndex(g => g.appType === newWindow.appType && !preserveId)
+    const existingGroupIndex = windowGroupsRef.current.findIndex(g => g.appType === newWindow.appType && !preserveId)
     
     if (existingGroupIndex >= 0 && !preserveId) {
       // Add to existing group as a new tab (only if NOT a transferred window)
-      setWindowGroups(groups => groups.map((g, idx) => 
+      setWindowGroupsRef.current?.(groups => groups.map((g, idx) => 
         idx === existingGroupIndex 
           ? { ...g, windows: [...g.windows, newWindow], activeTabId: id }
           : g
@@ -118,7 +135,7 @@ export default function WindowManager() {
     } else {
       // Create new group (either first window of this type or a transferred window)
       const groupId = uuidv4()
-      setWindowGroups(groups => [...groups, {
+      setWindowGroupsRef.current?.(groups => [...groups, {
         id: groupId,
         appType: newWindow.appType,
         windows: [newWindow],
@@ -198,6 +215,37 @@ export default function WindowManager() {
     setTilingLayout(layout)
   }
 
+  // Handle window maximized state changes
+  function handleWindowMaximizedChange(groupId: string, isMaximized: boolean) {
+    if (isMaximized) {
+      maximizedWindowsRef.current.add(groupId)
+    } else {
+      maximizedWindowsRef.current.delete(groupId)
+    }
+    setIsAnyWindowMaximized(maximizedWindowsRef.current.size > 0)
+  }
+
+  // Handle window minimize
+  function handleWindowMinimize(groupId: string) {
+    setWindowGroups(groups => groups.map(g =>
+      g.id === groupId ? { ...g, windows: g.windows.map(w => ({ ...w, minimized: true })) } : g
+    ))
+    // If this was a maximized window being minimized, check if we should show UI again
+    if (maximizedWindowsRef.current.has(groupId)) {
+      setIsAnyWindowMaximized(false)
+      maximizedWindowsRef.current.delete(groupId)
+    }
+  }
+
+  // Restore minimized window
+  function restoreMinimizedWindow(groupId: string) {
+    setWindowGroups(groups => groups.map(g =>
+      g.id === groupId ? { ...g, windows: g.windows.map(w => ({ ...w, minimized: false })) } : g
+    ))
+    setActiveWindowId(groupId)
+    // Don't re-add to maximized windows - they stay unmaximized when restored
+  }
+
   // Calculate tiled positions
   let tilePositions = new Map<string, WindowTile>()
   
@@ -218,15 +266,32 @@ export default function WindowManager() {
   }
 
   // expose for quick demo usage
+  // Expose openWindow and setTiling on mount
   useEffect(() => {
     (globalThis as any).ZynqOS_openWindow = openWindow;
-    (globalThis as any).ZynqOS_setTiling = applyTiling
-  })
+    (globalThis as any).ZynqOS_setTiling = applyTiling;
+  }, [])
+
+  useEffect(() => {
+    // Build minimized windows list
+    const minimizedList = Array.isArray(windowGroups)
+      ? windowGroups.filter(g => g.windows.some(w => w.minimized)).map(g => ({
+            id: g.id,
+            title: g.windows[0]?.title || 'Window',
+            appType: g.appType
+          }))
+      : [];
+
+    (globalThis as any).ZynqOS_isAnyWindowMaximized = isAnyWindowMaximized;
+    (globalThis as any).ZynqOS_minimizedWindows = minimizedList;
+    (globalThis as any).ZynqOS_restoreMinimized = restoreMinimizedWindow;
+  }, [isAnyWindowMaximized, windowGroups])
 
   return (
     <div className="flex-1 relative overflow-hidden">
-      {/* Tiling Controls - Always visible on hover */}
-      <div className="fixed top-2 left-2 z-[9999] bg-black/80 backdrop-blur-sm rounded-lg p-2 flex gap-1 opacity-0 hover:opacity-100 transition-opacity duration-300">
+      {/* Tiling Controls - Always visible on hover (hidden when maximized) */}
+      {!isAnyWindowMaximized && (
+        <div className="fixed top-2 left-2 z-[9999] bg-black/80 backdrop-blur-sm rounded-lg p-2 flex gap-1 opacity-0 hover:opacity-100 transition-opacity duration-300">
           <button
             onClick={() => applyTiling('free')}
             className={`px-2 py-1 text-xs rounded transition ${tilingLayout === 'free' ? 'bg-blue-500 text-white' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'}`}
@@ -263,8 +328,10 @@ export default function WindowManager() {
             <i className="fas fa-magic"></i>
           </button>
         </div>
+      )}
 
-      {windowGroups.map((group, idx) => {
+      {Array.isArray(windowGroups) && windowGroups.length > 0 ? (
+        windowGroups.map((group, idx) => {
         const activeWindow = group.windows.find(w => w.id === group.activeTabId) || group.windows[0]
         const hasTabs = group.windows.length > 1
         const tilePos = tilePositions.get(group.id)
@@ -294,11 +361,16 @@ export default function WindowManager() {
               onActivate: () => setActiveTab(group.id, w.id),
               onClose: () => closeWindow(group.id, w.id)
             })) : undefined}
+            initialMaximized={activeWindow.maximized}
+            initialMinimized={activeWindow.minimized || false}
+            onMaximizedChange={(isMaximized) => handleWindowMaximizedChange(group.id, isMaximized)}
+            onMinimize={() => handleWindowMinimize(group.id)}
           >
             {typeof activeWindow.content === 'function' ? <activeWindow.content /> : activeWindow.content}
           </Window>
         )
-      })}
+      })
+      ) : null}
     </div>
   )
 }

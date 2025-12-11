@@ -31,7 +31,11 @@ export default function Window({
   onActivate,
   onTransfer,
   windowPool,
-  tabs
+  tabs,
+  initialMaximized = false,
+  initialMinimized = false,
+  onMaximizedChange,
+  onMinimize
 }: {
   title: string
   children: React.ReactNode
@@ -46,6 +50,10 @@ export default function Window({
   onTransfer?: (toParentId: number, position: { x: number; y: number }, width: number) => void
   windowPool?: SharedWindowPool | null
   tabs?: Tab[]
+  initialMaximized?: boolean
+  initialMinimized?: boolean
+  onMaximizedChange?: (maximized: boolean) => void
+  onMinimize?: () => void
 }) {
   const [position, setPosition] = useState(initialPosition)
   const [isDragging, setIsDragging] = useState(false)
@@ -53,7 +61,8 @@ export default function Window({
   const [isResizing, setIsResizing] = useState(false)
   const [resizeStart, setResizeStart] = useState({ x: 0, y: 0, width: 0 })
   const [resizedWidth, setResizedWidth] = useState<number | null>(initialWidth ?? null)
-  const [isMaximized, setIsMaximized] = useState(false)
+  const [isMaximized, setIsMaximized] = useState(initialMaximized)
+  const [isMinimized, setIsMinimized] = useState(initialMinimized)
   const [prevPosition, setPrevPosition] = useState(initialPosition)
   const [snapZone, setSnapZone] = useState<SnapZone>(null)
   const [isSnapped, setIsSnapped] = useState(false)
@@ -77,6 +86,11 @@ export default function Window({
   useEffect(() => {
     selectedDisplayIdRef.current = selectedDisplayId
   }, [selectedDisplayId])
+
+  // Sync minimized state from parent
+  useEffect(() => {
+    setIsMinimized(initialMinimized || false)
+  }, [initialMinimized])
 
   // Apply forced position from tiling layout
   useEffect(() => {
@@ -240,6 +254,7 @@ export default function Window({
       setPosition(prevPosition)
       setIsMaximized(false)
       setIsSnapped(false)
+      onMaximizedChange?.(false)
       if (windowRef.current) {
         windowRef.current.style.height = '400px'
       }
@@ -249,7 +264,13 @@ export default function Window({
       setPosition({ x: 0, y: 0 })
       setIsMaximized(true)
       setIsSnapped(false)
+      onMaximizedChange?.(true)
     }
+  }
+
+  const handleMinimize = () => {
+    setIsMinimized(true)
+    onMinimize?.()
   }
 
   // Keyboard shortcuts for snapping
@@ -266,7 +287,9 @@ export default function Window({
           setResizedWidth(snapPos.width)
           setPrevPosition({ x: snapPos.x, y: snapPos.y })
           setIsSnapped(true)
-          setIsMaximized(zone === 'maximize')
+          const isNowMaximized = zone === 'maximize'
+          setIsMaximized(isNowMaximized)
+          onMaximizedChange?.(isNowMaximized)
           
           if (windowRef.current) {
             windowRef.current.style.height = `${snapPos.height}px`
@@ -279,7 +302,9 @@ export default function Window({
     return () => document.removeEventListener('keydown', handleKeyDown)
   }, [])
 
-  const windowStyle = isMaximized
+  const windowStyle = isMinimized
+    ? { display: 'none' }
+    : isMaximized
     ? {
       left: '0',
       top: '0',
@@ -427,6 +452,19 @@ export default function Window({
         {/* Right: borderless nav buttons (Win11 style) */}
         <div className="flex items-center gap-[0]">
           <div className="flex items-center gap-[0] ml-[0]">
+            {/* Minimize */}
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); handleMinimize() }}
+              aria-label="Minimize"
+              title="Minimize"
+              className="w-7 h-7 flex items-center justify-center hover:bg-slate-100/40 active:scale-95 transition"
+            >
+              <svg className="w-3 h-3 text-white" viewBox="0 0 24 24" fill="none">
+                <line x1="5" y1="12" x2="19" y2="12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+              </svg>
+            </button>
+
             {/* Maximize */}
             <button
               type="button"

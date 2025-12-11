@@ -1,7 +1,7 @@
 // extra global typings used in the demo
 declare global {
   interface Window {
-    ZynqOS_openWindow?: (title: string, content: any, appType?: string) => void;
+    ZynqOS_openWindow?: (title: string, content: any, appType?: string, initialPos?: { x: number; y: number }, initialWidth?: number, preserveId?: string, maximized?: boolean) => void;
     __TEXT_EDITOR_UI__?: any;
     __TERMINAL_UI__?: any;
     __CALC_UI__?: any;

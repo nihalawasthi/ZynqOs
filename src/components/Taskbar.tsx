@@ -4,8 +4,52 @@ import MultiWindowIndicator from './MultiWindowIndicator'
 import { formatDuration, useSessionTimer, SESSION_IDLE_THRESHOLD_MS } from '../utils/SessionTimer'
 
 export default function Taskbar() {
+  const [isMaximized, setIsMaximized] = useState(false)
+  const [minimizedWindows, setMinimizedWindows] = useState<Array<{ id: string; title: string; appType: string }>>([])
+
+  useEffect(() => {
+    const checkMaximized = () => {
+      setIsMaximized((globalThis as any).ZynqOS_isAnyWindowMaximized || false)
+      setMinimizedWindows((globalThis as any).ZynqOS_minimizedWindows || [])
+    }
+    
+    const interval = setInterval(checkMaximized, 100)
+    return () => clearInterval(interval)
+  }, [])
+
+  // Map app types to their display names for checking minimized status
+  const appConfigs = [
+    { appType: 'file-browser', title: 'File Browser', icon: 'fas fa-folder' },
+    { appType: 'store', title: 'Store', icon: 'fa-solid fa-store' },
+    { appType: 'phantomsurf', title: 'Phantom Surf', icon: 'fas fa-globe' },
+    { appType: 'terminal', title: 'Terminal', icon: 'fa fa-terminal' },
+    { appType: 'wednesday', title: 'Wednesday', icon: 'fa-solid fa-wand-magic-sparkles' },
+    { appType: 'text-editor', title: 'Zynqpad', icon: 'fas fa-file-alt' },
+    { appType: 'python', title: 'Python', icon: 'fab fa-python' },
+    { appType: 'calculator', title: 'Calculator', icon: 'fas fa-calculator' }
+  ]
+
+  const isAppMinimized = (appType: string) => {
+    return minimizedWindows.some(win => win.appType === appType)
+  }
+
+  const getMinimizedWindowId = (appType: string) => {
+    return minimizedWindows.find(win => win.appType === appType)?.id
+  }
+
+  const handleAppClick = (appType: string, title: string, content: any) => {
+    const minimizedId = getMinimizedWindowId(appType)
+    if (minimizedId) {
+      // Restore minimized window
+      (globalThis as any).ZynqOS_restoreMinimized?.(minimizedId)
+    } else {
+      // Open new window
+      (window as any).ZynqOS_openWindow?.(title, content, appType)
+    }
+  }
+
   return (
-    <div className="fixed bottom-0 left-0 w-[100%] h-16 max-w-[100vw] p-0 bg-none flex items-center justify-center gap-2 z-40">
+    <div style={{ display: isMaximized ? 'none' : 'flex' }} className="fixed bottom-0 left-0 w-[100%] h-16 max-w-[100vw] p-0 bg-none flex items-center justify-center gap-2 z-40">
       <div className="mr-auto ml-4">
         {/* future components */}
       </div>
@@ -14,39 +58,44 @@ export default function Taskbar() {
 
         <div className="flex items-center gap-2">
           <button
-            onClick={() => (window as any).ZynqOS_openWindow?.('File Browser', window.__FILE_BROWSER_UI__ ?? <div>Loading...</div>, 'file-browser')}
-            title='Files'
-            className="flex items-center gap-2 px-3 py-1 rounded-[2px] bg-transparent hover:bg-gray-200/30 transition text-white border border-gray-300/20"
+            onClick={() => handleAppClick('file-browser', 'File Browser', window.__FILE_BROWSER_UI__ ?? <div>Loading...</div>)}
+            title={isAppMinimized('file-browser') ? 'Restore File Browser' : 'File Browser'}
+            className={`flex items-center gap-2 px-3 py-1 rounded-[2px] transition text-white border border-gray-300/20 ${isAppMinimized('file-browser') ? 'bg-gray-600/50 opacity-75' : 'bg-transparent hover:bg-gray-200/30'}`}
           >
             <span className="text-lg"><i className="fas fa-folder"></i></span>
+            {isAppMinimized('file-browser')}
           </button>
           <button
-            onClick={() => (window as any).ZynqOS_openWindow?.('Store', window.__STORE_UI__ ?? <div>Loading...</div>, 'store')}
-            title='Store'
-            className="flex items-center gap-2 px-3 py-1 rounded-[2px] bg-transparent hover:bg-gray-200/30 transition text-white border border-gray-300/20"
+            onClick={() => handleAppClick('store', 'App Store', window.__STORE_UI__ ?? <div>Loading...</div>)}
+            title={isAppMinimized('store') ? 'Restore Store' : 'Store'}
+            className={`flex items-center gap-2 px-3 py-1 rounded-[2px] transition text-white border border-gray-300/20 ${isAppMinimized('store') ? 'bg-gray-600/50 opacity-75' : 'bg-transparent hover:bg-gray-200/30'}`}
           >
             <span className="text-lg"><i className="fa-solid fa-store"></i></span>
+            {isAppMinimized('store')}
           </button>
           <button
-            onClick={() => (window as any).ZynqOS_openWindow?.('Zynqpad', window.__TEXT_EDITOR_UI__ ?? <div>Loading Editor...</div>, 'text-editor')}
-            title='Zynqpad'
-            className="flex items-center gap-2 px-3 py-1 rounded-[2px] bg-transparent hover:bg-gray-200/30 transition text-white border border-gray-300/20"
+            onClick={() => handleAppClick('phantomsurf', 'Phantom Surf', window.__PHANTOMSURF_UI__ ?? <div>Loading...</div>)}
+            title={isAppMinimized('phantomsurf') ? 'Restore Phantom Surf' : 'Phantom Surf'}
+            className={`flex items-center gap-2 px-3 py-1 rounded-[2px] transition text-white border border-gray-300/20 ${isAppMinimized('phantomsurf') ? 'bg-gray-600/50 opacity-75' : 'bg-transparent hover:bg-gray-200/30'}`}
           >
-            <span className="text-lg"><i className="fa fa-file-text"></i></span>
+            <span className="text-lg"><i className="fas fa-globe"></i></span>
+            {isAppMinimized('phantomsurf')}
           </button>
           <button
-            onClick={() => (window as any).ZynqOS_openWindow?.('Terminal', window.__TERMINAL_UI__ ?? <div>Loading Terminal...</div>, 'terminal')}
-            title='Terminal'
-            className="flex items-center gap-2 px-3 py-1 rounded-[2px] bg-transparent hover:bg-gray-200/30 transition text-white border border-gray-300/20"
+            onClick={() => handleAppClick('terminal', 'Terminal', window.__TERMINAL_UI__ ?? <div>Loading Terminal...</div>)}
+            title={isAppMinimized('terminal') ? 'Restore Terminal' : 'Terminal'}
+            className={`flex items-center gap-2 px-3 py-1 rounded-[2px] transition text-white border border-gray-300/20 ${isAppMinimized('terminal') ? 'bg-gray-600/50 opacity-75' : 'bg-transparent hover:bg-gray-200/30'}`}
           >
             <span className="text-lg"><i className="fa fa-terminal"></i></span>
+            {isAppMinimized('terminal')}
           </button>
           <button
-            onClick={() => (window as any).ZynqOS_openWindow?.('Wednesday', window.__WEDNESDAY_UI__ ?? <div>Loading Wednesday...</div>, 'wednesday')}
-            title='Wednesday'
-            className="flex items-center gap-2 px-3 py-1 rounded-[2px] bg-transparent hover:bg-gray-200/30 transition text-white border border-gray-300/20"
+            onClick={() => handleAppClick('wednesday', 'Wednesday AI', window.__WEDNESDAY_UI__ ?? <div>Loading Wednesday...</div>)}
+            title={isAppMinimized('wednesday') ? 'Restore Wednesday' : 'Wednesday'}
+            className={`flex items-center gap-2 px-3 py-1 rounded-[2px] transition text-white border border-gray-300/20 ${isAppMinimized('wednesday') ? 'bg-gray-600/50 opacity-75' : 'bg-transparent hover:bg-gray-200/30'}`}
           >
             <span className="text-lg font-thin"><i className="scale-90 fa-solid fa-wand-magic-sparkles"></i></span>
+            {isAppMinimized('wednesday')}
           </button>
         </div>
 

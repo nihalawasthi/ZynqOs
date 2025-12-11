@@ -247,6 +247,9 @@ export default function PhantomSurf() {
         padding: 20,
         gap: 60
       }}>
+
+
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 40, width: '100%' }}>
         {/* Logo/Title */}
         <h1 style={{ 
           fontSize: 48, 
@@ -258,96 +261,73 @@ export default function PhantomSurf() {
         }}>
           PhantomSurf
         </h1>
-
-        {/* Search Box */}
-        <div style={{ width: '100%', maxWidth: 600 }}>
-          <form onSubmit={handleSearch} style={{ position: 'relative' }}>
-            <input
-              type="text"
+        <div style={{ width: '100%', maxWidth: 600, padding: '0 20px' }}>
+          <div
+          className='transition focus-within:ring-2 focus-within:ring-green-500'
+           style={{
+            display: 'flex',
+            alignItems: 'center',
+            background: '#222',
+            borderRadius: 50,
+            border: '1px solid rgba(255,255,255,0.1)',
+            gap: 12,
+            marginBottom: 24
+          }}>
+            <input type="text" placeholder="Surf Like A Phantom"
               value={input}
-              onChange={e => setInput(e.target.value)}
-              placeholder="Surf Like A Phantom"
-              autoFocus
-              style={{ 
-                width: '100%',
-                padding: '18px 60px 18px 24px', 
-                borderRadius: 50, 
-                border: '1px solid rgba(255,255,255,0.1)', 
-                background: 'rgba(255,255,255,0.05)',
+              onChange={(e) => setInput(e.target.value)}
+              onKeyPress={(e) => e.key === 'Enter' && handleSearch(e as any)}
+              style={{
+                flex: 1,
+                padding: '12px 20px',
+                background: 'transparent',
+                border: 'none',
                 color: '#fff',
-                fontSize: 16,
                 outline: 'none',
-                backdropFilter: 'blur(10px)',
-                transition: 'all 0.3s',
-                boxShadow: '0 8px 32px rgba(0,0,0,0.3)'
-              }}
-              onFocus={(e) => {
-                e.target.style.background = 'rgba(255,255,255,0.08)'
-                e.target.style.borderColor = 'rgba(102,126,234,0.5)'
-              }}
-              onBlur={(e) => {
-                e.target.style.background = 'rgba(255,255,255,0.05)'
-                e.target.style.borderColor = 'rgba(255,255,255,0.1)'
+                fontSize: 14
               }}
             />
-            <button 
-              type="submit"
-              style={{
-                position: 'absolute',
-                right: 8,
-                top: '50%',
-                transform: 'translateY(-50%)',
-                width: 42,
-                height: 42,
-                borderRadius: '50%',
-                border: 'none',
-                background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-                color: '#fff',
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                fontSize: 18,
-                transition: 'transform 0.2s'
-              }}
-              onMouseEnter={(e) => e.currentTarget.style.transform = 'translateY(-50%) scale(1.05)'}
-              onMouseLeave={(e) => e.currentTarget.style.transform = 'translateY(-50%) scale(1)'}
-            >
-              🔍
-            </button>
-          </form>
+            <div style={{ 
+              width: 36, 
+              height: 36, 
+              marginRight: '7px',
+              backgroundImage: "url('/assets/PS.png')",
+              backgroundSize: 'cover',
+              backgroundPosition: 'center',
+              borderRadius: '50%',
+              cursor: 'pointer'
+            }}></div>
+          </div>
+
+          <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', justifyContent: 'center', marginTop: 20 }}>
+            <QuickButton 
+              icon={<i className="fa-solid fa-envelope" />}
+              label="Gmail" 
+              onClick={() => handleQuickLink('https://mail.google.com')}
+            />
+            <QuickButton 
+              icon={<i className="fa-solid fa-image" />}
+              label="Images" 
+              onClick={() => handleQuickLink('https://images.google.com')}
+            />
+            <QuickButton 
+              icon={<i className="fa-solid fa-file" />}
+              label="Load HTML" 
+              onClick={() => fileInputRef.current?.click()}
+            />
+            <input 
+              ref={fileInputRef}
+              type="file" 
+              accept=".html,.htm" 
+              onChange={handleFileChange} 
+              style={{ display: 'none' }} 
+            />
+          </div>
         </div>
+      </div>
 
         {/* Quick Access Buttons */}
-        <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', justifyContent: 'center' }}>
-          <QuickButton 
-            icon="📧" 
-            label="Gmail" 
-            onClick={() => handleQuickLink('https://mail.google.com')}
-          />
-          <QuickButton 
-            icon="🖼️" 
-            label="Images" 
-            onClick={() => handleQuickLink('https://images.google.com')}
-          />
-          <QuickButton 
-            icon="🔧" 
-            label="Tools" 
-            onClick={() => fileInputRef.current?.click()}
-          />
-          <QuickButton 
-            icon="📱" 
-            label="Apps" 
-            onClick={() => handleQuickLink('https://www.google.com/intl/en/about/products')}
-          />
-          <input 
-            ref={fileInputRef}
-            type="file" 
-            accept=".html,.htm" 
-            onChange={handleFileChange} 
-            style={{ display: 'none' }} 
-          />
-        </div>
+        {/*  */}
       </div>
 
       {/* Footer */}
@@ -371,7 +351,7 @@ export default function PhantomSurf() {
   )
 }
 
-function QuickButton({ icon, label, onClick }: { icon: string; label: string; onClick: () => void }) {
+function QuickButton({ icon, label, onClick }: { icon: string | React.ReactNode; label: string; onClick: () => void }) {
   return (
     <button
       onClick={onClick}

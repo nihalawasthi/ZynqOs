@@ -287,26 +287,11 @@ export default function StartMenu() {
             openFn: () => {
                 (window as any).ZynqOS_openWindow?.('Settings',
                     window.__SETTINGS_UI__ ?? <div>Loading Settings...</div>,
-                    'settings')
-            },
-        },
-        {
-            id: 'about',
-            name: 'About',
-            icon: <i className="fas fa-info-circle"></i>,
-            description: 'System information',
-            openFn: () => {
-                (window as any).ZynqOS_openWindow?.('About ZynqOS',
-                    <div className="p-6 text-gray-300 flex flex-col items-center">
-                        <img src="/assets/logo.png" className="w-20 h-20 mb-4" alt="ZynqOS" />
-                        <h2 className="text-xl font-bold mb-2">ZynqOS</h2>
-                        <p className="text-gray-500 text-sm mb-4">Browser Micro-Runtime v0.5</p>
-                        <div className="text-xs text-gray-600 text-center">
-                            <p>A web-based operating system experience</p>
-                            <p className="mt-2">Powered by WASI & WebAssembly</p>
-                        </div>
-                    </div>,
-                    'about')
+                    'settings',
+                    undefined,
+                    undefined,
+                    undefined,
+                    true)
             },
         },
     ]
@@ -321,10 +306,6 @@ export default function StartMenu() {
             app.description?.toLowerCase().includes(query)
         )
     }, [searchQuery])
-
-    const currentTime = new Date()
-    const greeting = currentTime.getHours() < 12 ? 'Good morning' :
-        currentTime.getHours() < 18 ? 'Good afternoon' : 'Good evening'
 
     return (
         <>
@@ -538,17 +519,6 @@ export default function StartMenu() {
                                     >
                                         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="none" className="svg-icon"><g strokeWidth="1.5" strokeLinecap="round" stroke="#99a1af"><circle r="2.5" cy="10" cx="10"></circle><path fillRule="evenodd" d="m8.39079 2.80235c.53842-1.51424 2.67991-1.51424 3.21831-.00001.3392.95358 1.4284 1.40477 2.3425.97027 1.4514-.68995 2.9657.82427 2.2758 2.27575-.4345.91407.0166 2.00334.9702 2.34248 1.5143.53842 1.5143 2.67996 0 3.21836-.9536.3391-1.4047 1.4284-.9702 2.3425.6899 1.4514-.8244 2.9656-2.2758 2.2757-.9141-.4345-2.0033.0167-2.3425.9703-.5384 1.5142-2.67989 1.5142-3.21831 0-.33914-.9536-1.4284-1.4048-2.34247-.9703-1.45148.6899-2.96571-.8243-2.27575-2.2757.43449-.9141-.01669-2.0034-.97028-2.3425-1.51422-.5384-1.51422-2.67994.00001-3.21836.95358-.33914 1.40476-1.42841.97027-2.34248-.68996-1.45148.82427-2.9657 2.27575-2.27575.91407.4345 2.00333-.01669 2.34247-.97026z" clipRule="evenodd"></path></g></svg>
                                     </button>
-
-                                    <button
-                                        onClick={() => {
-                                            systemApps[1].openFn()
-                                            setOpen(false)
-                                        }}
-                                        className="transition text-gray-400 hover:text-gray-200"
-                                        title='About'
-                                    >
-                                        <i className="fas fa-info-circle text-sm"></i>
-                                    </button>
                                     <button
                                         onClick={() => {
                                             if (confirm('Refresh the system?')) {
@@ -563,7 +533,7 @@ export default function StartMenu() {
                                 </div>
                                 {/* Profile info - centered */}
                                 <div className="flex flex-col pb-2 items-center bg-black justify-center gap-3">
-                                    <div className="w-14 h-14 rounded-full border border-blue-500/50 flex items-center justify-center text-lg font-bold text-blue-300 shadow-lg shadow-blue-500/20 overflow-hidden">
+                                    <div className="w-14 h-14 rounded-full border border-blue-400/30 flex items-center justify-center text-lg font-bold text-blue-200 shadow-md shadow-blue-400/10 overflow-hidden">
                                         {profile.avatar ? (
                                             <img src={profile.avatar} alt={profile.name || 'avatar'} className="w-full h-full object-cover" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }} />
                                         ) : (
@@ -605,7 +575,7 @@ export default function StartMenu() {
 
                             {/* Quick Actions */}
                             <div className="flex-1 px-2 py-1 space-y-1">
-                                <div className='w-full flex items-center'>
+                                <div className="w-full flex items-center">
                                     <button
                                         onClick={() => fileInputRef.current?.click()}
                                         className="w-[50%] flex items-center gap-2 px-2 py-2 rounded-lg hover:bg-[#2a2a2a] transition text-sm text-[#e0e0e0] hover:text-white group"
@@ -714,7 +684,7 @@ export default function StartMenu() {
                                 'mapp-importer': window.__MAPP_IMPORTER_UI__ ?? <div>Loading...</div>,
                                 'phantomsurf': window.__PHANTOMSURF_UI__ ?? <div>Loading PhantomSurf...</div>,
                             }
-                            
+
                             const appTitleMap: Record<string, string> = {
                                 'file-browser': 'Files',
                                 'text-editor': 'Zynqpad',
@@ -726,12 +696,12 @@ export default function StartMenu() {
                                 'mapp-importer': 'Import Package',
                                 'phantomsurf': 'PhantomSurf',
                             }
-                            
+
                             const ui = appUIMap[contextMenu.app.id]
                             const title = appTitleMap[contextMenu.app.id] || contextMenu.app.name
-                            
+
                             if (ui) {
-                                ;(window as any).ZynqOS_openWindow?.(
+                                ; (window as any).ZynqOS_openWindow?.(
                                     title,
                                     ui,
                                     `${contextMenu.app.id}-${Date.now()}`

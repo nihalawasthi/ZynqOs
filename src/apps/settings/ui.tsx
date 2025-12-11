@@ -608,14 +608,14 @@ export default function SettingsUI() {
             </div>
 
             {/* Tab Navigation */}
-            <div className="border-b border-[#333] flex">
-                {(['about', 'display', 'storage', 'system'] as const).map((tab) => (
+            <div className="border-b border-[#333] flex relative">
+                {(['about', 'display', 'storage', 'system'] as const).map((tab, index) => (
                     <button
                         key={tab}
                         onClick={() => setActiveTab(tab)}
-                        className={`flex-1 px-4 py-3 font-semibold text-sm uppercase tracking-wide transition border-b-2 ${activeTab === tab
-                            ? 'border-blue-500 text-blue-400'
-                            : 'border-transparent text-gray-400 hover:text-gray-300'
+                        className={`flex-1 px-4 py-3 font-semibold text-sm uppercase tracking-wide transition-colors duration-500 ${activeTab === tab
+                            ? 'text-blue-400'
+                            : 'text-gray-400 hover:text-gray-300'
                             }`}
                     >
                         {tab === 'about' && <i className="fas fa-info-circle mr-2"></i>}
@@ -625,14 +625,24 @@ export default function SettingsUI() {
                         {tab.charAt(0).toUpperCase() + tab.slice(1)}
                     </button>
                 ))}
+                {/* Sliding indicator */}
+                <div 
+                    className="absolute bottom-0 h-0.5 bg-blue-500 transition-all duration-500 ease-out"
+                    style={{
+                        width: '25%',
+                        left: `${['about', 'display', 'storage', 'system'].indexOf(activeTab) * 25}%`
+                    }}
+                ></div>
             </div>
 
             {/* Content */}
             <div className="flex-1 overflow-y-auto p-6 scrollbar">
-                {activeTab === 'display' && displayTabContent()}
-                {activeTab === 'storage' && storageTabContent()}
-                {activeTab === 'system' && systemTabContent()}
-                {activeTab === 'about' && aboutTabContent()}
+                <div className="tab-slide-enter" key={activeTab}>
+                    {activeTab === 'display' && displayTabContent()}
+                    {activeTab === 'storage' && storageTabContent()}
+                    {activeTab === 'system' && systemTabContent()}
+                    {activeTab === 'about' && aboutTabContent()}
+                </div>
             </div>
         </div>
     )

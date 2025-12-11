@@ -80,7 +80,7 @@ export default function WednesdayUI() {
     <div className='h-full bg-black text-white flex flex-col font-mono overflow-hidden'>
       <div className='flex-1 flex flex-col relative overflow-hidden'>
         <div className='absolute inset-0 bg-gradient-to-br from-purple-900/20 via-black to-blue-900/20 z-0' />
-        <div className='flex-1 overflow-y-auto z-10 p-4 space-y-4'>
+        <div className='scrollbar flex-1 overflow-y-auto z-10 p-4 space-y-4'>
           {messages.map(m => (
             <div key={m.id} className={`flex ${m.type === 'user' ? 'justify-end' : 'justify-start'}`}>
               <div className={`max-w-[80%] rounded-lg p-3 ${m.type === 'user' ? 'bg-blue-600 text-white' : m.type === 'system' ? 'bg-zinc-800 text-zinc-300 text-sm' : 'bg-zinc-900 text-white border border-zinc-700'}`}>
