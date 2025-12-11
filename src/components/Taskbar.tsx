@@ -6,11 +6,13 @@ import { formatDuration, useSessionTimer, SESSION_IDLE_THRESHOLD_MS } from '../u
 export default function Taskbar() {
   const [isMaximized, setIsMaximized] = useState(false)
   const [minimizedWindows, setMinimizedWindows] = useState<Array<{ id: string; title: string; appType: string }>>([])
+  const [openedWindows, setOpenedWindows] = useState<Array<{ id: string; title: string; appType: string }>>([])
 
   useEffect(() => {
     const checkMaximized = () => {
       setIsMaximized((globalThis as any).ZynqOS_isAnyWindowMaximized || false)
       setMinimizedWindows((globalThis as any).ZynqOS_minimizedWindows || [])
+      setOpenedWindows((globalThis as any).ZynqOS_openedWindows || [])
     }
     
     const interval = setInterval(checkMaximized, 100)
@@ -26,8 +28,22 @@ export default function Taskbar() {
     { appType: 'wednesday', title: 'Wednesday', icon: 'fa-solid fa-wand-magic-sparkles' },
     { appType: 'text-editor', title: 'Zynqpad', icon: 'fas fa-file-alt' },
     { appType: 'python', title: 'Python', icon: 'fab fa-python' },
-    { appType: 'calculator', title: 'Calculator', icon: 'fas fa-calculator' }
+    { appType: 'calculator', title: 'Calculator', icon: 'fas fa-calculator' },
+    { appType: 'settings', title: 'Settings', icon: 'fas fa-cog' },
+    { appType: 'mapp-importer', title: 'Import Package', icon: 'fas fa-download' }
   ]
+
+  const getIconForAppType = (appType: string): string => {
+    return appConfigs.find(c => c.appType === appType)?.icon || 'fas fa-window-restore'
+  }
+
+  const getTitleForAppType = (appType: string): string => {
+    return appConfigs.find(c => c.appType === appType)?.title || appType
+  }
+
+  // Get apps that are not in the fixed taskbar
+  const fixedAppTypes = ['file-browser', 'store', 'phantomsurf', 'terminal', 'wednesday']
+  const dynamicOpenedApps = openedWindows.filter(w => !fixedAppTypes.includes(w.appType))
 
   const isAppMinimized = (appType: string) => {
     return minimizedWindows.some(win => win.appType === appType)
@@ -37,12 +53,12 @@ export default function Taskbar() {
     return minimizedWindows.find(win => win.appType === appType)?.id
   }
 
-  const handleAppClick = (appType: string, title: string, content: any) => {
+  const handleAppClick = (appType: string, title: string, content?: any) => {
     const minimizedId = getMinimizedWindowId(appType)
     if (minimizedId) {
       // Restore minimized window
       (globalThis as any).ZynqOS_restoreMinimized?.(minimizedId)
-    } else {
+    } else if (content) {
       // Open new window
       (window as any).ZynqOS_openWindow?.(title, content, appType)
     }
@@ -98,6 +114,23 @@ export default function Taskbar() {
             {isAppMinimized('wednesday')}
           </button>
         </div>
+
+        {/* Dynamic apps (opened but not in fixed taskbar) */}
+        {dynamicOpenedApps.length > 0 && (
+          <div className="flex items-center gap-2 px-2 border-l border-gray-700/50">
+            {dynamicOpenedApps.map(app => (
+              <button
+                key={app.id}
+                onClick={() => handleAppClick(app.appType, app.title)}
+                title={isAppMinimized(app.appType) ? `Restore ${app.title}` : app.title}
+                className={`flex items-center gap-2 px-3 py-1 rounded-[2px] transition text-white border border-gray-300/20 ${isAppMinimized(app.appType) ? 'bg-gray-600/50 opacity-75' : 'bg-transparent hover:bg-gray-200/30'}`}
+              >
+                <span className="text-lg"><i className={getIconForAppType(app.appType)}></i></span>
+                {isAppMinimized(app.appType)}
+              </button>
+            ))}
+          </div>
+        )}
 
         <div className="ml-auto flex items-center gap-2">
           <Clock />

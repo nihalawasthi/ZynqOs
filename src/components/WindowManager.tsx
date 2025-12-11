@@ -152,7 +152,9 @@ export default function WindowManager() {
       const newWindows = group.windows.filter(w => w.id !== windowId)
       
       if (newWindows.length === 0) {
-        // Close entire group
+        // Close entire group - remove from maximized set
+        maximizedWindowsRef.current.delete(groupId)
+        setIsAnyWindowMaximized(maximizedWindowsRef.current.size > 0)
         return groups.filter(g => g.id !== groupId)
       }
       
@@ -178,6 +180,9 @@ export default function WindowManager() {
   }
 
   function closeWindowGroup(groupId: string) {
+    // Remove from maximized set when closing
+    maximizedWindowsRef.current.delete(groupId)
+    setIsAnyWindowMaximized(maximizedWindowsRef.current.size > 0)
     setWindowGroups(groups => groups.filter(g => g.id !== groupId))
   }
 
@@ -282,8 +287,18 @@ export default function WindowManager() {
           }))
       : [];
 
+    // Build opened windows list (all windows - both minimized and non-minimized)
+    const openedList = Array.isArray(windowGroups)
+      ? windowGroups.map(g => ({
+            id: g.id,
+            title: g.windows[0]?.title || 'Window',
+            appType: g.appType
+          }))
+      : [];
+
     (globalThis as any).ZynqOS_isAnyWindowMaximized = isAnyWindowMaximized;
     (globalThis as any).ZynqOS_minimizedWindows = minimizedList;
+    (globalThis as any).ZynqOS_openedWindows = openedList;
     (globalThis as any).ZynqOS_restoreMinimized = restoreMinimizedWindow;
   }, [isAnyWindowMaximized, windowGroups])
 
