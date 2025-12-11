@@ -285,12 +285,8 @@ export default function StartMenu() {
             icon: <i className="fas fa-cog"></i>,
             description: 'System preferences',
             openFn: () => {
-                // Settings placeholder
                 (window as any).ZynqOS_openWindow?.('Settings',
-                    <div className="p-6 text-gray-300">
-                        <h2 className="text-xl font-bold mb-4">System Settings</h2>
-                        <p className="text-gray-500">Settings panel coming soon...</p>
-                    </div>,
+                    window.__SETTINGS_UI__ ?? <div>Loading Settings...</div>,
                     'settings')
             },
         },
@@ -538,8 +534,9 @@ export default function StartMenu() {
                                         }}
                                         className="transition text-gray-400 hover:text-gray-200"
                                         title='Settings'
+                                        id='settings'
                                     >
-                                        <i className="fas fa-cog text-sm"></i>
+                                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="none" className="svg-icon"><g strokeWidth="1.5" strokeLinecap="round" stroke="#99a1af"><circle r="2.5" cy="10" cx="10"></circle><path fillRule="evenodd" d="m8.39079 2.80235c.53842-1.51424 2.67991-1.51424 3.21831-.00001.3392.95358 1.4284 1.40477 2.3425.97027 1.4514-.68995 2.9657.82427 2.2758 2.27575-.4345.91407.0166 2.00334.9702 2.34248 1.5143.53842 1.5143 2.67996 0 3.21836-.9536.3391-1.4047 1.4284-.9702 2.3425.6899 1.4514-.8244 2.9656-2.2758 2.2757-.9141-.4345-2.0033.0167-2.3425.9703-.5384 1.5142-2.67989 1.5142-3.21831 0-.33914-.9536-1.4284-1.4048-2.34247-.9703-1.45148.6899-2.96571-.8243-2.27575-2.2757.43449-.9141-.01669-2.0034-.97028-2.3425-1.51422-.5384-1.51422-2.67994.00001-3.21836.95358-.33914 1.40476-1.42841.97027-2.34248-.68996-1.45148.82427-2.9657 2.27575-2.27575.91407.4345 2.00333-.01669 2.34247-.97026z" clipRule="evenodd"></path></g></svg>
                                     </button>
 
                                     <button
@@ -613,8 +610,8 @@ export default function StartMenu() {
                                         onClick={() => fileInputRef.current?.click()}
                                         className="w-[50%] flex items-center gap-2 px-2 py-2 rounded-lg hover:bg-[#2a2a2a] transition text-sm text-[#e0e0e0] hover:text-white group"
                                     >
-                                        <span className="w-6 h-6 rounded-lg bg-[#2a4a3a] flex items-center justify-center text-[#4ade80] group-hover:bg-[#2a5a3a] transition">
-                                            <i className="fas fa-upload text-xs"></i>
+                                        <span className="w-6 h-6 rounded-lg flex items-center justify-center transition">
+                                            <i className="fa-solid fa-file-import"></i>
                                         </span>
                                         <span>Import</span>
                                     </button>
@@ -623,8 +620,8 @@ export default function StartMenu() {
                                         onClick={handleExportFiles}
                                         className="w-[50%] flex items-center gap-2 px-2 py-2 rounded-lg hover:bg-[#2a2a2a] transition text-sm text-[#e0e0e0] hover:text-white group"
                                     >
-                                        <span className="w-6 h-6 rounded-lg bg-[#4a3a2a] flex items-center justify-center text-[#fbbf24] group-hover:bg-[#5a3a2a] transition">
-                                            <i className="fas fa-download text-xs"></i>
+                                        <span className="w-6 h-6 rounded-lg flex items-center justify-center transition">
+                                            <i className="fa-solid fa-file-export"></i>
                                         </span>
                                         <span>Export</span>
                                     </button>

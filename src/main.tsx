@@ -18,6 +18,7 @@ import './apps/store/ui'
 import './apps/wednesday/ui'
 import './apps/python/ui'
 import './apps/phantomsurf/ui'
+import './apps/settings/ui'
 // Initialize VFS with sample files
 initializeVFS().catch(console.error)
 
@@ -25,8 +26,33 @@ initializeVFS().catch(console.error)
 import { bootstrapAuthRedirect } from './auth/init'
 bootstrapAuthRedirect().catch(console.error)
 
+// Apply saved wallpaper on load
+function applySavedWallpaper() {
+  const savedWallpaper = localStorage.getItem('zynqos_wallpaper_source')
+  const savedSize = localStorage.getItem('zynqos_background_size')
+  
+  if (savedWallpaper || savedSize) {
+    // Wait for root to be available
+    setTimeout(() => {
+      const root = document.querySelector('.h-screen')
+      if (root && root instanceof HTMLElement) {
+        if (savedWallpaper) {
+          root.style.backgroundImage = `url('${savedWallpaper}')`
+        }
+        if (savedSize) {
+          root.style.backgroundSize = savedSize
+        }
+        root.style.backgroundRepeat = 'no-repeat'
+        root.style.backgroundPosition = 'center'
+      }
+    }, 100)
+  }
+}
+
 createRoot(document.getElementById('root') as HTMLElement).render(
   <React.StrictMode>
     <App />
   </React.StrictMode>
 )
+
+applySavedWallpaper()

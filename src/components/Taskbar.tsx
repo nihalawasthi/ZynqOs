@@ -9,7 +9,7 @@ export default function Taskbar() {
       <div className="mr-auto ml-4">
         {/* future components */}
       </div>
-      <div className="absolute bottom-1 left-1/2 transform -translate-x-1/2 w-[calc(60%-48px)] max-w-[980px] px-4 py-2 bg-white/10 backdrop-blur-md border border-white/10 rounded-full shadow-2xl flex items-center gap-2">
+      <div className="absolute bottom-1 left-1/2 transform -translate-x-1/2 w-[calc(60%-48px)] max-w-[980px] px-4 py-2 bg-[#1A1A1A] backdrop-blur-md border border-white/10 rounded-full shadow-2xl flex items-center gap-2">
         <StartMenu />
 
         <div className="flex items-center gap-2">
