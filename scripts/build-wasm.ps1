@@ -26,16 +26,4 @@ if ($LASTEXITCODE -ne 0) {
 Write-Host "✓ Calculator WASM build finished. Output in $OUT_DIR" -ForegroundColor Green
 Set-Location $ROOT_DIR
 
-Write-Host ""
-Write-Host "2. Building WASI terminal..." -ForegroundColor Yellow
-
-# Build WASI terminal
-& "$ROOT_DIR\scripts\build-wasi.ps1" -Target "wasm32-wasip1"
-
-if ($LASTEXITCODE -ne 0) {
-    Write-Host "WASI terminal build failed!" -ForegroundColor Red
-    exit 1
-}
-
-Write-Host ""
 Write-Host "✓ All WASM builds complete!" -ForegroundColor Green

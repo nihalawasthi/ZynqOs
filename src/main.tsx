@@ -9,11 +9,11 @@ import { Buffer } from 'buffer'
 ;(window as any).Buffer = Buffer
 
 // Import apps to register them globally
-import './apps/calculator/ui'
 import './apps/terminal/ui'
 import './apps/text-editor/ui'
 import './apps/file-browser/ui'
 import './apps/mapp-importer/ui'
+import './apps/runner/ui'
 import './apps/store/ui'
 import './apps/wednesday/ui'
 import './apps/python/ui'

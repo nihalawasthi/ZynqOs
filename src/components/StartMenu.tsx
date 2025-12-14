@@ -2,6 +2,8 @@ import React, { useState, useMemo, useEffect, useRef } from 'react'
 import { writeFile, readFile, readdir } from '../vfs/fs'
 import { getStorageStatus, disconnectStorage, type StorageStatus } from '../auth/storage'
 import { isTextFile } from '../vfs/fileTypes'
+import { getInstalledPackages, executePackage } from '../packages/manager'
+import type { InstalledPackage } from '../packages/types'
 
 type App = {
     id: string
@@ -61,6 +63,7 @@ export default function StartMenu() {
     const [storageStatus, setStorageStatus] = useState<StorageStatus>({ connected: false })
     const [profile, setProfile] = useState<{ name?: string; email?: string; avatar?: string; provider?: string }>(getCachedProfile() || {})
     const [contextMenu, setContextMenu] = useState<ContextMenu>(null)
+    const [installedPackages, setInstalledPackages] = useState<InstalledPackage[]>([])
     const searchInputRef = useRef<HTMLInputElement>(null)
     const fileInputRef = useRef<HTMLInputElement>(null)
 
@@ -109,6 +112,31 @@ export default function StartMenu() {
             return () => document.removeEventListener('click', handleClick)
         }
     }, [contextMenu])
+
+    // Load installed packages
+    useEffect(() => {
+        loadInstalledPackages()
+    }, [])
+
+    async function loadInstalledPackages() {
+        try {
+            const packages = await getInstalledPackages()
+            setInstalledPackages(packages)
+        } catch (err) {
+            console.error('Failed to load installed packages:', err)
+        }
+    }
+
+    // Listen for package installations to refresh the list
+    useEffect(() => {
+        const onPackageChange = () => loadInstalledPackages()
+        window.addEventListener('zynqos:package-installed', onPackageChange as EventListener)
+        window.addEventListener('zynqos:package-uninstalled', onPackageChange as EventListener)
+        return () => {
+            window.removeEventListener('zynqos:package-installed', onPackageChange as EventListener)
+            window.removeEventListener('zynqos:package-uninstalled', onPackageChange as EventListener)
+        }
+    }, [])
 
     // Listen for storage connection events to update UI instantly
     useEffect(() => {
@@ -251,11 +279,11 @@ export default function StartMenu() {
             openFn: () => (window as any).ZynqOS_openWindow?.('App Store', window.__STORE_UI__ ?? <div>Loading Store...</div>, 'store'),
         },
         {
-            id: 'calculator',
-            name: 'Calculator',
-            icon: <i className="fas fa-calculator"></i>,
-            description: 'Perform calculations',
-            openFn: () => (window as any).ZynqOS_openWindow?.('Calculator', window.__CALC_UI__ ?? <div>Loading Calculator...</div>, 'calculator'),
+            id: 'wasm-runner',
+            name: 'WASM Runner',
+            icon: <i className="fa-solid fa-play"></i>,
+            description: 'Run your own WASM/WASI apps',
+            openFn: () => (window as any).ZynqOS_openWindow?.('WASM Runner', (window as any).__WASM_RUNNER_UI__ ?? <div>Loading Runner...</div>, 'wasm-runner'),
         },
         {
             id: 'mapp-importer',
@@ -296,7 +324,78 @@ export default function StartMenu() {
         },
     ]
 
-    const allApps = [...pinnedApps, ...systemApps]
+    // Convert installed packages to App format (support wasm/wasi and selected web-apps)
+    const renderIcon = (icon?: string) => {
+        if (!icon) return <span className="text-2xl">📦</span>
+        const isUrl = icon.startsWith('http://') || icon.startsWith('https://') || icon.startsWith('//')
+        return isUrl ? (
+            <img
+                src={icon}
+                alt="app icon"
+                className="h-6 w-6 object-contain"
+                onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none' }}
+            />
+        ) : (
+            <span className="text-2xl">{icon}</span>
+        )
+    }
+
+    const installedApps: App[] = installedPackages
+        .filter(pkg => pkg.type === 'wasm' || pkg.type === 'wasi' || pkg.type === 'wasm-bindgen' || pkg.type === 'web-app')
+        .map(pkg => ({
+            id: pkg.id,
+            name: pkg.name,
+            icon: renderIcon(pkg.icon),
+            description: pkg.description,
+            openFn: async () => {
+                try {
+                    if (pkg.type === 'wasm-bindgen') {
+                        const instance = await executePackage(pkg.id)
+                        if (!instance) throw new Error('Execution failed')
+
+                        const exports = (instance as any).exports || {}
+                        const exportNames = Object.keys(exports).filter(k => k !== 'default')
+                        const content = (
+                            <div className="p-3 space-y-2 text-sm text-gray-200">
+                                <div className="font-semibold">{pkg.name} (wasm-bindgen)</div>
+                                <div className="text-gray-400">Module loaded. Exposed exports:</div>
+                                <div className="flex flex-wrap gap-1 text-xs">
+                                    {exportNames.length === 0 ? (
+                                        <span className="text-gray-500">(none)</span>
+                                    ) : (
+                                        exportNames.map(name => (
+                                            <span key={name} className="px-2 py-1 bg-gray-800 rounded border border-gray-700">{name}</span>
+                                        ))
+                                    )}
+                                </div>
+                                <div className="text-gray-500 text-xs">Use exports in console or custom UI.</div>
+                            </div>
+                        )
+
+                        ;(window as any).ZynqOS_openWindow?.(pkg.name, content, pkg.id)
+                        return
+                    }
+
+                    if (pkg.type === 'wasm' || pkg.type === 'wasi') {
+                        const instance = await executePackage(pkg.id)
+                        if (!instance) throw new Error('Execution failed')
+                    } else {
+                        // web-app: dynamically load UI module if available
+                        try {
+                            await import(/* @vite-ignore */ `../apps/${pkg.id}/ui`)
+                        } catch {}
+                        const uiVar = (pkg.id === 'calculator') ? (window as any).__CALC_UI__ : null
+                        const ui = uiVar ?? <div>Loading {pkg.name}...</div>
+                        ;(window as any).ZynqOS_openWindow?.(pkg.name, ui, pkg.id)
+                    }
+                } catch (err) {
+                    console.error(`Failed to open ${pkg.name}:`, err)
+                    alert(`Failed to open ${pkg.name}: ${err instanceof Error ? err.message : 'Unknown error'}`)
+                }
+            }
+        }))
+
+    const allApps = [...pinnedApps, ...systemApps, ...installedApps]
 
     const filteredApps = useMemo(() => {
         if (!searchQuery.trim()) return []
@@ -305,7 +404,7 @@ export default function StartMenu() {
             app.name.toLowerCase().includes(query) ||
             app.description?.toLowerCase().includes(query)
         )
-    }, [searchQuery])
+    }, [searchQuery, installedApps])
 
     return (
         <>
@@ -680,7 +779,6 @@ export default function StartMenu() {
                                 'python': window.__PYTHON_UI__ ?? <div>Loading Python...</div>,
                                 'wednesday': window.__WEDNESDAY_UI__ ?? <div>Loading Wednesday...</div>,
                                 'store': window.__STORE_UI__ ?? <div>Loading Store...</div>,
-                                'calculator': window.__CALC_UI__ ?? <div>Loading Calculator...</div>,
                                 'mapp-importer': window.__MAPP_IMPORTER_UI__ ?? <div>Loading...</div>,
                                 'phantomsurf': window.__PHANTOMSURF_UI__ ?? <div>Loading PhantomSurf...</div>,
                             }
@@ -692,7 +790,6 @@ export default function StartMenu() {
                                 'python': 'Python',
                                 'wednesday': 'Wednesday AI',
                                 'store': 'App Store',
-                                'calculator': 'Calculator',
                                 'mapp-importer': 'Import Package',
                                 'phantomsurf': 'PhantomSurf',
                             }
