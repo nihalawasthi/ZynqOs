@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react'
+import { toast } from '../../hooks/use-toast'
 import { getStorageStatus, disconnectStorage, type StorageStatus } from '../../auth/storage'
 
 type TabType = 'display' | 'storage' | 'system' | 'about'
@@ -103,7 +104,14 @@ export default function SettingsUI() {
     }
 
     const handleClearCache = async () => {
-        if (confirm('Clear all cached data? This will remove temporary files but keep your files and settings.')) {
+        const { dismiss } = toast({
+            title: 'Clear Cache?',
+            description: 'This will remove temporary files but keep your files and settings.',
+            variant: 'default',
+            action: (
+                <button
+                    onClick={async () => {
+                        dismiss()
             try {
                 // Clear all caches
                 const cacheNames = await caches.keys()
@@ -138,24 +146,43 @@ export default function SettingsUI() {
                 }
 
                 await calculateCacheSize()
-                alert('Cache cleared successfully')
-            } catch (e) {
-                console.error('Cache clear error:', e)
-                alert('Failed to clear some cache items, but cleared what was possible')
-            }
-        }
+                        toast({ title: 'Success', description: 'Cache cleared successfully', variant: 'success' })
+                    } catch (e) {
+                        console.error('Cache clear error:', e)
+                        toast({ title: 'Partial Success', description: 'Failed to clear some cache items, but cleared what was possible', variant: 'warning' })
+                    }
+                }}
+                className="px-3 py-1 text-sm bg-red-600 rounded hover:bg-red-700"
+            >
+                Clear
+            </button>
+            ),
+        })
     }
 
     const handleDisconnectStorage = async () => {
-        if (confirm('Disconnect from cloud storage? You can reconnect later.')) {
-            try {
-                await disconnectStorage()
-                setStorageStatus({ connected: false })
-                alert('Cloud storage disconnected')
-            } catch (e) {
-                alert('Failed to disconnect')
-            }
-        }
+        const { dismiss } = toast({
+            title: 'Disconnect Storage?',
+            description: 'You can reconnect later.',
+            variant: 'default',
+            action: (
+                <button
+                    onClick={async () => {
+                        dismiss()
+                        try {
+                            await disconnectStorage()
+                            setStorageStatus({ connected: false })
+                            toast({ title: 'Disconnected', description: 'Cloud storage disconnected', variant: 'success' })
+                        } catch (e) {
+                            toast({ title: 'Error', description: 'Failed to disconnect', variant: 'destructive' })
+                        }
+                    }}
+                    className="px-3 py-1 text-sm bg-red-600 rounded hover:bg-red-700"
+                >
+                    Disconnect
+                </button>
+            ),
+        })
     }
 
     const handleRefreshWallpaper = () => {
@@ -182,7 +209,7 @@ export default function SettingsUI() {
         } catch (e) {
             console.error('Upload error:', e)
             setWallpaperLoading(false)
-            alert('Failed to upload wallpaper')
+            toast({ title: 'Upload Failed', description: 'Failed to upload wallpaper', variant: 'destructive' })
         }
     }
 
@@ -196,26 +223,40 @@ export default function SettingsUI() {
                 setWallpaperSource(url)
                 applyWallpaper(url)
             } catch {
-                alert('Invalid URL')
+                toast({ title: 'Error', description: 'Invalid URL', variant: 'destructive' })
             }
         }
     }
 
     const handleResetWallpaper = () => {
-        if (confirm('Reset to default wallpaper?')) {
-            localStorage.removeItem('zynqos_wallpaper_source')
-            localStorage.removeItem('zynqos_background_size')
-            setWallpaperSource('')
-            setBackgroundSize('60%')
-            // Apply default wallpaper without refresh
-            const root = document.querySelector('.h-screen')
-            if (root && root instanceof HTMLElement) {
-                root.style.backgroundImage = `url('/assets/wallpaper.png')`
-                root.style.backgroundSize = '60%'
-                root.style.backgroundRepeat = 'no-repeat'
-                root.style.backgroundPosition = 'center'
-            }
-        }
+        const { dismiss } = toast({
+            title: 'Reset Wallpaper?',
+            description: 'This will restore the default wallpaper.',
+            variant: 'default',
+            action: (
+                <button
+                    onClick={() => {
+                        dismiss()
+                        localStorage.removeItem('zynqos_wallpaper_source')
+                        localStorage.removeItem('zynqos_background_size')
+                        setWallpaperSource('')
+                        setBackgroundSize('60%')
+                        // Apply default wallpaper without refresh
+                        const root = document.querySelector('.h-screen')
+                        if (root && root instanceof HTMLElement) {
+                            root.style.backgroundImage = `url('/assets/wallpaper.png')`
+                            root.style.backgroundSize = '60%'
+                            root.style.backgroundRepeat = 'no-repeat'
+                            root.style.backgroundPosition = 'center'
+                        }
+                        toast({ title: 'Success', description: 'Wallpaper reset to default', variant: 'success' })
+                    }}
+                    className="px-3 py-1 text-sm bg-blue-600 rounded hover:bg-blue-700"
+                >
+                    Reset
+                </button>
+            ),
+        })
     }
 
     const handleWallpaperInputChange = (newUrl: string) => {

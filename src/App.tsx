@@ -1,6 +1,7 @@
 import React from 'react'
 import WindowManager from './components/WindowManager'
 import Taskbar from './components/Taskbar'
+import { Toaster } from './components/ui/toaster'
 
 export default function App() {
   return (
@@ -9,6 +10,7 @@ export default function App() {
       <div className="absolute inset-0 bg-grid-pattern opacity-5"></div>
       <WindowManager />
       <Taskbar />
+      <Toaster />
     </div>
   )
 }

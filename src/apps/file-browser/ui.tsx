@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react'
+import { toast } from '../../hooks/use-toast'
 import { readFile, writeFile, removeFile, readdir } from '../../vfs/fs'
 import { isEditable, tryDecodeText, getFileTypeDescription } from '../../vfs/fileTypes'
 
@@ -52,16 +53,30 @@ export default function FileBrowser() {
   }
 
   const handleDeleteFile = async (path: string) => {
-    if (confirm(`Delete ${path}?`)) {
-      await removeFile(path)
-      setStatus(`Deleted: ${path}`)
-      if (selectedFile === path) {
-        setSelectedFile(null)
-        setFileContent('')
-      }
-      await loadFiles()
-      setTimeout(() => setStatus(''), 2000)
-    }
+    const { dismiss } = toast({
+      title: 'Delete File?',
+      description: `Delete ${path}?`,
+      variant: 'default',
+      action: (
+        <button
+          onClick={async () => {
+            dismiss()
+            await removeFile(path)
+            setStatus(`Deleted: ${path}`)
+            if (selectedFile === path) {
+              setSelectedFile(null)
+              setFileContent('')
+            }
+            await loadFiles()
+            setTimeout(() => setStatus(''), 2000)
+            toast({ title: 'Deleted', description: 'File deleted successfully', variant: 'success' })
+          }}
+          className="px-3 py-1 text-sm bg-red-600 rounded hover:bg-red-700"
+        >
+          Delete
+        </button>
+      ),
+    })
   }
 
   const handleSaveFile = async () => {

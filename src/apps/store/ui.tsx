@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useRef } from 'react'
+import { toast } from '../../hooks/use-toast'
 import { registryManager } from '../../packages/registry'
 import {
   installPackage,
@@ -10,6 +11,7 @@ import {
   updatePackage
 } from '../../packages/manager'
 import type { PackageManifest, InstalledPackage, PackageType } from '../../packages/types'
+import { loadMapp } from '../../wasm/mappLoader'
 
 type ViewMode = 'browse' | 'installed' | 'upload' | 'settings'
 
@@ -60,7 +62,7 @@ export default function StoreUI() {
   async function handleInstall(pkg: PackageManifest) {
     // Check if it's a system app
     if (pkg.isSystemApp) {
-      alert('This is a pre-installed system app and cannot be installed.')
+      toast({ title: 'Cannot Install', description: 'This is a pre-installed system app and cannot be installed.', variant: 'destructive' })
       return
     }
 
@@ -71,11 +73,11 @@ export default function StoreUI() {
     if (result.success) {
       await loadInstalledPackages()
       await checkForUpdates()
-      alert(`${pkg.name} installed successfully!`)
+      toast({ title: 'Success', description: `${pkg.name} installed successfully!`, variant: 'success' })
       // Notify others
       window.dispatchEvent(new CustomEvent('zynqos:package-installed', { detail: { packageId: pkg.id } }))
     } else {
-      alert(`Installation failed: ${result.error}`)
+      toast({ title: 'Installation Failed', description: result.error, variant: 'destructive' })
     }
 
     // Clear progress after a delay
@@ -89,14 +91,30 @@ export default function StoreUI() {
   }
 
   async function handleUninstall(packageId: string) {
-    if (!confirm('Are you sure you want to uninstall this package?')) return
-    
-    const success = await uninstallPackage(packageId)
-    if (success) {
-      await loadInstalledPackages()
-      await checkForUpdates()
-      window.dispatchEvent(new CustomEvent('zynqos:package-uninstalled', { detail: { packageId } }))
-    }
+    const { dismiss } = toast({
+      title: 'Uninstall Package?',
+      description: 'Are you sure you want to uninstall this package?',
+      variant: 'default',
+      action: (
+        <button
+          onClick={async () => {
+            dismiss()
+            const success = await uninstallPackage(packageId)
+            if (success) {
+              await loadInstalledPackages()
+              await checkForUpdates()
+              window.dispatchEvent(new CustomEvent('zynqos:package-uninstalled', { detail: { packageId } }))
+              toast({ title: 'Success', description: 'Package uninstalled', variant: 'success' })
+            } else {
+              toast({ title: 'Error', description: 'Failed to uninstall', variant: 'destructive' })
+            }
+          }}
+          className="px-3 py-1 text-sm bg-red-600 rounded hover:bg-red-700"
+        >
+          Uninstall
+        </button>
+      ),
+    })
   }
 
   async function handleUpdate(packageId: string) {
@@ -107,8 +125,9 @@ export default function StoreUI() {
     if (result.success) {
       await loadInstalledPackages()
       await checkForUpdates()
+      toast({ title: 'Success', description: 'Package updated successfully!', variant: 'success' })
     } else {
-      alert(`Update failed: ${result.error}`)
+      toast({ title: 'Update Failed', description: result.error, variant: 'destructive' })
     }
 
     setTimeout(() => {
@@ -124,33 +143,53 @@ export default function StoreUI() {
     const file = event.target.files?.[0]
     if (!file) return
 
-    const name = prompt('Enter package name:', file.name.replace(/\.(wasm|wasi)$/, ''))
-    if (!name) return
-
-    const description = prompt('Enter package description:') || 'User uploaded package'
-    const author = prompt('Enter author name:') || 'Anonymous'
-    const version = prompt('Enter version:', '1.0.0') || '1.0.0'
-
     setLoading(true)
-    const result = await uploadPackage({
-      file,
-      metadata: {
-        name,
-        description,
-        author,
-        version,
-        type: 'wasm',
-        tags: ['user-uploaded']
-      }
-    })
 
-    if (result.success) {
-      alert('Package uploaded successfully!')
-      await loadInstalledPackages()
-      setViewMode('installed')
-    } else {
-      alert(`Upload failed: ${result.error}`)
+    try {
+      // Check if it's a .mapp file
+      if (file.name.toLowerCase().endsWith('.mapp')) {
+        const manifest = await loadMapp(file)
+        toast({ title: 'Success', description: `Package "${manifest.name}" imported to /apps/${manifest.name}`, variant: 'success' })
+        setLoading(false)
+        if (fileInputRef.current) fileInputRef.current.value = ''
+        return
+      }
+
+      // For other files, prompt for metadata
+      const name = prompt('Enter package name:', file.name.replace(/\.(wasm|wasi|zip)$/, ''))
+      if (!name) {
+        setLoading(false)
+        if (fileInputRef.current) fileInputRef.current.value = ''
+        return
+      }
+
+      const description = prompt('Enter package description:') || 'User uploaded package'
+      const author = prompt('Enter author name:') || 'Anonymous'
+      const version = prompt('Enter version:', '1.0.0') || '1.0.0'
+
+      const result = await uploadPackage({
+        file,
+        metadata: {
+          name,
+          description,
+          author,
+          version,
+          type: 'wasm',
+          tags: ['user-uploaded']
+        }
+      })
+
+      if (result.success) {
+        toast({ title: 'Success', description: 'Package uploaded successfully!', variant: 'success' })
+        await loadInstalledPackages()
+        setViewMode('installed')
+      } else {
+        toast({ title: 'Upload Failed', description: result.error, variant: 'destructive' })
+      }
+    } catch (err) {
+      toast({ title: 'Import Failed', description: err instanceof Error ? err.message : 'Unknown error', variant: 'destructive' })
     }
+
     setLoading(false)
 
     // Reset file input
@@ -163,12 +202,12 @@ export default function StoreUI() {
     if (pkg.type === 'wasm' || pkg.type === 'wasi') {
       const instance = await executePackage(pkg.id)
       if (instance) {
-        alert(`Executed ${pkg.name}`)
+        toast({ title: 'Success', description: `Executed ${pkg.name}`, variant: 'success' })
       } else {
-        alert(`Execution failed for ${pkg.name}. See console for details.`)
+        toast({ title: 'Execution Failed', description: `Failed to execute ${pkg.name}. See console for details.`, variant: 'destructive' })
       }
     } else {
-      alert('Only WASM packages can be executed directly')
+      toast({ title: 'Error', description: 'Only WASM packages can be executed directly', variant: 'destructive' })
     }
   }
 
@@ -479,16 +518,16 @@ export default function StoreUI() {
                   <input
                     ref={fileInputRef}
                     type="file"
-                    accept=".wasm,.wasi,.zip"
+                    accept=".wasm,.wasi,.zip,.mapp"
                     onChange={handleFileUpload}
                     className="hidden"
                     id="wasm-upload"
                   />
                   <label htmlFor="wasm-upload" className="cursor-pointer">
                     <div className="text-4xl mb-3">📦</div>
-                    <div className="text-lg mb-2">Click to upload WASM package</div>
+                    <div className="text-lg mb-2">Click to upload package</div>
                     <div className="text-sm text-gray-400">
-                      Supports .wasm, .wasi files, or .zip (for wasm-bindgen)
+                      Supports .wasm, .wasi, .zip (wasm-bindgen), or .mapp files
                     </div>
                   </label>
                 </div>

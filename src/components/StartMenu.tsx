@@ -4,6 +4,7 @@ import { getStorageStatus, disconnectStorage, type StorageStatus } from '../auth
 import { isTextFile } from '../vfs/fileTypes'
 import { getInstalledPackages, executePackage } from '../packages/manager'
 import type { InstalledPackage } from '../packages/types'
+import CalculatorUI from '../apps/calculator-runtime/CalculatorUI'
 
 type App = {
     id: string
@@ -170,17 +171,34 @@ export default function StartMenu() {
     }
 
     const handleDisconnectStorage = async () => {
-        if (!confirm('Disconnect cloud storage? Local files will remain.')) return
-        const success = await disconnectStorage()
-        if (success) {
-            setStorageStatus({ connected: false })
-            setProfile({})
-            clearCachedProfile()
-            setImportStatus('✓ Storage disconnected')
-            setTimeout(() => setImportStatus(''), 2000)
-        } else {
-            setImportStatus('✗ Failed to disconnect')
-        }
+        const { toast: showToast } = await import('../hooks/use-toast')
+        const { dismiss } = showToast({
+            title: 'Disconnect Storage?',
+            description: 'Local files will remain.',
+            variant: 'default',
+            action: (
+                <button
+                    onClick={async () => {
+                        dismiss()
+                        const success = await disconnectStorage()
+                        if (success) {
+                            setStorageStatus({ connected: false })
+                            setProfile({})
+                            clearCachedProfile()
+                            setImportStatus('✓ Storage disconnected')
+                            setTimeout(() => setImportStatus(''), 2000)
+                            showToast({ title: 'Disconnected', description: 'Cloud storage disconnected', variant: 'success' })
+                        } else {
+                            setImportStatus('✗ Failed to disconnect')
+                            showToast({ title: 'Error', description: 'Failed to disconnect', variant: 'destructive' })
+                        }
+                    }}
+                    className="px-3 py-1 text-sm bg-red-600 rounded hover:bg-red-700"
+                >
+                    Disconnect
+                </button>
+            ),
+        })
     }
 
     const handleImportFiles = async (files: FileList | null) => {
@@ -279,25 +297,6 @@ export default function StartMenu() {
             openFn: () => (window as any).ZynqOS_openWindow?.('App Store', window.__STORE_UI__ ?? <div>Loading Store...</div>, 'store'),
         },
         {
-            id: 'wasm-runner',
-            name: 'WASM Runner',
-            icon: <i className="fa-solid fa-play"></i>,
-            description: 'Run your own WASM/WASI apps',
-            openFn: () => (window as any).ZynqOS_openWindow?.('WASM Runner', (window as any).__WASM_RUNNER_UI__ ?? <div>Loading Runner...</div>, 'wasm-runner'),
-        },
-        {
-            id: 'mapp-importer',
-            name: 'Package Import',
-            icon: <i className="fas fa-box-open"></i>,
-            description: 'Import .mapp packages',
-            openFn: () => {
-                const Comp = window.__MAPP_IMPORTER_UI__
-                if (Comp) {
-                    (window as any).ZynqOS_openWindow?.('Import Package', Comp, 'mapp-importer')
-                }
-            },
-        },
-        {
             id: 'phantomsurf',
             name: 'PhantomSurf',
             icon: <i className="fas fa-globe"></i>,
@@ -354,6 +353,15 @@ export default function StartMenu() {
                         if (!instance) throw new Error('Execution failed')
 
                         const exports = (instance as any).exports || {}
+                        
+                        // Special handling for calculator
+                        if (pkg.id === 'calculator') {
+                            const content = <CalculatorUI wasmModule={exports} />
+                            ;(window as any).ZynqOS_openWindow?.(pkg.name, content, pkg.id)
+                            return
+                        }
+
+                        // Generic wasm-bindgen module viewer for other packages
                         const exportNames = Object.keys(exports).filter(k => k !== 'default')
                         const content = (
                             <div className="p-3 space-y-2 text-sm text-gray-200">
@@ -390,7 +398,7 @@ export default function StartMenu() {
                     }
                 } catch (err) {
                     console.error(`Failed to open ${pkg.name}:`, err)
-                    alert(`Failed to open ${pkg.name}: ${err instanceof Error ? err.message : 'Unknown error'}`)
+                    // Error already logged, no need for alert
                 }
             }
         }))
@@ -578,25 +586,6 @@ export default function StartMenu() {
                                         </div>
                                     )}
 
-                                    <div className="text-xs font-semibold text-[#666] uppercase tracking-wider p-2">Quick Launch</div>
-                                    <div className="px-5 py-2 border-t border-[#333] h-[56px]">
-                                        <div className="flex flex-wrap gap-2">
-                                            <button
-                                                onClick={() => {
-                                                    const Comp = window.__MAPP_IMPORTER_UI__
-                                                    if (Comp) {
-                                                        (window as any).ZynqOS_openWindow?.('Import Package', Comp, 'mapp-importer')
-                                                    }
-                                                    setOpen(false)
-                                                }}
-                                                className="flex items-center gap-2 px-3 py-2 rounded-lg bg-[#2a2a2a] hover:bg-[#333] transition text-[12px] text-[#e0e0e0] hover:text-white"
-                                            >
-                                                <i className="fas fa-box-open"></i>
-                                                <span>Import .mapp</span>
-                                            </button>
-                                        </div>
-                                    </div>
-
                                 </>
                             )}
                         </div>
@@ -619,10 +608,24 @@ export default function StartMenu() {
                                         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="none" className="svg-icon"><g strokeWidth="1.5" strokeLinecap="round" stroke="#99a1af"><circle r="2.5" cy="10" cx="10"></circle><path fillRule="evenodd" d="m8.39079 2.80235c.53842-1.51424 2.67991-1.51424 3.21831-.00001.3392.95358 1.4284 1.40477 2.3425.97027 1.4514-.68995 2.9657.82427 2.2758 2.27575-.4345.91407.0166 2.00334.9702 2.34248 1.5143.53842 1.5143 2.67996 0 3.21836-.9536.3391-1.4047 1.4284-.9702 2.3425.6899 1.4514-.8244 2.9656-2.2758 2.2757-.9141-.4345-2.0033.0167-2.3425.9703-.5384 1.5142-2.67989 1.5142-3.21831 0-.33914-.9536-1.4284-1.4048-2.34247-.9703-1.45148.6899-2.96571-.8243-2.27575-2.2757.43449-.9141-.01669-2.0034-.97028-2.3425-1.51422-.5384-1.51422-2.67994.00001-3.21836.95358-.33914 1.40476-1.42841.97027-2.34248-.68996-1.45148.82427-2.9657 2.27575-2.27575.91407.4345 2.00333-.01669 2.34247-.97026z" clipRule="evenodd"></path></g></svg>
                                     </button>
                                     <button
-                                        onClick={() => {
-                                            if (confirm('Refresh the system?')) {
-                                                window.location.reload()
-                                            }
+                                        onClick={async () => {
+                                            const { toast: showToast } = await import('../hooks/use-toast')
+                                            const { dismiss } = showToast({
+                                                title: 'Refresh System?',
+                                                description: 'This will reload the page.',
+                                                variant: 'default',
+                                                action: (
+                                                    <button
+                                                        onClick={() => {
+                                                            dismiss()
+                                                            window.location.reload()
+                                                        }}
+                                                        className="px-3 py-1 text-sm bg-blue-600 rounded hover:bg-blue-700"
+                                                    >
+                                                        Refresh
+                                                    </button>
+                                                ),
+                                            })
                                         }}
                                         className="transition text-gray-400 hover:text-gray-200"
                                         title="Restart"

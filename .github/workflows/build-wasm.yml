@@ -1,4 +1,4 @@
-name: Build WASM + Frontend
+name: Build Frontend
 
 on:
   push:
@@ -7,10 +7,7 @@ on:
 
 jobs:
   build:
-    runs-on: ${{ matrix.os }}
-    strategy:
-      matrix:
-        os: [ubuntu-latest]
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -26,66 +23,18 @@ jobs:
       - name: Install JS deps
         run: npm install --frozen-lockfile
 
-      - name: Cache cargo (optional)
-        uses: actions/cache@v4
-        id: cargo-cache
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-
-      - name: Install Rust toolchain and target
-        uses: actions-rs/toolchain@v1
-        with:
-          toolchain: stable
-          profile: minimal
-          target: wasm32-wasip1
-
-      - name: Install wasm-pack
-        if: matrix.os == 'ubuntu-latest' || matrix.os == 'windows-latest'
-        run: |
-          cargo install wasm-pack --force
-
-      - name: Build WASM (Linux .sh)
-        if: matrix.os == 'ubuntu-latest'
-        run: |
-          if [ -f ./scripts/build-wasm.sh ]; then
-            bash ./scripts/build-wasm.sh
-          else
-            echo "No ./scripts/build-wasm.sh found — skipping wasm build on linux"
-          fi
-
-      - name: Build WASM (Windows .ps1)
-        if: matrix.os == 'windows-latest'
-        shell: pwsh
-        run: |
-          if (Test-Path './scripts/build-wasi.ps1') {
-            pwsh -NoProfile -ExecutionPolicy Bypass ./scripts/build-wasi.ps1
-          } else {
-            Write-Host "No ./scripts/build-wasi.ps1 found — skipping wasm build on windows"
-          }
-
       - name: Build frontend
         run: npm run build
 
       - name: Upload artifact (frontend build)
-        if: matrix.os == 'ubuntu-latest' && success()
+        if: success()
         uses: actions/upload-artifact@v4
         with:
           name: ZynqOS-dist
           path: dist
 
-      - name: Upload WASM artifacts (Linux only)
-        if: matrix.os == 'ubuntu-latest' && github.ref == 'refs/heads/main'
-        uses: actions/upload-artifact@v4
-        with:
-          name: wasm-artifacts
-          path: |
-            public/apps/wasm/
-            apps/**/target/**/release/*.wasm
       - name: Check Vercel secrets present
-        if: matrix.os == 'ubuntu-latest' && github.ref == 'refs/heads/main'
+        if: github.ref == 'refs/heads/main'
         run: |
           MISSING=0
           if [ -z "${{ secrets.VERCEL_TOKEN }}" ]; then
@@ -111,8 +60,8 @@ jobs:
             exit 1
           fi
 
-      - name: Prepare Vercel deployment (Linux only)
-        if: matrix.os == 'ubuntu-latest' && github.ref == 'refs/heads/main'
+      - name: Prepare Vercel deployment
+        if: github.ref == 'refs/heads/main'
         run: |
           echo "Preparing deployment files"
           # Ensure vercel.json is in dist for deployment
@@ -121,8 +70,8 @@ jobs:
           mkdir -p dist/api
           cp -r api/* dist/api/ || true
 
-      - name: Deploy to Vercel (Linux only)
-        if: matrix.os == 'ubuntu-latest' && github.ref == 'refs/heads/main'
+      - name: Deploy to Vercel
+        if: github.ref == 'refs/heads/main'
         uses: amondnet/vercel-action@v20
         with:
           vercel-token: ${{ secrets.VERCEL_TOKEN }}
