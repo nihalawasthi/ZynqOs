@@ -10,6 +10,20 @@ body {
   font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
 }
 
+/* Toast Progress Animation */
+@keyframes toast-progress {
+  from {
+    width: 0%;
+  }
+  to {
+    width: 100%;
+  }
+}
+
+.toast-progress {
+  animation: toast-progress 3s linear forwards !important;
+}
+
 .terminal-scrollbar .xterm-viewport::-webkit-scrollbar-track {
   background: transparent !important;
 }

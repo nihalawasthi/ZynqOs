@@ -3,13 +3,14 @@ import * as React from "react"
 
 const TOAST_LIMIT = 5
 const TOAST_REMOVE_DELAY = 3000
+const TOAST_DISMISS_ANIMATION_DELAY = 200 // Time for exit animation
 
 type ToasterToast = {
   id: string
   title?: React.ReactNode
   description?: React.ReactNode
   action?: React.ReactNode
-  variant?: "default" | "destructive"
+  variant?: "default" | "destructive" | "success" | "warning"
   open?: boolean
   onOpenChange?: (open: boolean) => void
 }
@@ -41,7 +42,7 @@ const addToRemoveQueue = (toastId: string) => {
       type: "REMOVE_TOAST",
       toastId: toastId,
     })
-  }, TOAST_REMOVE_DELAY)
+  }, TOAST_DISMISS_ANIMATION_DELAY)
 
   toastTimeouts.set(toastId, timeout)
 }
@@ -143,6 +144,16 @@ function toast({ ...props }: Toast) {
       },
     },
   })
+
+  // Auto-dismiss after TOAST_REMOVE_DELAY for non-persistent toasts
+  // (success, error, warning toasts without action buttons auto-dismiss)
+  // Confirmation toasts with action buttons do NOT auto-dismiss
+  const hasAction = !!props.action
+  if (!hasAction && props.variant !== "default") {
+    setTimeout(() => {
+      dismiss()
+    }, TOAST_REMOVE_DELAY)
+  }
 
   return {
     id: id,
