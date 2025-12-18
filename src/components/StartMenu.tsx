@@ -256,17 +256,10 @@ export default function StartMenu() {
     const pinnedApps: App[] = [
         {
             id: 'file-browser',
-            name: 'Files',
+            name: 'Files & Zynqpad',
             icon: <i className="fas fa-folder"></i>,
-            description: 'Browse and manage files',
-            openFn: () => (window as any).ZynqOS_openWindow?.('Files', window.__FILE_BROWSER_UI__ ?? <div>Loading...</div>, 'file-browser'),
-        },
-        {
-            id: 'text-editor',
-            name: 'Zynqpad',
-            icon: <i className="fa fa-file-text"></i>,
-            description: 'Text and code editor',
-            openFn: () => (window as any).ZynqOS_openWindow?.('Zynqpad', window.__TEXT_EDITOR_UI__ ?? <div>Loading...</div>, 'text-editor'),
+            description: 'Browse, edit, and manage files',
+            openFn: () => (window as any).ZynqOS_openWindow?.('Files & Zynqpad', window.__FILE_BROWSER_UI__ ?? <div>Loading...</div>, 'file-browser'),
         },
         {
             id: 'terminal',
@@ -777,7 +770,7 @@ export default function StartMenu() {
                             // Open as a new child window in the same parent window with a unique ID
                             const appUIMap: Record<string, any> = {
                                 'file-browser': window.__FILE_BROWSER_UI__ ?? <div>Loading...</div>,
-                                'text-editor': window.__TEXT_EDITOR_UI__ ?? <div>Loading...</div>,
+                                'text-editor': window.__FILE_BROWSER_UI__ ?? <div>Loading...</div>,
                                 'terminal': window.__TERMINAL_UI__ ?? <div>Loading Terminal...</div>,
                                 'python': window.__PYTHON_UI__ ?? <div>Loading Python...</div>,
                                 'wednesday': window.__WEDNESDAY_UI__ ?? <div>Loading Wednesday...</div>,
@@ -787,8 +780,8 @@ export default function StartMenu() {
                             }
 
                             const appTitleMap: Record<string, string> = {
-                                'file-browser': 'Files',
-                                'text-editor': 'Zynqpad',
+                                'file-browser': 'Files & Zynqpad',
+                                'text-editor': 'Files & Zynqpad',
                                 'terminal': 'Terminal',
                                 'python': 'Python',
                                 'wednesday': 'Wednesday AI',

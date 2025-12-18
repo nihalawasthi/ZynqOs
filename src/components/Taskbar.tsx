@@ -26,7 +26,7 @@ export default function Taskbar() {
     { appType: 'phantomsurf', title: 'Phantom Surf', icon: 'fas fa-globe' },
     { appType: 'terminal', title: 'Terminal', icon: 'fa fa-terminal' },
     { appType: 'wednesday', title: 'Wednesday', icon: 'fa-solid fa-wand-magic-sparkles' },
-    { appType: 'text-editor', title: 'Zynqpad', icon: 'fas fa-file-alt' },
+    { appType: 'text-editor', title: 'Files & Zynqpad', icon: 'fas fa-folder' },
     { appType: 'python', title: 'Python', icon: 'fab fa-python' },
     { appType: 'calculator', title: 'Calculator', icon: 'fas fa-calculator' },
     { appType: 'settings', title: 'Settings', icon: 'fas fa-cog' },

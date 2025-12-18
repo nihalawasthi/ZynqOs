@@ -49,6 +49,7 @@ export default function WindowManager() {
   const { currentWindow } = useCrossWindow(true, { userId: userIdentifier, timestamp: Date.now() })
   const processingWindowsRef = React.useRef(new Set<string>()) // Track windows being processed
   const maximizedWindowsRef = React.useRef(new Set<string>()) // Track which windows are maximized
+  const wasMaximizedOnMinimizeRef = React.useRef(new Set<string>()) // Track groups minimized while maximized
 
   // Initialize shared window pool
   useEffect(() => {
@@ -237,6 +238,8 @@ export default function WindowManager() {
     ))
     // If this was a maximized window being minimized, check if we should show UI again
     if (maximizedWindowsRef.current.has(groupId)) {
+      // Remember that this group was maximized when minimized
+      wasMaximizedOnMinimizeRef.current.add(groupId)
       setIsAnyWindowMaximized(false)
       maximizedWindowsRef.current.delete(groupId)
     }
@@ -248,7 +251,12 @@ export default function WindowManager() {
       g.id === groupId ? { ...g, windows: g.windows.map(w => ({ ...w, minimized: false })) } : g
     ))
     setActiveWindowId(groupId)
-    // Don't re-add to maximized windows - they stay unmaximized when restored
+    // If it was maximized when minimized, restore maximized state so taskbar/snap menu hide correctly
+    if (wasMaximizedOnMinimizeRef.current.has(groupId)) {
+      wasMaximizedOnMinimizeRef.current.delete(groupId)
+      maximizedWindowsRef.current.add(groupId)
+      setIsAnyWindowMaximized(true)
+    }
   }
 
   // Calculate tiled positions

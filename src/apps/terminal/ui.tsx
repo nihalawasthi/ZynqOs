@@ -419,7 +419,7 @@ export default function TerminalWasi(_: Props) {
       writeLine(term, '  pip list                        # list installed packages')
       writeLine(term, '')
       writeLine(term, '\x1b[1;36mApps:\x1b[0m')
-      writeLine(term, '  Launch by name: files | terminal | zynqpad | python | calculator | store | wednesday')
+      writeLine(term, '  Launch by name: files (alias: zynqpad) | terminal | python | calculator | store | wednesday')
       writeLine(term, '')
       writeLine(term, '\x1b[1;36mWASI Programs:\x1b[0m')
       writeLine(term, '  run <path> [args...]            # run WASI binary')
@@ -993,10 +993,10 @@ export default function TerminalWasi(_: Props) {
     } else if (['files','terminal','zynqpad','text-editor','python','calculator','store','wednesday'].includes(c)) {
       const openWindow = (window as any).ZynqOS_openWindow
       const mappings: Record<string, {title: string, comp?: any, key: string}> = {
-        'files': { title: 'Files', comp: (window as any).__FILE_BROWSER_UI__, key: 'file-browser' },
+        'files': { title: 'Files & Zynqpad', comp: (window as any).__FILE_BROWSER_UI__, key: 'file-browser' },
         'terminal': { title: 'Terminal', comp: (window as any).__TERMINAL_UI__, key: 'terminal' },
-        'zynqpad': { title: 'Zynqpad', comp: (window as any).__TEXT_EDITOR_UI__, key: 'text-editor' },
-        'text-editor': { title: 'Zynqpad', comp: (window as any).__TEXT_EDITOR_UI__, key: 'text-editor' },
+        'zynqpad': { title: 'Files & Zynqpad', comp: (window as any).__FILE_BROWSER_UI__, key: 'file-browser' },
+        'text-editor': { title: 'Files & Zynqpad', comp: (window as any).__FILE_BROWSER_UI__, key: 'file-browser' },
         'python': { title: 'Python REPL', comp: (window as any).__PYTHON_UI__, key: 'python' },
         'calculator': { title: 'Calculator', comp: (window as any).__CALC_UI__, key: 'calculator' },
         'store': { title: 'App Store', comp: (window as any).__STORE_UI__, key: 'store' },
