@@ -346,7 +346,7 @@ export default function StartMenu() {
                         if (!instance) throw new Error('Execution failed')
 
                         const exports = (instance as any).exports || {}
-                        
+
                         // Special handling for calculator
                         if (pkg.id === 'calculator') {
                             const content = <CalculatorUI wasmModule={exports} />
@@ -373,7 +373,7 @@ export default function StartMenu() {
                             </div>
                         )
 
-                        ;(window as any).ZynqOS_openWindow?.(pkg.name, content, pkg.id)
+                            ;(window as any).ZynqOS_openWindow?.(pkg.name, content, pkg.id)
                         return
                     }
 
@@ -387,7 +387,7 @@ export default function StartMenu() {
                         } catch {}
                         const uiVar = (pkg.id === 'calculator') ? (window as any).__CALC_UI__ : null
                         const ui = uiVar ?? <div>Loading {pkg.name}...</div>
-                        ;(window as any).ZynqOS_openWindow?.(pkg.name, ui, pkg.id)
+                            ;(window as any).ZynqOS_openWindow?.(pkg.name, ui, pkg.id)
                     }
                 } catch (err) {
                     console.error(`Failed to open ${pkg.name}:`, err)
@@ -578,7 +578,11 @@ export default function StartMenu() {
                                             </div>
                                         </div>
                                     )}
+                                    <div className="px-5 py-2 border-t border-[#333] h-[56px]">
+                                        <div className="flex flex-wrap gap-2">
 
+                                        </div>
+                                    </div>
                                 </>
                             )}
                         </div>
