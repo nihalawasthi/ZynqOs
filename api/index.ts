@@ -1,6 +1,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
 import crypto from 'crypto'
 import cookie from 'cookie'
+import fs from 'fs'
 
 // Inline session utilities to avoid import issues in Vercel
 type ProviderSession = {
@@ -43,6 +44,16 @@ const rateBucket = new Map<string, { count: number; resetAt: number }>()
 // CSRF state tokens for GitHub App installation flow
 const installStateMap = new Map<string, { token: string; createdAt: number }>()
 const STATE_TTL_MS = 600_000 // 10 minutes
+
+function logGitHubDebug(label: string, payload: any) {
+  const line = `[${new Date().toISOString()}] ${label}: ${JSON.stringify(payload).slice(0, 4000)}`
+  console.log(line)
+  try {
+    fs.appendFileSync('/tmp/github_api.log', line + '\n')
+  } catch (e) {
+    // Best-effort; ignore write failures in serverless/fileless environments
+  }
+}
 
 // ===== GitHub App helpers =====
 function createGitHubAppJWT(): string {
@@ -390,10 +401,10 @@ async function authExchangeGitHub(req: VercelRequest, res: VercelResponse) {
       const ures = await fetch('https://api.github.com/user', {
         headers: { Authorization: `Bearer ${json.access_token}`, Accept: 'application/vnd.github+json' }
       })
-      console.log('[GitHub Exchange] User API response status:', ures.status)
+      logGitHubDebug('github.user.status', { status: ures.status })
       if (ures.ok) {
         const ujson = await ures.json()
-        console.log('[GitHub Exchange] User data:', { login: ujson.login, name: ujson.name, email: ujson.email, id: ujson.id })
+        logGitHubDebug('github.user.payload', { login: ujson.login, name: ujson.name, email: ujson.email, id: ujson.id })
         userName = ujson.login || ujson.name
         userAvatar = ujson.avatar_url
         userEmail = ujson.email
@@ -403,21 +414,26 @@ async function authExchangeGitHub(req: VercelRequest, res: VercelResponse) {
           const eres = await fetch('https://api.github.com/user/emails', {
             headers: { Authorization: `Bearer ${json.access_token}`, Accept: 'application/vnd.github+json' }
           })
+          logGitHubDebug('github.emails.status', { status: eres.status })
           if (eres.ok) {
             const ejson = await eres.json()
             const primary = Array.isArray(ejson) ? ejson.find((e: any) => e.primary) : null
+            logGitHubDebug('github.emails.payload', { primary })
             userEmail = primary?.email
+          } else {
+            const errText = await eres.text()
+            logGitHubDebug('github.emails.error', { status: eres.status, body: errText?.slice(0, 500) })
           }
         }
       } else {
         const errorText = await ures.text()
-        console.error('[GitHub Exchange] Failed to fetch user profile:', ures.status, errorText)
+        logGitHubDebug('github.user.error', { status: ures.status, body: errorText?.slice(0, 500) })
       }
     } catch (e: any) {
-      console.error('Failed to fetch GitHub profile during exchange:', e.message)
+      logGitHubDebug('github.user.exception', { message: e?.message })
     }
     
-    console.log('[GitHub Exchange] Setting session with:', { userName, userEmail, userAvatar, userId })
+    logGitHubDebug('github.session.set', { userName, userEmail, userAvatar: userAvatar?.slice?.(0, 60), userId })
     setSessionCookie(res, {
       provider: 'github',
       accessToken: json.access_token,
@@ -865,7 +881,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
               expiresAt: session.expiresAt,
               audit: session.audit?.length || 0
             } : null,
-            cookieValue: sessionData ? `Base64 length: ${sessionData.length}` : null
+            cookieValue: null
           })
         default: return res.status(400).json({ error: 'Invalid auth action' })
       }

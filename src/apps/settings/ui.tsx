@@ -78,21 +78,27 @@ export default function SettingsUI() {
 
     // Listen for auth initialization to sync profile
     useEffect(() => {
-        // Initialize storage status from cache
-        getStorageStatus().then(status => {
+        // Initialize storage status (force refresh to ensure latest connection state)
+        getStorageStatus(true).then(status => {
             setStorageStatus(status)
         })
 
-        const onAuthInitialized = (e: Event) => {
+        const onStatusEvent = (e: Event) => {
             const customEvent = e as CustomEvent<StorageStatus>
             const status = customEvent.detail
-            setStorageStatus(status)
+            if (status) setStorageStatus(status)
         }
-        window.addEventListener('zynqos:auth-initialized', onAuthInitialized as EventListener)
-        window.addEventListener('zynqos:storage-connected', onAuthInitialized as EventListener)
+
+        const onConnected = () => {
+            // Force refresh when storage actually connects
+            getStorageStatus(true).then(status => setStorageStatus(status))
+        }
+
+        window.addEventListener('zynqos:auth-initialized', onStatusEvent as EventListener)
+        window.addEventListener('zynqos:storage-connected', onConnected as EventListener)
         return () => {
-            window.removeEventListener('zynqos:auth-initialized', onAuthInitialized as EventListener)
-            window.removeEventListener('zynqos:storage-connected', onAuthInitialized as EventListener)
+            window.removeEventListener('zynqos:auth-initialized', onStatusEvent as EventListener)
+            window.removeEventListener('zynqos:storage-connected', onConnected as EventListener)
         }
     }, [])
 
@@ -512,11 +518,10 @@ export default function SettingsUI() {
                                 <div className="flex gap-2 items-center mt-3">
                                     <a
                                         href={(import.meta as any).env?.VITE_GITHUB_APP_INSTALL_URL || 'https://github.com/apps/zynq-os/installations/new'}
-                                        target="_blank"
                                         rel="noreferrer"
                                         className="px-4 py-2 bg-green-600/80 hover:bg-green-700/80 text-white text-sm rounded transition font-semibold"
                                     >
-                                        Install GitHub App for Storage
+                                        Configure GitHub App for Storage
                                     </a>
                                 </div>
                             </div>
