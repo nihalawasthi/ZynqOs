@@ -13,7 +13,7 @@ export function Toaster() {
 
   return (
     <ToastProvider>
-      {toasts.map(function ({ id, title, description, action, variant, open, ...props }) {
+      {toasts.map(function ({ id, title, description, action, variant, open, hideClose, ...props }) {
         return (
           <Toast key={id} variant={variant} {...props} className="data-[state=open]:animate-slide-in data-[state=closed]:animate-slide-out">
             <div className="flex items-center gap-3 flex-1">
@@ -51,7 +51,7 @@ export function Toaster() {
             {action && <div className="flex-shrink-0">{action}</div>}
             
             {/* Close button */}
-            <ToastClose />
+            {!hideClose && <ToastClose />}
             
             {/* Progress bar */}
             <div className="absolute bottom-0 left-0 h-0.5 w-full bg-white/5 rounded-b-xl overflow-hidden">

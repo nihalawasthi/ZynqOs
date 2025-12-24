@@ -418,6 +418,7 @@ export default function StartMenu() {
                 <img
                     src="/assets/logo.png"
                     className={`aspect-[1/1] h-10 transition-transform duration-300 ${open ? 'rotate-180' : ''}`}
+                    // style={{ filter: "drop-shadow(0 0 7px rgb(90, 90, 90))" }}
                     alt="Start"
                 />
             </button>
