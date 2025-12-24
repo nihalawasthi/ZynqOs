@@ -1,8 +1,20 @@
 import React, { useState, useEffect } from 'react'
 import { toast } from '../../hooks/use-toast'
-import { getStorageStatus, disconnectStorage, type StorageStatus } from '../../auth/storage'
+import { getStorageStatus, disconnectStorage, type StorageStatus, connectGitHubRepo } from '../../auth/storage'
 
-type TabType = 'display' | 'storage' | 'system' | 'about'
+type TabType = 'display' | 'storage' | 'security' | 'system' | 'about'
+
+type AuditEntry = {
+    id: string
+    ts: number
+    ip: string
+    route: string
+    action?: string
+    event: string
+    status: 'success' | 'error'
+    provider?: string
+    message?: string
+}
 
 export default function SettingsUI() {
     const [activeTab, setActiveTab] = useState<TabType>('about')
@@ -14,13 +26,11 @@ export default function SettingsUI() {
     const [wallpaperSource, setWallpaperSource] = useState<string>('')
     const [backgroundSize, setBackgroundSize] = useState<string>('60%')
     const [wallpaperLoading, setWallpaperLoading] = useState(false)
+    const [auditEntries, setAuditEntries] = useState<AuditEntry[]>([])
+    const [auditLoading, setAuditLoading] = useState(false)
+    const [auditError, setAuditError] = useState<string | null>(null)
 
     useEffect(() => {
-        // Get storage status
-        getStorageStatus().then(status => {
-            setStorageStatus(status)
-        })
-
         // Get session timer data if available
         const updateSessionTime = () => {
             const sessionTimerData = localStorage.getItem('zynqos_session_timer')
@@ -34,14 +44,6 @@ export default function SettingsUI() {
         }
         updateSessionTime()
         const interval = setInterval(updateSessionTime, 1000)
-
-        // Get profile info
-        if (storageStatus.connected) {
-            fetch('/api?route=auth&action=profile', { credentials: 'include' })
-                .then(r => r.ok ? r.json() : Promise.reject())
-                .then(data => setProfile(data))
-                .catch(() => { })
-        }
 
         // Calculate cache size
         calculateCacheSize()
@@ -71,9 +73,47 @@ export default function SettingsUI() {
                 root.style.backgroundPosition = 'center'
             }
         }
-
         return () => clearInterval(interval)
-    }, [storageStatus.connected])
+    }, [])
+
+    // Listen for auth initialization to sync profile
+    useEffect(() => {
+        // Initialize storage status from cache
+        getStorageStatus().then(status => {
+            setStorageStatus(status)
+        })
+
+        const onAuthInitialized = (e: Event) => {
+            const customEvent = e as CustomEvent<StorageStatus>
+            const status = customEvent.detail
+            setStorageStatus(status)
+        }
+        window.addEventListener('zynqos:auth-initialized', onAuthInitialized as EventListener)
+        window.addEventListener('zynqos:storage-connected', onAuthInitialized as EventListener)
+        return () => {
+            window.removeEventListener('zynqos:auth-initialized', onAuthInitialized as EventListener)
+            window.removeEventListener('zynqos:storage-connected', onAuthInitialized as EventListener)
+        }
+    }, [])
+
+    // Update profile when storage status changes
+    useEffect(() => {
+        if (storageStatus.authenticated || storageStatus.connected) {
+            // Status endpoint now includes profile data
+            setProfile({
+                connected: storageStatus.connected,
+                authenticated: storageStatus.authenticated,
+                provider: storageStatus.provider,
+                profile: storageStatus.profile || {}
+            })
+        }
+    }, [storageStatus])
+
+    useEffect(() => {
+        if (activeTab === 'security') {
+            fetchAuditLog()
+        }
+    }, [activeTab])
 
     const formatDuration = (ms: number): string => {
         const seconds = Math.floor(ms / 1000)
@@ -86,6 +126,8 @@ export default function SettingsUI() {
         if (minutes > 0) return `${minutes}m ${seconds % 60}s`
         return `${seconds}s`
     }
+
+    const formatTimestamp = (ts: number): string => new Date(ts).toLocaleString()
 
     const calculateCacheSize = async () => {
         try {
@@ -100,6 +142,29 @@ export default function SettingsUI() {
         } catch {
             setCacheSize('Unknown')
             setCacheRatio(0)
+        }
+    }
+
+    async function fetchAuditLog() {
+        setAuditLoading(true)
+        setAuditError(null)
+        try {
+            const res = await fetch('/api?route=auth&action=audit&limit=100', { credentials: 'include' })
+            if (res.status === 401) {
+                throw new Error('unauthorized')
+            }
+            if (!res.ok) throw new Error(`status ${res.status}`)
+            const data = await res.json()
+            setAuditEntries(Array.isArray(data.entries) ? data.entries : [])
+        } catch (e) {
+            console.error('Audit log fetch failed:', e)
+            if (e instanceof Error && e.message === 'unauthorized') {
+                setAuditError('Sign in to view audit log')
+            } else {
+                setAuditError('Failed to load audit log')
+            }
+        } finally {
+            setAuditLoading(false)
         }
     }
 
@@ -386,18 +451,21 @@ export default function SettingsUI() {
                         <>
                             <div className="bg-green-900/20 border border-green-700/50 rounded p-3">
                                 <div className="flex items-center justify-between">
-                                    <div>
-                                        <p className="text-green-300 font-semibold">Connected</p>
-                                        {profile?.provider && (
-                                            <p className="text-green-400/70 text-sm mt-1">
-                                                Provider: <span className="capitalize">{profile.provider}</span>
-                                            </p>
+                                    <div className="flex items-center gap-3">
+                                        {profile?.profile?.avatar_url && (
+                                            <img src={profile.profile.avatar_url} alt="Avatar" className="w-8 h-8 rounded-full" />
                                         )}
-                                        {profile?.profile?.email && (
-                                            <p className="text-green-400/70 text-sm">
-                                                {profile.profile.email}
-                                            </p>
-                                        )}
+                                        <div>
+                                            <p className="text-green-300 font-semibold">{profile?.profile?.name || 'Connected'}</p>
+                                            {profile?.profile?.email && (
+                                                <p className="text-green-400/70 text-sm">{profile.profile.email}</p>
+                                            )}
+                                            {profile?.provider && (
+                                                <p className="text-green-400/70 text-sm">
+                                                    Provider: <span className="capitalize">{profile.provider}</span> (Storage Enabled)
+                                                </p>
+                                            )}
+                                        </div>
                                     </div>
                                     <button
                                         onClick={handleDisconnectStorage}
@@ -408,15 +476,75 @@ export default function SettingsUI() {
                                 </div>
                             </div>
                         </>
+                    ) : storageStatus.authenticated ? (
+                        <>
+                            <div className="bg-blue-900/20 border border-blue-700/50 rounded p-3">
+                                <div className="flex items-center justify-between">
+                                    <div className="flex items-center gap-3">
+                                        {profile?.profile?.avatar_url && (
+                                            <img src={profile.profile.avatar_url} alt="Avatar" className="w-8 h-8 rounded-full" />
+                                        )}
+                                        <div>
+                                            <p className="text-blue-300 font-semibold">{profile?.profile?.name || 'Authenticated'}</p>
+                                            {profile?.profile?.email && (
+                                                <p className="text-blue-400/70 text-sm">{profile.profile.email}</p>
+                                            )}
+                                            {profile?.provider && (
+                                                <p className="text-blue-400/70 text-sm">
+                                                    Signed in with <span className="capitalize">{profile.provider}</span>
+                                                </p>
+                                            )}
+                                        </div>
+                                    </div>
+                                    <button
+                                        onClick={handleDisconnectStorage}
+                                        className="px-3 py-1 bg-gray-700 hover:bg-gray-800 text-white text-sm rounded transition"
+                                    >
+                                        Sign Out
+                                    </button>
+                                </div>
+                            </div>
+                            <div className="bg-black/40 rounded p-3 space-y-2">
+                                <p className="text-gray-200 text-sm font-semibold">Enable Decentralized Storage</p>
+                                <p className="text-gray-300 text-xs">
+                                    You're signed in! Now set up decentralized storage to sync your files and settings across devices using your own GitHub repo.
+                                </p>
+                                <div className="flex gap-2 items-center mt-3">
+                                    <a
+                                        href={(import.meta as any).env?.VITE_GITHUB_APP_INSTALL_URL || 'https://github.com/apps/zynq-os/installations/new'}
+                                        target="_blank"
+                                        rel="noreferrer"
+                                        className="px-4 py-2 bg-green-600/80 hover:bg-green-700/80 text-white text-sm rounded transition font-semibold"
+                                    >
+                                        Install GitHub App for Storage
+                                    </a>
+                                </div>
+                            </div>
+                        </>
                     ) : (
-                        <div className="bg-gray-900/50 border border-gray-700/50 rounded p-3">
-                            <p className="text-gray-300 mb-3">No cloud storage connected</p>
-                            <p className="text-gray-400 text-sm">
-                                Connect to Google Drive or GitHub to sync your files automatically.
-                            </p>
-                            <p className="text-gray-500 text-xs mt-2">
-                                Use the profile menu in the Start Menu to connect cloud storage.
-                            </p>
+                        <div className="bg-gray-900/50 border border-gray-700/50 rounded p-3 space-y-3">
+                            <div className="bg-black/40 rounded p-3 space-y-2">
+                                <p className="text-gray-200 text-sm font-semibold">Connect GitHub Repo</p>
+                                <ol className="list-decimal list-inside text-gray-400 text-xs space-y-1">
+                                    <li>Create a new private [recommended] repo on GitHub for your ZynqOS data</li>
+                                    <li>Click "Install App" to authorize ZynqOS</li>
+                                    <li>Select the repo during installation and authorize</li>
+                                    <li>You'll be redirected back to ZynqOS with your data connected</li>
+                                </ol>
+                                <p className="text-gray-300 text-xs mt-2">
+                                    Your files, settings, and audit logs will be synced to your repo and accessible across all devices signed in with your GitHub account. All data stays in your control—ZynqOS cannot access your repo without your authorization.
+                                </p>
+                                <div className="flex gap-2 items-center mt-3">
+                                    <a
+                                        href={(import.meta as any).env?.VITE_GITHUB_APP_INSTALL_URL || 'https://github.com/apps/zynq-os/installations/new'}
+                                        target="_blank"
+                                        rel="noreferrer"
+                                        className="px-4 py-2 bg-green-600/80 hover:bg-green-700/80 text-white text-sm rounded transition font-semibold"
+                                    >
+                                        Install App
+                                    </a>
+                                </div>
+                            </div>
                         </div>
                     )}
                 </div>
@@ -538,6 +666,64 @@ export default function SettingsUI() {
         </div>
     )
 
+    const securityTabContent = () => (
+        <div className="space-y-6">
+            <div className="border border-[#333] rounded-lg p-4 bg-[#1a1a1a]">
+                <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center gap-2">
+                        <i className="fas fa-shield-alt text-blue-400"></i>
+                        <h3 className="text-white font-semibold">Audit Log</h3>
+                    </div>
+                    <div className="flex items-center gap-2">
+                        <button
+                            onClick={fetchAuditLog}
+                            className="px-3 py-1 bg-gray-800 hover:bg-gray-700 text-white text-sm rounded transition"
+                        >
+                            Refresh
+                        </button>
+                        <span className="text-xs text-gray-500">Last {auditEntries.length} events</span>
+                    </div>
+                </div>
+                <p className="text-gray-400 text-sm mb-3">
+                    Auth events are captured server-side (in-memory ring buffer). Data resets on cold starts and never includes tokens.
+                </p>
+                <div className="bg-black/40 rounded border border-[#333] divide-y divide-[#222]">
+                    <div className="grid grid-cols-5 gap-2 text-xs text-gray-400 px-3 py-2">
+                        <span>Time</span>
+                        <span>Event</span>
+                        <span>Status</span>
+                        <span>Provider</span>
+                        <span>IP</span>
+                    </div>
+                    {auditLoading && (
+                        <div className="px-3 py-3 text-sm text-gray-300">Loading audit log...</div>
+                    )}
+                    {auditError && !auditLoading && (
+                        <div className="px-3 py-3 text-sm text-red-400">{auditError}</div>
+                    )}
+                    {!auditLoading && !auditError && auditEntries.length === 0 && (
+                        <div className="px-3 py-3 text-sm text-gray-400">No audit events recorded yet.</div>
+                    )}
+                    {!auditLoading && !auditError && auditEntries.map(entry => (
+                        <div key={entry.id} className="grid grid-cols-5 gap-2 px-3 py-2 text-xs text-gray-200">
+                            <span className="text-gray-400">{formatTimestamp(entry.ts)}</span>
+                            <span className="font-mono text-[11px] text-gray-100">{entry.event}</span>
+                            <span className={entry.status === 'success' ? 'text-green-400' : 'text-red-400'}>{entry.status}</span>
+                            <span className="capitalize text-gray-300">{entry.provider || '—'}</span>
+                            <span className="text-gray-400 truncate" title={entry.ip}>{entry.ip === '::1' ? 'localhost' : entry.ip}</span>
+                            {entry.message && (
+                                <span className="col-span-5 text-gray-400 text-[11px]">{entry.message}</span>
+                            )}
+                        </div>
+                    ))}
+                </div>
+                <div className="text-xs text-gray-500 mt-3">
+                    Rate limiting is enabled server-side to protect auth endpoints; burst limits can be tuned via env vars.
+                </div>
+            </div>
+        </div>
+    )
+
     const aboutTabContent = () => (
         <div className="space-y-6">
             {/* Logo and Title */}
@@ -650,7 +836,7 @@ export default function SettingsUI() {
 
             {/* Tab Navigation */}
             <div className="border-b border-[#333] flex relative">
-                {(['about', 'display', 'storage', 'system'] as const).map((tab, index) => (
+                {(['about', 'display', 'storage', 'security', 'system'] as const).map((tab, index) => (
                     <button
                         key={tab}
                         onClick={() => setActiveTab(tab)}
@@ -662,6 +848,7 @@ export default function SettingsUI() {
                         {tab === 'about' && <i className="fas fa-info-circle mr-2"></i>}
                         {tab === 'display' && <i className="fas fa-palette mr-2"></i>}
                         {tab === 'storage' && <i className="fas fa-cloud mr-2"></i>}
+                        {tab === 'security' && <i className="fas fa-shield-alt mr-2"></i>}
                         {tab === 'system' && <i className="fas fa-cog mr-2"></i>}
                         {tab.charAt(0).toUpperCase() + tab.slice(1)}
                     </button>
@@ -670,8 +857,8 @@ export default function SettingsUI() {
                 <div 
                     className="absolute bottom-0 h-0.5 bg-blue-500 transition-all duration-500 ease-out"
                     style={{
-                        width: '25%',
-                        left: `${['about', 'display', 'storage', 'system'].indexOf(activeTab) * 25}%`
+                        width: '20%',
+                        left: `${['about', 'display', 'storage', 'security', 'system'].indexOf(activeTab) * 20}%`
                     }}
                 ></div>
             </div>
@@ -681,6 +868,7 @@ export default function SettingsUI() {
                 <div className="tab-slide-enter" key={activeTab}>
                     {activeTab === 'display' && displayTabContent()}
                     {activeTab === 'storage' && storageTabContent()}
+                    {activeTab === 'security' && securityTabContent()}
                     {activeTab === 'system' && systemTabContent()}
                     {activeTab === 'about' && aboutTabContent()}
                 </div>

@@ -7,13 +7,39 @@ const DB_VERSION = 2
 const STORE = 'files'
 
 async function getDB() {
-  return openDB(DB_NAME, DB_VERSION, {
-    upgrade(db) {
-      if (!db.objectStoreNames.contains(STORE)) {
-        db.createObjectStore(STORE)
+  try {
+    return await openDB(DB_NAME, DB_VERSION, {
+      upgrade(db) {
+        if (!db.objectStoreNames.contains(STORE)) {
+          db.createObjectStore(STORE)
+        }
       }
+    })
+  } catch (err: any) {
+    // If database is corrupted, delete and recreate
+    if (err.name === 'NotFoundError' || err.message?.includes('object store')) {
+      console.warn('VFS DB corrupted, attempting to recreate...', err.message)
+      const deleteReq = indexedDB.deleteDatabase(DB_NAME)
+      await new Promise<void>((resolve, reject) => {
+        deleteReq.onsuccess = () => resolve()
+        deleteReq.onerror = () => reject(deleteReq.error)
+        deleteReq.onblocked = () => {
+          console.warn('DB delete blocked - close other tabs or wait')
+          // Try to continue anyway after a delay
+          setTimeout(() => resolve(), 2000)
+        }
+      })
+      // Retry after deletion
+      return await openDB(DB_NAME, DB_VERSION, {
+        upgrade(db) {
+          if (!db.objectStoreNames.contains(STORE)) {
+            db.createObjectStore(STORE)
+          }
+        }
+      })
     }
-  })
+    throw err
+  }
 }
 
 export async function writeFile(path: string, data: Uint8Array | string) {

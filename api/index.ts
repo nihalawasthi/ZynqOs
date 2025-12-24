@@ -4,15 +4,104 @@ import cookie from 'cookie'
 
 // Inline session utilities to avoid import issues in Vercel
 type ProviderSession = {
-  provider: 'google' | 'github'
+  provider: 'google' | 'github' | 'github-app'
   accessToken: string
   refreshToken?: string
   expiresAt?: number
   userId?: string
+  userName?: string
+  userEmail?: string
+  userAvatar?: string
+  audit?: AuditEntry[]
+  repoFullName?: string
+  installationId?: number
+}
+
+type AuditEntry = {
+  id: string
+  ts: number
+  ip: string
+  route: string
+  action?: string
+  event: string
+  status: 'success' | 'error'
+  provider?: ProviderSession['provider']
+  message?: string
 }
 
 const SESSION_COOKIE = 'zynqos_session'
 const MAX_AGE = 7 * 24 * 60 * 60
+
+const AUDIT_LIMIT = 300
+const auditLog: AuditEntry[] = []
+
+const RATE_LIMIT_ENABLED = process.env.RATE_LIMIT_ENABLED !== 'false'
+const RATE_LIMIT_WINDOW_MS = 60_000
+const RATE_LIMIT_MAX = Number(process.env.RATE_LIMIT_MAX || 20)
+const rateBucket = new Map<string, { count: number; resetAt: number }>()
+
+// CSRF state tokens for GitHub App installation flow
+const installStateMap = new Map<string, { token: string; createdAt: number }>()
+const STATE_TTL_MS = 600_000 // 10 minutes
+
+// ===== GitHub App helpers =====
+function createGitHubAppJWT(): string {
+  const appId = process.env.GITHUB_APP_ID
+  const privateKeyPem = process.env.GITHUB_APP_PRIVATE_KEY
+  if (!appId || !privateKeyPem) {
+    throw new Error('GitHub App credentials missing')
+  }
+  const now = Math.floor(Date.now() / 1000)
+  const payload = {
+    iat: now - 60,
+    exp: now + 600,
+    iss: appId
+  }
+  const header = { alg: 'RS256', typ: 'JWT' }
+  function b64url(obj: any) {
+    return Buffer.from(JSON.stringify(obj))
+      .toString('base64')
+      .replace(/=/g, '')
+      .replace(/\+/g, '-')
+      .replace(/\//g, '_')
+  }
+  const encHeader = b64url(header)
+  const encPayload = b64url(payload)
+  const data = `${encHeader}.${encPayload}`
+  const signer = crypto.createSign('RSA-SHA256')
+  signer.update(data)
+  const signature = signer.sign(privateKeyPem).toString('base64').replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_')
+  return `${data}.${signature}`
+}
+
+async function getRepoInstallationId(owner: string, repo: string): Promise<number> {
+  const jwt = createGitHubAppJWT()
+  const url = `https://api.github.com/repos/${owner}/${repo}/installation`
+  const res = await fetch(url, {
+    headers: {
+      Authorization: `Bearer ${jwt}`,
+      Accept: 'application/vnd.github+json'
+    }
+  })
+  const json = await res.json()
+  if (!res.ok) throw new Error(json.message || 'Failed to get installation')
+  return json.id
+}
+
+async function createInstallationAccessToken(installationId: number): Promise<{ token: string; expires_at?: string }> {
+  const jwt = createGitHubAppJWT()
+  const url = `https://api.github.com/app/installations/${installationId}/access_tokens`
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${jwt}`,
+      Accept: 'application/vnd.github+json'
+    }
+  })
+  const json = await res.json()
+  if (!res.ok) throw new Error(json.message || 'Failed to create access token')
+  return { token: json.token, expires_at: json.expires_at }
+}
 
 function encodeSession(session: ProviderSession): string {
   const json = JSON.stringify(session)
@@ -58,6 +147,51 @@ function clearSessionCookie(res: VercelResponse) {
   res.setHeader('Set-Cookie', cookieStr)
 }
 
+function getClientIp(req: VercelRequest): string {
+  const xfwd = req.headers['x-forwarded-for']
+  if (typeof xfwd === 'string' && xfwd.length > 0) return xfwd.split(',')[0].trim()
+  if (Array.isArray(xfwd) && xfwd.length > 0) return xfwd[0]
+  const xreal = req.headers['x-real-ip']
+  if (typeof xreal === 'string' && xreal.length > 0) return xreal
+  const xclient = req.headers['x-client-ip']
+  if (typeof xclient === 'string' && xclient.length > 0) return xclient
+  const cfip = req.headers['cf-connecting-ip']
+  if (typeof cfip === 'string' && cfip.length > 0) return cfip
+  return req.socket.remoteAddress || req.connection?.remoteAddress || 'unknown'
+}
+
+function recordAudit(req: VercelRequest, res: VercelResponse, entry: Omit<AuditEntry, 'id' | 'ts' | 'ip'>) {
+  const ip = getClientIp(req)
+  const audit: AuditEntry = { id: crypto.randomUUID(), ts: Date.now(), ip, ...entry }
+  auditLog.push(audit)
+  if (auditLog.length > AUDIT_LIMIT) auditLog.splice(0, auditLog.length - AUDIT_LIMIT)
+
+  // Persist limited audit trail in the session cookie so entries survive cold starts.
+  const session = getSessionFromCookie(req)
+  if (session) {
+    const trail = Array.isArray(session.audit) ? [...session.audit, audit] : [audit]
+    const max = 15
+    const trimmed = trail.slice(-max)
+    setSessionCookie(res, { ...session, audit: trimmed })
+  }
+}
+
+function isRateLimited(req: VercelRequest): boolean {
+  if (!RATE_LIMIT_ENABLED) return false
+  const ip = getClientIp(req)
+  const now = Date.now()
+  const bucket = rateBucket.get(ip) || { count: 0, resetAt: now + RATE_LIMIT_WINDOW_MS }
+  if (now > bucket.resetAt) {
+    bucket.count = 0
+    bucket.resetAt = now + RATE_LIMIT_WINDOW_MS
+  }
+  bucket.count += 1
+  rateBucket.set(ip, bucket)
+  const limited = bucket.count > RATE_LIMIT_MAX
+  if (limited) rateBucket.set(ip, bucket)
+  return limited
+}
+
 // ========== PROXY ==========
 async function proxy(req: VercelRequest, res: VercelResponse) {
   if (req.method === 'OPTIONS') {
@@ -93,18 +227,22 @@ async function authExchangeGoogle(req: VercelRequest, res: VercelResponse) {
     // Detailed validation logging
     if (!clientId) {
       console.error('authExchangeGoogle: Missing GOOGLE_CLIENT_ID env var')
+      recordAudit(req, res, { route: 'auth', action: 'exchange_google', event: 'auth.exchange_google', status: 'error', provider: 'google', message: 'Missing GOOGLE_CLIENT_ID' })
       return res.status(500).json({ error: 'Server configuration error: Missing GOOGLE_CLIENT_ID' })
     }
     if (!code) {
       console.error('authExchangeGoogle: Missing code in request body', { body: req.body })
+      recordAudit(req, res, { route: 'auth', action: 'exchange_google', event: 'auth.exchange_google', status: 'error', provider: 'google', message: 'Missing code' })
       return res.status(400).json({ error: 'Missing authorization code' })
     }
     if (!redirectUri) {
       console.error('authExchangeGoogle: Missing redirectUri in request body', { body: req.body })
+      recordAudit(req, res, { route: 'auth', action: 'exchange_google', event: 'auth.exchange_google', status: 'error', provider: 'google', message: 'Missing redirectUri' })
       return res.status(400).json({ error: 'Missing redirect URI' })
     }
     if (!codeVerifier) {
       console.error('authExchangeGoogle: Missing codeVerifier in request body', { body: req.body })
+      recordAudit(req, res, { route: 'auth', action: 'exchange_google', event: 'auth.exchange_google', status: 'error', provider: 'google', message: 'Missing codeVerifier' })
       return res.status(400).json({ error: 'Missing PKCE code verifier' })
     }
     
@@ -134,18 +272,56 @@ async function authExchangeGoogle(req: VercelRequest, res: VercelResponse) {
     
     if (json.error) {
       console.error('authExchangeGoogle: Google returned error', json)
+      recordAudit(req, res, { route: 'auth', action: 'exchange_google', event: 'auth.exchange_google', status: 'error', provider: 'google', message: json.error })
       return res.status(400).json(json)
     }
     if (!json.access_token) {
       console.error('authExchangeGoogle: No access_token in response', json)
+      recordAudit(req, res, { route: 'auth', action: 'exchange_google', event: 'auth.exchange_google', status: 'error', provider: 'google', message: 'No access_token' })
       return res.status(400).json({ error: 'No access token received from Google' })
     }
     
     const expiresAt = json.expires_in ? Date.now() + json.expires_in * 1000 : undefined
-    setSessionCookie(res, { provider: 'google', accessToken: json.access_token, refreshToken: json.refresh_token, expiresAt })
-    return res.status(200).json({ success: true, provider: 'google', expiresAt })
+    
+    // Immediately fetch and cache user profile
+    let userName: string | undefined
+    let userEmail: string | undefined
+    let userAvatar: string | undefined
+    let userId: string | undefined
+    try {
+      const ures = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+        headers: { Authorization: `Bearer ${json.access_token}` }
+      })
+      if (ures.ok) {
+        const ujson = await ures.json()
+        userName = ujson.name
+        userEmail = ujson.email
+        userAvatar = ujson.picture
+        userId = ujson.sub
+      }
+    } catch (e: any) {
+      console.error('Failed to fetch Google profile during exchange:', e.message)
+    }
+    
+    setSessionCookie(res, {
+      provider: 'google',
+      accessToken: json.access_token,
+      refreshToken: json.refresh_token,
+      expiresAt,
+      userId,
+      userName,
+      userEmail,
+      userAvatar
+    })
+    recordAudit(req, res, { route: 'auth', action: 'exchange_google', event: 'auth.exchange_google', status: 'success', provider: 'google', message: `User: ${userName || 'unknown'}` })
+    return res.status(200).json({
+      success: true,
+      provider: 'google',
+      expiresAt
+    })
   } catch (e: any) {
     console.error('authExchangeGoogle error:', e)
+    recordAudit(req, res, { route: 'auth', action: 'exchange_google', event: 'auth.exchange_google', status: 'error', provider: 'google', message: e?.message || 'Exchange failed' })
     return res.status(500).json({ error: e.message || 'Exchange failed' })
   }
 }
@@ -159,14 +335,17 @@ async function authExchangeGitHub(req: VercelRequest, res: VercelResponse) {
     // Detailed validation logging
     if (!clientId) {
       console.error('authExchangeGitHub: Missing GITHUB_CLIENT_ID env var')
+      recordAudit(req, res, { route: 'auth', action: 'exchange_github', event: 'auth.exchange_github', status: 'error', provider: 'github', message: 'Missing GITHUB_CLIENT_ID' })
       return res.status(500).json({ error: 'Server configuration error: Missing GITHUB_CLIENT_ID' })
     }
     if (!clientSecret) {
       console.error('authExchangeGitHub: Missing GITHUB_CLIENT_SECRET env var')
+      recordAudit(req, res, { route: 'auth', action: 'exchange_github', event: 'auth.exchange_github', status: 'error', provider: 'github', message: 'Missing GITHUB_CLIENT_SECRET' })
       return res.status(500).json({ error: 'Server configuration error: Missing GITHUB_CLIENT_SECRET' })
     }
     if (!code) {
       console.error('authExchangeGitHub: Missing code in request body', { body: req.body })
+      recordAudit(req, res, { route: 'auth', action: 'exchange_github', event: 'auth.exchange_github', status: 'error', provider: 'github', message: 'Missing code' })
       return res.status(400).json({ error: 'Missing authorization code' })
     }
     
@@ -193,78 +372,276 @@ async function authExchangeGitHub(req: VercelRequest, res: VercelResponse) {
     
     if (json.error) {
       console.error('authExchangeGitHub: GitHub returned error', json)
+      recordAudit(req, res, { route: 'auth', action: 'exchange_github', event: 'auth.exchange_github', status: 'error', provider: 'github', message: json.error })
       return res.status(400).json(json)
     }
     if (!json.access_token) {
       console.error('authExchangeGitHub: No access_token in response', json)
+      recordAudit(req, res, { route: 'auth', action: 'exchange_github', event: 'auth.exchange_github', status: 'error', provider: 'github', message: 'No access_token' })
       return res.status(400).json({ error: 'No access token received from GitHub' })
     }
     
-    setSessionCookie(res, { provider: 'github', accessToken: json.access_token })
-    return res.status(200).json({ success: true, provider: 'github' })
+    // Immediately fetch and cache user profile
+    let userName: string | undefined
+    let userEmail: string | undefined
+    let userAvatar: string | undefined
+    let userId: string | undefined
+    try {
+      const ures = await fetch('https://api.github.com/user', {
+        headers: { Authorization: `Bearer ${json.access_token}`, Accept: 'application/vnd.github+json' }
+      })
+      console.log('[GitHub Exchange] User API response status:', ures.status)
+      if (ures.ok) {
+        const ujson = await ures.json()
+        console.log('[GitHub Exchange] User data:', { login: ujson.login, name: ujson.name, email: ujson.email, id: ujson.id })
+        userName = ujson.login || ujson.name
+        userAvatar = ujson.avatar_url
+        userEmail = ujson.email
+        userId = String(ujson.id)
+        // If no public email, fetch private emails
+        if (!userEmail) {
+          const eres = await fetch('https://api.github.com/user/emails', {
+            headers: { Authorization: `Bearer ${json.access_token}`, Accept: 'application/vnd.github+json' }
+          })
+          if (eres.ok) {
+            const ejson = await eres.json()
+            const primary = Array.isArray(ejson) ? ejson.find((e: any) => e.primary) : null
+            userEmail = primary?.email
+          }
+        }
+      } else {
+        const errorText = await ures.text()
+        console.error('[GitHub Exchange] Failed to fetch user profile:', ures.status, errorText)
+      }
+    } catch (e: any) {
+      console.error('Failed to fetch GitHub profile during exchange:', e.message)
+    }
+    
+    console.log('[GitHub Exchange] Setting session with:', { userName, userEmail, userAvatar, userId })
+    setSessionCookie(res, {
+      provider: 'github',
+      accessToken: json.access_token,
+      userId,
+      userName,
+      userEmail,
+      userAvatar
+    })
+    recordAudit(req, res, { route: 'auth', action: 'exchange_github', event: 'auth.exchange_github', status: 'success', provider: 'github', message: `User: ${userName || 'unknown'}` })
+    return res.status(200).json({
+      success: true,
+      provider: 'github'
+    })
   } catch (e: any) {
     console.error('authExchangeGitHub error:', e)
+    recordAudit(req, res, { route: 'auth', action: 'exchange_github', event: 'auth.exchange_github', status: 'error', provider: 'github', message: e?.message || 'Exchange failed' })
     return res.status(500).json({ error: e.message || 'Exchange failed' })
   }
 }
 
 async function authStatus(req: VercelRequest, res: VercelResponse) {
   const session = getSessionFromCookie(req)
-  if (!session) return res.status(200).json({ connected: false })
+  if (!session) return res.status(200).json({ connected: false, authenticated: false })
+  
+  // Only consider "connected" if github-app is installed (actual storage setup)
+  // Regular OAuth (google, github) is just authentication, not storage connection
+  const actuallyConnected = session.provider === 'github-app'
   const expired = session.expiresAt ? session.expiresAt < Date.now() : false
-  return res.status(200).json({ connected: true, provider: session.provider, expiresAt: session.expiresAt, expired })
+  
+  // Build profile object
+  let profile: any = {}
+  if (session.userName || session.userEmail || session.userAvatar) {
+    profile = {
+      name: session.userName || 'User',
+      email: session.userEmail,
+      avatar_url: session.userAvatar,
+      id: session.userId,
+      repoFullName: session.repoFullName
+    }
+  }
+  
+  recordAudit(req, res, { route: 'auth', action: 'status', event: 'auth.status', status: 'success', provider: session.provider })
+  return res.status(200).json({
+    connected: actuallyConnected,
+    authenticated: !!session,
+    provider: session.provider,
+    profile,
+    expiresAt: session.expiresAt,
+    expired
+  })
 }
 
 async function authRefresh(req: VercelRequest, res: VercelResponse) {
   try {
     const session = getSessionFromCookie(req)
-    if (!session || session.provider !== 'google' || !session.refreshToken) return res.status(400).json({ error: 'No refresh token' })
+    if (!session || session.provider !== 'google' || !session.refreshToken) {
+      recordAudit(req, res, { route: 'auth', action: 'refresh', event: 'auth.refresh', status: 'error', provider: session?.provider, message: 'No refresh token' })
+      return res.status(400).json({ error: 'No refresh token' })
+    }
     const clientId = process.env.GOOGLE_CLIENT_ID
     const clientSecret = process.env.GOOGLE_CLIENT_SECRET
-    if (!clientId) return res.status(500).json({ error: 'Missing GOOGLE_CLIENT_ID' })
+    if (!clientId) {
+      recordAudit(req, res, { route: 'auth', action: 'refresh', event: 'auth.refresh', status: 'error', provider: 'google', message: 'Missing GOOGLE_CLIENT_ID' })
+      return res.status(500).json({ error: 'Missing GOOGLE_CLIENT_ID' })
+    }
     const body = new URLSearchParams({ client_id: clientId, grant_type: 'refresh_token', refresh_token: session.refreshToken })
     if (clientSecret) body.set('client_secret', clientSecret)
     const tokenRes = await fetch('https://oauth2.googleapis.com/token', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body })
     const json = await tokenRes.json()
-    if (json.error) return res.status(400).json(json)
+    if (json.error) {
+      recordAudit(req, res, { route: 'auth', action: 'refresh', event: 'auth.refresh', status: 'error', provider: 'google', message: json.error })
+      return res.status(400).json(json)
+    }
     const expiresAt = json.expires_in ? Date.now() + json.expires_in * 1000 : undefined
     setSessionCookie(res, { provider: 'google', accessToken: json.access_token, refreshToken: json.refresh_token || session.refreshToken, expiresAt })
+    recordAudit(req, res, { route: 'auth', action: 'refresh', event: 'auth.refresh', status: 'success', provider: 'google', message: 'Token refreshed' })
     return res.status(200).json({ success: true, expiresAt })
   } catch (e: any) {
     console.error('authRefresh error:', e)
+    recordAudit(req, res, { route: 'auth', action: 'refresh', event: 'auth.refresh', status: 'error', provider: 'google', message: e?.message || 'Refresh failed' })
     return res.status(500).json({ error: e.message || 'Refresh failed' })
   }
 }
 
 async function authDisconnect(req: VercelRequest, res: VercelResponse) {
   clearSessionCookie(res)
+  recordAudit(req, res, { route: 'auth', action: 'disconnect', event: 'auth.disconnect', status: 'success', message: 'Session cleared' })
   return res.status(200).json({ success: true })
 }
 
-async function authProfile(req: VercelRequest, res: VercelResponse) {
-  const session = getSessionFromCookie(req)
-  if (!session) return res.status(200).json({ connected: false })
+async function githubAppExchangeRepo(req: VercelRequest, res: VercelResponse) {
   try {
-    if (session.provider === 'google') {
-      const ures = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', { headers: { Authorization: `Bearer ${session.accessToken}` } })
-      const ujson = await ures.json()
-      return res.status(200).json({ connected: true, provider: 'google', profile: { name: ujson.name, email: ujson.email, picture: ujson.picture, sub: ujson.sub } })
-    } else if (session.provider === 'github') {
-      const ures = await fetch('https://api.github.com/user', { headers: { Authorization: `Bearer ${session.accessToken}`, Accept: 'application/vnd.github+json' } })
-      const ujson = await ures.json()
-      let email = ujson.email
-      if (!email) {
-        const eres = await fetch('https://api.github.com/user/emails', { headers: { Authorization: `Bearer ${session.accessToken}`, Accept: 'application/vnd.github+json' } })
-        const ejson = await eres.json()
-        const primary = Array.isArray(ejson) ? ejson.find((e: any) => e.primary) : null
-        email = primary?.email || undefined
-      }
-      return res.status(200).json({ connected: true, provider: 'github', profile: { name: ujson.name || ujson.login, email, avatar_url: ujson.avatar_url, id: ujson.id } })
+    const { repoUrl } = req.body || {}
+    if (!repoUrl || typeof repoUrl !== 'string') return res.status(400).json({ error: 'Missing repoUrl' })
+    // Parse owner/repo from URL
+    let owner: string | undefined
+    let repo: string | undefined
+    try {
+      const u = new URL(repoUrl)
+      const parts = u.pathname.replace(/^\//, '').split('/')
+      owner = parts[0]
+      repo = parts[1]
+    } catch {
+      return res.status(400).json({ error: 'Invalid repo URL' })
     }
-    return res.status(400).json({ error: 'Unknown provider' })
+    if (!owner || !repo) return res.status(400).json({ error: 'Invalid repo URL' })
+
+    const installationId = await getRepoInstallationId(owner, repo)
+    const { token, expires_at } = await createInstallationAccessToken(installationId)
+    const expiresAtMs = expires_at ? new Date(expires_at).getTime() : undefined
+    
+    // Fetch user info with installation token
+    const userRes = await fetch('https://api.github.com/user', {
+      headers: { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github+json' }
+    })
+    const userJson = await userRes.json()
+    if (!userRes.ok) throw new Error(userJson.message || 'Failed to fetch user')
+    
+    setSessionCookie(res, {
+      provider: 'github-app',
+      accessToken: token,
+      expiresAt: expiresAtMs,
+      userId: String(userJson.id),
+      userName: userJson.login || userJson.name,
+      userEmail: userJson.email,
+      userAvatar: userJson.avatar_url,
+      installationId,
+      repoFullName: `${owner}/${repo}`
+    })
+    recordAudit(req, res, { route: 'auth', action: 'github_app_exchange_repo', event: 'auth.github_app_repo', status: 'success', provider: 'github', message: `${owner}/${repo}` })
+    return res.status(200).json({ success: true, provider: 'github', installationId, repo: `${owner}/${repo}`, expiresAt: expiresAtMs, user: userJson.login })
   } catch (e: any) {
-    return res.status(500).json({ error: e.message || 'Profile fetch failed' })
+    console.error('githubAppExchangeRepo error:', e)
+    recordAudit(req, res, { route: 'auth', action: 'github_app_exchange_repo', event: 'auth.github_app_repo', status: 'error', provider: 'github', message: e?.message || 'Exchange failed' })
+    return res.status(500).json({ error: e.message || 'Exchange failed' })
   }
+}
+
+async function githubAppCallback(req: VercelRequest, res: VercelResponse) {
+  console.log('githubAppCallback called with params:', req.query)
+  try {
+    const { installation_id, state, setup_action } = req.query
+    if (!installation_id || typeof installation_id !== 'string') {
+      recordAudit(req, res, { route: 'auth', action: 'github_app_callback', event: 'auth.github_app_callback', status: 'error', provider: 'github-app', message: 'Missing installation_id' })
+      return res.status(400).json({ error: 'Missing installation_id' })
+    }
+    
+    // Validate CSRF state token if present
+    if (state && typeof state === 'string') {
+      const stored = installStateMap.get(state)
+      if (!stored || Date.now() - stored.createdAt > STATE_TTL_MS) {
+        recordAudit(req, res, { route: 'auth', action: 'github_app_callback', event: 'auth.github_app_callback', status: 'error', provider: 'github-app', message: 'Invalid or expired state token' })
+        return res.status(403).json({ error: 'Invalid or expired state' })
+      }
+      installStateMap.delete(state)
+    }
+
+    const instIdNum = parseInt(installation_id, 10)
+    if (isNaN(instIdNum)) {
+      recordAudit(req, res, { route: 'auth', action: 'github_app_callback', event: 'auth.github_app_callback', status: 'error', provider: 'github-app', message: 'Invalid installation_id format' })
+      return res.status(400).json({ error: 'Invalid installation_id' })
+    }
+
+    // Create installation access token
+    const { token, expires_at } = await createInstallationAccessToken(instIdNum)
+    
+    // Fetch authenticated user info using the installation token
+    const userRes = await fetch('https://api.github.com/user', {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        Accept: 'application/vnd.github+json'
+      }
+    })
+    const userJson = await userRes.json()
+    if (!userRes.ok) throw new Error(userJson.message || 'Failed to fetch user')
+    
+    const expiresAtMs = expires_at ? new Date(expires_at).getTime() : undefined
+    const userEmail = userJson.email || undefined
+    
+    setSessionCookie(res, {
+      provider: 'github-app',
+      accessToken: token,
+      expiresAt: expiresAtMs,
+      userId: String(userJson.id),
+      userName: userJson.login || userJson.name,
+      userEmail,
+      userAvatar: userJson.avatar_url,
+      installationId: instIdNum
+    })
+    
+    recordAudit(req, res, {
+      route: 'auth',
+      action: 'github_app_callback',
+      event: 'auth.github_app_callback',
+      status: 'success',
+      provider: 'github-app',
+      message: `User: ${userJson.login}, Installation: ${instIdNum}, Action: ${setup_action}`
+    })
+    
+    // Redirect to app with success message
+    const redirectTo = process.env.VITE_AUTH_REDIRECT_URI || 'http://localhost:3000'
+    return res.redirect(302, `${redirectTo}?storage=connected&provider=github-app`)
+  } catch (e: any) {
+    console.error('githubAppCallback error:', e)
+    recordAudit(req, res, { route: 'auth', action: 'github_app_callback', event: 'auth.github_app_callback', status: 'error', provider: 'github-app', message: e?.message || 'Callback failed' })
+    return res.status(500).json({ error: e.message || 'Callback failed' })
+  }
+}
+
+async function authAudit(req: VercelRequest, res: VercelResponse) {
+  const session = getSessionFromCookie(req)
+  if (!session) return res.status(401).json({ error: 'Not authenticated' })
+  recordAudit(req, res, { route: 'auth', action: 'audit', event: 'auth.audit_read', status: 'success', provider: session.provider })
+  const limit = Math.min(Number(req.query.limit || 100), AUDIT_LIMIT)
+  const memoryEntries = auditLog.slice(-limit)
+  const sessionEntries = Array.isArray(session.audit) ? session.audit.slice(-limit) : []
+  const combined = [...memoryEntries, ...sessionEntries]
+  // Deduplicate by id, favor newest
+  const dedup = new Map<string, AuditEntry>()
+  for (const entry of combined.sort((a, b) => b.ts - a.ts)) {
+    if (!dedup.has(entry.id)) dedup.set(entry.id, entry)
+  }
+  const entries = Array.from(dedup.values()).sort((a, b) => b.ts - a.ts).slice(0, limit)
+  return res.status(200).json({ entries })
 }
 
 // ========== STORAGE: DRIVE ==========
@@ -346,7 +723,7 @@ async function githubUpload(req: VercelRequest, res: VercelResponse) {
   try {
     if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' })
     const session = getSessionFromCookie(req)
-    if (!session || session.provider !== 'github') return res.status(401).json({ error: 'No GitHub session' })
+    if (!session || (session.provider !== 'github' && session.provider !== 'github-app')) return res.status(401).json({ error: 'No GitHub session' })
     const { owner, repo, path, content, message, sha } = req.body || {}
     if (!owner || !repo || !path || !content) return res.status(400).json({ error: 'Missing fields' })
     const body: any = { message: message || `Update ${path}`, content }
@@ -364,7 +741,7 @@ async function githubUpload(req: VercelRequest, res: VercelResponse) {
 async function githubDownload(req: VercelRequest, res: VercelResponse) {
   try {
     const session = getSessionFromCookie(req)
-    if (!session || session.provider !== 'github') return res.status(401).json({ error: 'No GitHub session' })
+    if (!session || (session.provider !== 'github' && session.provider !== 'github-app')) return res.status(401).json({ error: 'No GitHub session' })
     const { owner, repo, path } = req.query
     if (!owner || !repo || !path) return res.status(400).json({ error: 'Missing owner/repo/path' })
     const dlRes = await fetch(`https://api.github.com/repos/${owner}/${repo}/contents/${path}`, { headers: { Authorization: `Bearer ${session.accessToken}`, Accept: 'application/vnd.github+json' } })
@@ -425,10 +802,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     action,
     hasBody: !!req.body,
     bodyKeys: req.body ? Object.keys(req.body) : [],
-    contentType: req.headers['content-type']
+    contentType: req.headers['content-type'],
+    ip: getClientIp(req)
   })
   
   try {
+    if (route === 'auth' && isRateLimited(req)) {
+      recordAudit(req, res, { route: 'auth', action: typeof action === 'string' ? action : undefined, event: 'auth.rate_limit', status: 'error', message: 'Rate limit exceeded' })
+      res.setHeader('Retry-After', Math.ceil(RATE_LIMIT_WINDOW_MS / 1000).toString())
+      return res.status(429).json({ error: 'Too many requests' })
+    }
+
     // Route-based dispatch
     if (route === 'proxy') return proxy(req, res)
     if (route === 'auth') {
@@ -436,6 +820,21 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         case 'exchange_google': return authExchangeGoogle(req, res)
         case 'exchange_github': return authExchangeGitHub(req, res)
         case 'status': return authStatus(req, res)
+        case 'github_app_install_url':
+          return res.status(200).json({ url: process.env.VITE_GITHUB_APP_INSTALL_URL || process.env.GITHUB_APP_INSTALL_URL || '' })
+        case 'github_app_setup_info':
+          // Info for configuring GitHub App Setup URL
+          const redirectUri = process.env.VITE_AUTH_REDIRECT_URI || 'http://localhost:3000'
+          return res.status(200).json({
+            setupUrl: `${redirectUri}/api?route=auth&action=github_app_callback`,
+            redirectUri: redirectUri,
+            appId: process.env.GITHUB_APP_ID || 'Not set',
+            note: 'Configure this Setup URL in your GitHub App settings > General > Setup URL'
+          })
+        case 'github_app_exchange_repo':
+          return githubAppExchangeRepo(req, res)
+        case 'github_app_callback':
+          return githubAppCallback(req, res)
         case 'env_status':
           return res.status(200).json({
             google: {
@@ -449,7 +848,25 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           })
         case 'refresh': return authRefresh(req, res)
         case 'disconnect': return authDisconnect(req, res)
-        case 'profile': return authProfile(req, res)
+        case 'audit': return authAudit(req, res)
+        case 'debug_session':
+          // Debug endpoint to inspect session state
+          const session = getSessionFromCookie(req)
+          return res.status(200).json({
+            hasSession: !!session,
+            sessionData: session ? {
+              provider: session.provider,
+              userId: session.userId,
+              userName: session.userName,
+              userEmail: session.userEmail,
+              userAvatar: session.userAvatar?.substring?.(0, 50),
+              repoFullName: session.repoFullName,
+              installationId: session.installationId,
+              expiresAt: session.expiresAt,
+              audit: session.audit?.length || 0
+            } : null,
+            cookieValue: sessionData ? `Base64 length: ${sessionData.length}` : null
+          })
         default: return res.status(400).json({ error: 'Invalid auth action' })
       }
     }

@@ -71,33 +71,6 @@ export default function StartMenu() {
     useEffect(() => {
         if (open) {
             setTimeout(() => searchInputRef.current?.focus(), 100)
-            // Check storage status
-            getStorageStatus().then(status => {
-                setStorageStatus(status)
-                if (status.connected) {
-                    // Check cache first
-                    const cached = getCachedProfile()
-                    if (cached) {
-                        setProfile(cached)
-                    }
-                    // Fetch profile proactively when menu opens
-                    fetch('/api?route=auth&action=profile', { credentials: 'include' })
-                        .then(r => r.ok ? r.json() : Promise.reject(new Error('Profile fetch failed')))
-                        .then(data => {
-                            const p = data?.profile || {}
-                            const provider = data?.provider
-                            const profileData = {
-                                name: p.name || p.login || p.id || (provider === 'github' ? 'GitHub User' : provider === 'google' ? 'Google User' : 'Connected User'),
-                                email: p.email || (provider === 'github' ? 'GitHub Account' : provider === 'google' ? 'Google Account' : ''),
-                                avatar: p.avatar_url || p.picture,
-                                provider
-                            }
-                            setProfile(profileData)
-                            setCachedProfile(profileData)
-                        })
-                        .catch(() => { })
-                }
-            })
         } else {
             setSearchQuery('')
             setImportStatus('')
@@ -117,6 +90,23 @@ export default function StartMenu() {
     // Load installed packages
     useEffect(() => {
         loadInstalledPackages()
+        
+        // Initialize storage status from cache
+        getStorageStatus().then(status => {
+            setStorageStatus(status)
+            if (status.authenticated || status.connected) {
+                const p = status.profile || {}
+                const provider = status.provider
+                const profileData = {
+                    name: p.name || p.login || p.id || (provider === 'github' ? 'GitHub User' : provider === 'google' ? 'Google User' : 'Connected User'),
+                    email: p.email || (provider === 'github' ? 'GitHub Account' : provider === 'google' ? 'Google Account' : ''),
+                    avatar: p.avatar_url || p.picture,
+                    provider
+                }
+                setProfile(profileData)
+                setCachedProfile(profileData)
+            }
+        })
     }, [])
 
     async function loadInstalledPackages() {
@@ -139,30 +129,49 @@ export default function StartMenu() {
         }
     }, [])
 
-    // Listen for storage connection events to update UI instantly
+    // Listen for auth initialization and storage connection events
     useEffect(() => {
+        const onAuthInitialized = (e: Event) => {
+            const customEvent = e as CustomEvent<StorageStatus>
+            const status = customEvent.detail
+            setStorageStatus(status)
+            if (status.authenticated || status.connected) {
+                const p = status.profile || {}
+                const provider = status.provider
+                const profileData = {
+                    name: p.name || p.login || p.id || (provider === 'github' ? 'GitHub User' : provider === 'google' ? 'Google User' : 'Connected User'),
+                    email: p.email || (provider === 'github' ? 'GitHub Account' : provider === 'google' ? 'Google Account' : ''),
+                    avatar: p.avatar_url || p.picture,
+                    provider
+                }
+                setProfile(profileData)
+                setCachedProfile(profileData)
+            }
+        }
+
         const onConnected = () => {
-            getStorageStatus().then(status => {
+            // Force refresh when storage is actually connected
+            getStorageStatus(true).then(status => {
                 setStorageStatus(status)
-                fetch('/api?route=auth&action=profile', { credentials: 'include' })
-                    .then(r => r.ok ? r.json() : Promise.reject(new Error('Profile fetch failed')))
-                    .then(data => {
-                        const p = data?.profile || {}
-                        const provider = data?.provider
-                        const profileData = {
-                            name: p.name || p.login || p.id || (provider === 'github' ? 'GitHub User' : provider === 'google' ? 'Google User' : 'Connected User'),
-                            email: p.email || (provider === 'github' ? 'GitHub Account' : provider === 'google' ? 'Google Account' : ''),
-                            avatar: p.avatar_url || p.picture,
-                            provider
-                        }
-                        setProfile(profileData)
-                        setCachedProfile(profileData)
-                    })
-                    .catch(() => { })
+                // Profile data is included in status endpoint now
+                const p = status.profile || {}
+                const provider = status.provider
+                const profileData = {
+                    name: p.name || p.login || p.id || (provider === 'github' ? 'GitHub User' : provider === 'google' ? 'Google User' : 'Connected User'),
+                    email: p.email || (provider === 'github' ? 'GitHub Account' : provider === 'google' ? 'Google Account' : ''),
+                    avatar: p.avatar_url || p.picture,
+                    provider
+                }
+                setProfile(profileData)
+                setCachedProfile(profileData)
             })
         }
+        window.addEventListener('zynqos:auth-initialized', onAuthInitialized as EventListener)
         window.addEventListener('zynqos:storage-connected', onConnected as EventListener)
-        return () => window.removeEventListener('zynqos:storage-connected', onConnected as EventListener)
+        return () => {
+            window.removeEventListener('zynqos:auth-initialized', onAuthInitialized as EventListener)
+            window.removeEventListener('zynqos:storage-connected', onConnected as EventListener)
+        }
     }, [])
 
     const handleAppOpen = (app: App) => {
@@ -724,7 +733,7 @@ export default function StartMenu() {
                                         className="w-full flex items-center gap-3 px-3 py-1 rounded-lg hover:bg-[#2a2a2a] transition text-sm text-[#e0e0e0] hover:text-white group"
                                     >
                                         <span className="w-8 h-8 rounded-lg flex items-center justify-center text-[#4a9eff] transition">
-                                            {!storageStatus.connected ? (
+                                            {!storageStatus.authenticated && !storageStatus.connected ? (
                                                 <i className="fa fa-sign-in" aria-hidden="true"></i>
                                             ) : storageStatus.provider === 'google' ? (
                                                 <i className="fab fa-github" aria-hidden="true"></i>
@@ -733,11 +742,11 @@ export default function StartMenu() {
                                             )}
                                         </span>
                                         <span>
-                                            {!storageStatus.connected
+                                            {!storageStatus.authenticated && !storageStatus.connected
                                                 ? 'Signin / Signup'
-                                                : storageStatus.provider === 'google'
-                                                    ? 'Connect GitHub'
-                                                    : 'Connect Google'}
+                                                : storageStatus.provider === 'github'
+                                                    ? 'Connect Google'
+                                                    : 'Connect GitHub'}
                                         </span>
                                     </button>
                                     {/* 

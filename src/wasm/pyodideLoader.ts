@@ -74,6 +74,10 @@ function startWorker(): Promise<void> {
   return readyPromise
 }
 
+export function warmPyodide(): Promise<void> {
+  return startWorker().catch(() => {})
+}
+
 function callWorker<T=any>(message: any, timeoutMs = DEFAULT_TIMEOUT_MS, onData?: (chunk: string, stream: 'stdout'|'stderr') => void): Promise<T> {
   return new Promise(async (resolve, reject) => {
     try {

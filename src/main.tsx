@@ -27,6 +27,7 @@ import './apps/settings/ui'
 
 // Auth helpers and redirect bootstrap
 import { bootstrapAuthRedirect } from './auth/init'
+import { getStorageStatus } from './auth/storage'
 
 // Apply saved wallpaper on load
 function applySavedWallpaper() {
@@ -129,6 +130,11 @@ function Root() {
   React.useEffect(() => {
     if (ready) {
       applySavedWallpaper()
+      // Initialize auth status cache after app is ready (force fresh fetch, not cached)
+      getStorageStatus(true).then(status => {
+        // Dispatch event so UI components update with fresh data
+        window.dispatchEvent(new CustomEvent('zynqos:auth-initialized', { detail: status }))
+      }).catch(err => console.error('Failed to initialize auth status', err))
     }
   }, [ready])
 

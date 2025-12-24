@@ -3,8 +3,14 @@ import { readFile, writeFile } from './fs'
 
 export async function initializeVFS() {
   // Check initialization marker
-  const marker = await readFile('/.initialized')
-  const isInitialized = !!marker
+  let isInitialized = false
+  try {
+    const marker = await readFile('/.initialized')
+    isInitialized = !!marker
+  } catch (e) {
+    console.warn('VFS readFile during init check failed (first time?):', e)
+    isInitialized = false
+  }
 
   if (!isInitialized) {
     console.log('Initializing VFS with sample files...')

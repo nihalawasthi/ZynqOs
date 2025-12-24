@@ -7,16 +7,31 @@ const MAP_STORE = 'remoteMap'
 const QUEUE_STORE = 'uploadQueue'
 
 export async function getDB() {
-  return openDB(DB_NAME, DB_VERSION, {
-    upgrade(db) {
-      if (!db.objectStoreNames.contains(MAP_STORE)) {
-        db.createObjectStore(MAP_STORE)
+  let db = await openDB(DB_NAME, DB_VERSION, {
+    upgrade(upgradeDb) {
+      if (!upgradeDb.objectStoreNames.contains(MAP_STORE)) {
+        upgradeDb.createObjectStore(MAP_STORE)
       }
-      if (!db.objectStoreNames.contains(QUEUE_STORE)) {
-        db.createObjectStore(QUEUE_STORE)
+      if (!upgradeDb.objectStoreNames.contains(QUEUE_STORE)) {
+        upgradeDb.createObjectStore(QUEUE_STORE)
       }
     }
   })
+
+  // Safety: if stores are missing (legacy DB), recreate database to avoid NotFoundError.
+  const hasStores = db.objectStoreNames.contains(MAP_STORE) && db.objectStoreNames.contains(QUEUE_STORE)
+  if (!hasStores) {
+    db.close()
+    await indexedDB.deleteDatabase(DB_NAME)
+    db = await openDB(DB_NAME, DB_VERSION, {
+      upgrade(upgradeDb) {
+        if (!upgradeDb.objectStoreNames.contains(MAP_STORE)) upgradeDb.createObjectStore(MAP_STORE)
+        if (!upgradeDb.objectStoreNames.contains(QUEUE_STORE)) upgradeDb.createObjectStore(QUEUE_STORE)
+      }
+    })
+  }
+
+  return db
 }
 
 export async function setRemoteRoot(root: RemoteRoot) {
