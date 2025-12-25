@@ -343,14 +343,22 @@ export default function Workspace() {
     try {
       const data = await readFile(normalized)
       setSelectedPath(normalized)
-      if (typeof data === 'string') {
+      // Debug: log data type and value
+      console.debug('[openFile] Data type:', typeof data, 'instanceof Uint8Array:', data instanceof Uint8Array, 'Array.isArray:', Array.isArray(data), 'value:', data)
+      if (data === undefined || data === null) {
+        console.warn('[openFile] File not found or undefined/null from VFS:', normalized, data)
+        setFileContent('[File not found]')
+        setLoadedContent('[File not found]')
+        setReadOnly(true)
+      } else if (typeof data === 'string') {
         setFileContent(data)
         setLoadedContent(data)
         setReadOnly(false)
         showStatus(`Opened ${normalized}`)
       } else if (data instanceof Uint8Array) {
+        // Try to decode as text using tryDecodeText
         const decoded = tryDecodeText(data)
-        if (decoded !== null && isEditable(normalized, data)) {
+        if (decoded !== null) {
           setFileContent(decoded)
           setLoadedContent(decoded)
           setReadOnly(false)
@@ -361,14 +369,31 @@ export default function Workspace() {
           setReadOnly(true)
           showStatus('Binary preview - read only')
         }
+      } else if (Array.isArray(data)) {
+        // Handle case where IndexedDB returns an array (should be Uint8Array)
+        const arr = new Uint8Array(data)
+        const decoded = tryDecodeText(arr)
+        if (decoded !== null) {
+          setFileContent(decoded)
+          setLoadedContent(decoded)
+          setReadOnly(false)
+          showStatus(`Opened ${normalized} (${getFileTypeDescription(normalized)})`)
+        } else {
+          setFileContent(`[Binary file: ${arr.length} bytes - ${getFileTypeDescription(normalized)}]`)
+          setLoadedContent(`[Binary file: ${arr.length} bytes - ${getFileTypeDescription(normalized)}]`)
+          setReadOnly(true)
+          showStatus('Binary preview - read only')
+        }
       } else {
+        // Debug: log unknown data type
+        console.error('[openFile] Unknown data type for file:', normalized, data)
         setFileContent('[File not found]')
         setLoadedContent('[File not found]')
         setReadOnly(true)
       }
       setExpanded(prev => new Set(prev).add(normalized.split('/').slice(0, -1).join('/') || '/'))
     } catch (err) {
-      console.error(err)
+      console.error('[openFile] Exception:', err)
       showStatus('Unable to open file', 2500)
     } finally {
       setLoading(false)
@@ -605,7 +630,7 @@ export default function Workspace() {
               strokeWidth="2"
               stroke="#000000"
             >
-              <g id="files-new" clip-path="url(#clip-files-new)">
+              <g id="files-new" clipPath="url(#clip-files-new)">
                 <path
                   id="Union_2"
                   data-name="Union 2"
@@ -717,21 +742,21 @@ export default function Workspace() {
             >
               <path
                 d="m19,21H5c-1.1,0-2-.9-2-2V5c0-1.1.9-2,2-2h11l5,5v11c0,1.1-.9,2-2,2Z"
-                stroke-linejoin="round"
-                stroke-linecap="round"
+                strokeLinejoin="round"
+                strokeLinecap="round"
                 data-path="box"
               ></path>
 
               <path
                 d="M7 3L7 8L15 8"
-                stroke-linejoin="round"
-                stroke-linecap="round"
+                strokeLinejoin="round"
+                strokeLinecap="round"
                 data-path="line-top"
               ></path>
               <path
                 d="M17 20L17 13L7 13L7 20"
-                stroke-linejoin="round"
-                stroke-linecap="round"
+                strokeLinejoin="round"
+                strokeLinecap="round"
                 data-path="line-bottom"
               ></path>
             </svg>

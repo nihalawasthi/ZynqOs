@@ -11,13 +11,15 @@ try {
 }
 export const AUTH_REDIRECT_URI = sanitizedOrigin
 
-// Runtime warnings for misconfig
-if (!GITHUB_CLIENT_ID) {
-	console.warn('[ZynqOS] VITE_GITHUB_CLIENT_ID is missing. GitHub OAuth will fail.')
-}
-if (!GOOGLE_CLIENT_ID) {
-	console.warn('[ZynqOS] VITE_GOOGLE_CLIENT_ID is missing. Google OAuth will fail.')
-}
-if (!AUTH_REDIRECT_URI) {
-	console.warn('[ZynqOS] VITE_AUTH_REDIRECT_URI is missing. Using window.location.origin.')
+// Runtime warnings for misconfig (development only to avoid noise in production)
+if (import.meta.env?.DEV) {
+	if (!GITHUB_CLIENT_ID) {
+		console.warn('[ZynqOS] VITE_GITHUB_CLIENT_ID is missing. GitHub OAuth will fail. Set VITE_GITHUB_CLIENT_ID in your .env.local')
+	}
+	if (!GOOGLE_CLIENT_ID) {
+		console.warn('[ZynqOS] VITE_GOOGLE_CLIENT_ID is missing. Google OAuth will fail. Set VITE_GOOGLE_CLIENT_ID in your .env.local')
+	}
+	if (!AUTH_REDIRECT_URI) {
+		console.warn('[ZynqOS] VITE_AUTH_REDIRECT_URI is missing. Using window.location.origin.')
+	}
 }

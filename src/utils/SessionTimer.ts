@@ -10,6 +10,7 @@ export type SessionTimerState = {
 const STORAGE_KEY = 'zynqos_session_timer'
 const LEADER_KEY = 'zynqos_session_leader'
 export const SESSION_IDLE_THRESHOLD_MS = 60_000 // 1 minute of inactivity breaks active streak
+const BACKEND_SYNC_INTERVAL_MS = 300_000 // Sync to backend every 5 minutes
 
 function nowMs() {
   return Date.now()
@@ -33,6 +34,7 @@ class SessionTimer {
   private tickHandle: number | null = null
   private listeners = new Set<(state: SessionTimerState) => void>()
   private cachedState: SessionTimerState
+  private lastBackendSync: number = 0
 
   constructor() {
     const cryptoObj = typeof crypto !== 'undefined' ? crypto : undefined
@@ -42,6 +44,9 @@ class SessionTimer {
     window.addEventListener('storage', this.handleStorage)
     this.attachActivityListeners()
     this.tickHandle = window.setInterval(this.tick, this.tickMs)
+
+    // Initial backend sync (delayed to avoid blocking)
+    setTimeout(() => this.syncToBackend(), 5000)
   }
 
   private handleStorage = (event: StorageEvent) => {
@@ -147,6 +152,37 @@ class SessionTimer {
     }
 
     this.persist(nextState)
+
+    // Sync to backend periodically
+    if (now - this.lastBackendSync > BACKEND_SYNC_INTERVAL_MS) {
+      this.syncToBackend()
+    }
+  }
+
+  private syncToBackend = async () => {
+    const now = nowMs()
+    this.lastBackendSync = now
+
+    try {
+      const state = this.cachedState
+      const res = await fetch('/api/user-data?action=update-active-time', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          activeTimeMs: state.totalActiveMs
+        })
+      })
+
+      if (!res.ok) {
+        // Only warn on server errors; ignore 401/403 when unauthenticated
+        if (res.status >= 500) {
+          console.warn('Failed to sync session timer to backend:', res.status)
+        }
+      }
+    } catch (error) {
+      // Silently fail - user might not be logged in
+    }
   }
 
   subscribe(listener: (state: SessionTimerState) => void) {

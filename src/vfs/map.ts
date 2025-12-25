@@ -2,33 +2,28 @@ import { openDB } from 'idb'
 import type { RemoteFileMeta, RemoteRoot } from '../storage/provider'
 
 const DB_NAME = 'ZynqOS-vfs'
-const DB_VERSION = 2
+const DB_VERSION = 3
 const MAP_STORE = 'remoteMap'
 const QUEUE_STORE = 'uploadQueue'
+const FILE_STORE = 'files'
 
 export async function getDB() {
-  let db = await openDB(DB_NAME, DB_VERSION, {
+  const open = () => openDB(DB_NAME, DB_VERSION, {
     upgrade(upgradeDb) {
-      if (!upgradeDb.objectStoreNames.contains(MAP_STORE)) {
-        upgradeDb.createObjectStore(MAP_STORE)
-      }
-      if (!upgradeDb.objectStoreNames.contains(QUEUE_STORE)) {
-        upgradeDb.createObjectStore(QUEUE_STORE)
-      }
+      if (!upgradeDb.objectStoreNames.contains(FILE_STORE)) upgradeDb.createObjectStore(FILE_STORE)
+      if (!upgradeDb.objectStoreNames.contains(MAP_STORE)) upgradeDb.createObjectStore(MAP_STORE)
+      if (!upgradeDb.objectStoreNames.contains(QUEUE_STORE)) upgradeDb.createObjectStore(QUEUE_STORE)
     }
   })
 
+  let db = await open()
+
   // Safety: if stores are missing (legacy DB), recreate database to avoid NotFoundError.
-  const hasStores = db.objectStoreNames.contains(MAP_STORE) && db.objectStoreNames.contains(QUEUE_STORE)
+  const hasStores = db.objectStoreNames.contains(MAP_STORE) && db.objectStoreNames.contains(QUEUE_STORE) && db.objectStoreNames.contains(FILE_STORE)
   if (!hasStores) {
     db.close()
     await indexedDB.deleteDatabase(DB_NAME)
-    db = await openDB(DB_NAME, DB_VERSION, {
-      upgrade(upgradeDb) {
-        if (!upgradeDb.objectStoreNames.contains(MAP_STORE)) upgradeDb.createObjectStore(MAP_STORE)
-        if (!upgradeDb.objectStoreNames.contains(QUEUE_STORE)) upgradeDb.createObjectStore(QUEUE_STORE)
-      }
-    })
+    db = await open()
   }
 
   return db

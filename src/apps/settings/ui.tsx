@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { toast } from '../../hooks/use-toast'
 import { getStorageStatus, disconnectStorage, type StorageStatus, connectGitHubRepo } from '../../auth/storage'
+import { githubSync } from '../../storage/githubSync'
 
 type TabType = 'display' | 'storage' | 'security' | 'system' | 'about'
 
@@ -16,6 +17,13 @@ type AuditEntry = {
     message?: string
 }
 
+type SyncStatus = {
+    syncing: boolean
+    lastSyncTime: number | null
+    error: string | null
+    pendingChanges: number
+}
+
 export default function SettingsUI() {
     const [activeTab, setActiveTab] = useState<TabType>('about')
     const [storageStatus, setStorageStatus] = useState<StorageStatus>({ connected: false })
@@ -29,6 +37,14 @@ export default function SettingsUI() {
     const [auditEntries, setAuditEntries] = useState<AuditEntry[]>([])
     const [auditLoading, setAuditLoading] = useState(false)
     const [auditError, setAuditError] = useState<string | null>(null)
+    const [syncStatus, setSyncStatus] = useState<SyncStatus>({
+        syncing: false,
+        lastSyncTime: null,
+        error: null,
+        pendingChanges: 0
+    })
+    const [autoSyncEnabled, setAutoSyncEnabled] = useState(false)
+    const [autoSyncInterval, setAutoSyncInterval] = useState<number>(30)
 
     useEffect(() => {
         // Get session timer data if available
@@ -73,7 +89,30 @@ export default function SettingsUI() {
                 root.style.backgroundPosition = 'center'
             }
         }
-        return () => clearInterval(interval)
+
+        // Initialize GitHub sync
+        githubSync.init().then(() => {
+            const status = githubSync.getStatus()
+            setSyncStatus(status)
+            
+            const config = githubSync.getConfig()
+            if (config) {
+                setAutoSyncEnabled(config.autoSyncEnabled)
+                setAutoSyncInterval(config.autoSyncIntervalMinutes || 30)
+            }
+        })
+
+        // Listen for sync status changes
+        const handleSyncStatusChange = (e: Event) => {
+            const customEvent = e as CustomEvent<SyncStatus>
+            setSyncStatus(customEvent.detail)
+        }
+        window.addEventListener('microos:sync-status-changed', handleSyncStatusChange as EventListener)
+
+        return () => {
+            clearInterval(interval)
+            window.removeEventListener('microos:sync-status-changed', handleSyncStatusChange as EventListener)
+        }
     }, [])
 
     // Listen for auth initialization to sync profile
@@ -364,6 +403,78 @@ export default function SettingsUI() {
         }
     }
 
+    const handleSyncNow = async () => {
+        if (!storageStatus.authenticated) {
+            toast({ title: 'Error', description: 'Please sign in to sync', variant: 'destructive' })
+            return
+        }
+
+        try {
+            // Ensure storage connection status; not strictly required for upload but helpful
+            await fetch('/api?route=auth&action=status', { credentials: 'include' })
+
+            await githubSync.syncToGitHub()
+            toast({ title: 'Success', description: 'Sync completed successfully', variant: 'success' })
+        } catch (error) {
+            console.error('Sync error:', error)
+            toast({ 
+                title: 'Sync Failed', 
+                description: error instanceof Error ? error.message : 'Unknown error', 
+                variant: 'destructive' 
+            })
+        }
+    }
+
+    const handleAutoSyncToggle = async () => {
+        const newEnabled = !autoSyncEnabled
+        setAutoSyncEnabled(newEnabled)
+        
+        try {
+            await githubSync.setAutoSync(newEnabled, newEnabled ? autoSyncInterval : null)
+            toast({ 
+                title: newEnabled ? 'Auto-sync enabled' : 'Auto-sync disabled',
+                description: newEnabled ? `Syncing every ${autoSyncInterval} minutes` : 'Manual sync only',
+                variant: 'success'
+            })
+        } catch (error) {
+            console.error('Auto-sync toggle error:', error)
+            setAutoSyncEnabled(!newEnabled) // Revert on error
+        }
+    }
+
+    const handleAutoSyncIntervalChange = async (newInterval: number) => {
+        setAutoSyncInterval(newInterval)
+        
+        if (autoSyncEnabled) {
+            try {
+                await githubSync.setAutoSync(true, newInterval)
+                // Track settings change
+                await githubSync.trackChange('settings/auto-sync.json', JSON.stringify({ autoSyncIntervalMinutes: newInterval }, null, 2))
+                toast({ 
+                    title: 'Auto-sync updated',
+                    description: `Now syncing every ${newInterval} minutes`,
+                    variant: 'success'
+                })
+            } catch (error) {
+                console.error('Auto-sync interval change error:', error)
+            }
+        }
+    }
+
+    const formatLastSyncTime = (timestamp: number | null): string => {
+        if (!timestamp) return 'Never'
+        const now = Date.now()
+        const diff = now - timestamp
+        const minutes = Math.floor(diff / 60000)
+        const hours = Math.floor(minutes / 60)
+        const days = Math.floor(hours / 24)
+
+        if (days > 0) return `${days}d ago`
+        if (hours > 0) return `${hours}h ago`
+        if (minutes > 0) return `${minutes}m ago`
+        return 'Just now'
+    }
+
     const displayTabContent = () => (
         <div className="space-y-6">
             {/* Wallpaper Settings */}
@@ -455,7 +566,7 @@ export default function SettingsUI() {
                 <div className="space-y-3">
                     {storageStatus.connected ? (
                         <>
-                            <div className="bg-green-900/20 border border-green-700/50 rounded p-3">
+                                <div className="bg-green-900/20 border border-green-700/50 rounded p-3">
                                 <div className="flex items-center justify-between">
                                     <div className="flex items-center gap-3">
                                         {profile?.profile?.avatar_url && (
@@ -473,12 +584,22 @@ export default function SettingsUI() {
                                             )}
                                         </div>
                                     </div>
-                                    <button
-                                        onClick={handleDisconnectStorage}
-                                        className="px-3 py-1 bg-gray-700 hover:bg-gray-800 text-white text-sm rounded transition"
-                                    >
-                                        Disconnect
-                                    </button>
+                                    <div className="flex gap-2">
+                                        <a
+                                            href={(import.meta as any).env?.VITE_GITHUB_APP_INSTALL_URL || 'https://github.com/apps/zynq-os/installations/new'}
+                                            target="_blank"
+                                            rel="noreferrer"
+                                            className="px-3 py-1 bg-green-700 hover:bg-green-800 text-white text-sm rounded transition"
+                                        >
+                                            Configure GitHub App
+                                        </a>
+                                        <button
+                                            onClick={handleDisconnectStorage}
+                                            className="px-3 py-1 bg-gray-700 hover:bg-gray-800 text-white text-sm rounded transition"
+                                        >
+                                            Disconnect
+                                        </button>
+                                    </div>
                                 </div>
                             </div>
                         </>
@@ -521,7 +642,7 @@ export default function SettingsUI() {
                                         rel="noreferrer"
                                         className="px-4 py-2 bg-green-600/80 hover:bg-green-700/80 text-white text-sm rounded transition font-semibold"
                                     >
-                                        Configure GitHub App for Storage
+                                        Install GitHub App
                                     </a>
                                 </div>
                             </div>
@@ -538,6 +659,8 @@ export default function SettingsUI() {
                                 </ol>
                                 <p className="text-gray-300 text-xs mt-2">
                                     Your files, settings, and audit logs will be synced to your repo and accessible across all devices signed in with your GitHub account. All data stays in your control—ZynqOS cannot access your repo without your authorization.
+                                    <br />
+                                    <span className="text-gray-400">Default storage repo: /your-username/.zynqos_storage</span>
                                 </p>
                                 <div className="flex gap-2 items-center mt-3">
                                     <a
@@ -587,17 +710,126 @@ export default function SettingsUI() {
             <div className="border border-[#333] rounded-lg p-4 bg-[#1a1a1a]">
                 <h3 className="text-white font-semibold mb-3 flex items-center gap-2">
                     <i className="fas fa-sync"></i>
-                    Sync Status
+                    GitHub Sync
                 </h3>
-                <div className="bg-black/50 rounded p-3 space-y-2">
-                    <div className="flex items-center justify-between">
-                        <span className="text-gray-400">Last Sync</span>
-                        <span className="text-gray-500">Auto (disabled)</span>
+                
+                {!storageStatus.authenticated ? (
+                    <div className="bg-black/50 rounded p-3">
+                        <p className="text-gray-400 text-sm">
+                            Sign in with GitHub to enable peer-to-peer sync
+                        </p>
                     </div>
-                    <p className="text-gray-500 text-xs">
-                        Background sync is currently scaffolded but not fully implemented. Manual sync happens on demand.
-                    </p>
-                </div>
+                ) : (
+                    <div className="space-y-3">
+                        {/* Sync Status Display */}
+                        <div className="bg-black/50 rounded p-3 space-y-2">
+                            <div className="flex items-center justify-between">
+                                <span className="text-gray-400">Last Sync</span>
+                                <span className={`text-sm ${syncStatus.lastSyncTime ? 'text-green-400' : 'text-gray-500'}`}>
+                                    {formatLastSyncTime(syncStatus.lastSyncTime)}
+                                </span>
+                            </div>
+                            <div className="flex items-center justify-between">
+                                <span className="text-gray-400">Pending Changes</span>
+                                <span className={`text-sm font-mono ${syncStatus.pendingChanges > 0 ? 'text-yellow-400' : 'text-gray-500'}`}>
+                                    {syncStatus.pendingChanges}
+                                </span>
+                            </div>
+                            {syncStatus.error && (
+                                <div className="text-red-400 text-xs mt-2">
+                                    Error: {syncStatus.error}
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Manual Sync / Pull Buttons */}
+                        <div className="grid grid-cols-2 gap-2">
+                            <button
+                                onClick={handleSyncNow}
+                                disabled={syncStatus.syncing}
+                                className={`w-full px-4 py-2 rounded text-sm font-semibold transition ${
+                                    syncStatus.syncing
+                                        ? 'bg-gray-700 text-gray-400 cursor-not-allowed'
+                                        : 'bg-blue-600 hover:bg-blue-700 text-white'
+                                }`}
+                            >
+                                {syncStatus.syncing ? (
+                                    <>
+                                        <i className="fas fa-spinner fa-spin mr-2"></i>
+                                        Push…
+                                    </>
+                                ) : (
+                                    <>
+                                        <i className="fas fa-cloud-upload-alt mr-2"></i>
+                                        Push Now
+                                    </>
+                                )}
+                            </button>
+                            <button
+                                onClick={async () => {
+                                    try {
+                                        await githubSync.pullFromGitHub()
+                                        toast({ title: 'Pulled', description: 'Latest data fetched from GitHub', variant: 'success' })
+                                    } catch (e) {
+                                        toast({ title: 'Pull failed', description: e instanceof Error ? e.message : 'Unknown error', variant: 'destructive' })
+                                    }
+                                }}
+                                disabled={syncStatus.syncing}
+                                className={`w-full px-4 py-2 rounded text-sm font-semibold transition ${
+                                    syncStatus.syncing
+                                        ? 'bg-gray-700 text-gray-400 cursor-not-allowed'
+                                        : 'bg-gray-700 hover:bg-gray-600 text-white'
+                                }`}
+                            >
+                                <i className="fas fa-cloud-download-alt mr-2"></i>
+                                Pull Now
+                            </button>
+                        </div>
+
+                        {/* Auto-sync Settings */}
+                        <div className="bg-black/40 rounded p-3 space-y-3">
+                            <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-2">
+                                    <span className="text-gray-300 text-sm">Auto-sync</span>
+                                    <span className="text-gray-500 text-xs">Background sync</span>
+                                </div>
+                                <button
+                                    onClick={handleAutoSyncToggle}
+                                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                                        autoSyncEnabled ? 'bg-blue-600' : 'bg-gray-600'
+                                    }`}
+                                >
+                                    <span
+                                        className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                                            autoSyncEnabled ? 'translate-x-6' : 'translate-x-1'
+                                        }`}
+                                    />
+                                </button>
+                            </div>
+
+                            {autoSyncEnabled && (
+                                <div className="space-y-2">
+                                    <label className="text-gray-400 text-sm">Sync interval</label>
+                                    <select
+                                        value={autoSyncInterval}
+                                        onChange={(e) => handleAutoSyncIntervalChange(Number(e.target.value))}
+                                        className="w-full bg-gray-900 text-gray-300 px-3 py-2 rounded text-sm border border-gray-700 focus:border-blue-500 focus:outline-none"
+                                    >
+                                        <option value={5}>Every 5 minutes</option>
+                                        <option value={15}>Every 15 minutes</option>
+                                        <option value={30}>Every 30 minutes</option>
+                                        <option value={60}>Every hour</option>
+                                        <option value={180}>Every 3 hours</option>
+                                    </select>
+                                </div>
+                            )}
+                        </div>
+
+                        <p className="text-gray-500 text-xs">
+                            Your data is synced to your own GitHub repo: .zynqos_storage. All files, settings, and logs stay under your control.
+                        </p>
+                    </div>
+                )}
             </div>
         </div>
     )

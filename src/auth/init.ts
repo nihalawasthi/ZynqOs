@@ -36,8 +36,41 @@ export async function bootstrapAuthRedirect() {
   const state = url.searchParams.get('state')
   const storageParam = url.searchParams.get('storage')
   const providerParam = url.searchParams.get('provider')
+  const installationId = url.searchParams.get('installation_id')
+  const setupAction = url.searchParams.get('setup_action')
   
-  // Handle GitHub App callback redirect
+  // Handle GitHub App OAuth callback (installation_id + setup_action)
+  if (installationId && setupAction) {
+    console.log('[Auth] GitHub App OAuth callback detected, completing auth...')
+    try {
+      const res = await fetch(`/api?route=auth&action=github_app_callback&installation_id=${installationId}&setup_action=${setupAction}`, {
+        method: 'GET',
+        credentials: 'include'
+      })
+      if (res.ok) {
+        const json = await res.json()
+        console.log('[Auth] GitHub App auth completed:', json)
+        // Clean URL
+        url.searchParams.delete('code')
+        url.searchParams.delete('installation_id')
+        url.searchParams.delete('setup_action')
+        history.replaceState({}, document.title, url.pathname + url.search + url.hash)
+        // Refresh status and notify
+        clearStatusCache()
+        const statusRes = await fetch('/api?route=auth&action=status', { credentials: 'include' })
+        const statusJson = await statusRes.json()
+        window.dispatchEvent(new CustomEvent('zynqos:auth-initialized', { detail: statusJson }))
+        window.dispatchEvent(new CustomEvent('zynqos:storage-connected', { detail: { provider: 'github-app' } }))
+        return
+      } else {
+        console.error('[Auth] GitHub App callback failed:', await res.text())
+      }
+    } catch (e) {
+      console.error('[Auth] GitHub App callback error:', e)
+    }
+  }
+  
+  // Handle GitHub App callback redirect (legacy server-side redirect)
   if (storageParam === 'connected' && providerParam === 'github-app') {
     try {
       const statusRes = await fetch('/api?route=auth&action=status', { credentials: 'include' })

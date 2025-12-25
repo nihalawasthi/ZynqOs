@@ -18,6 +18,8 @@ A browser-hosted "micro-OS" shell that runs two kinds of sandboxed WASM apps:
 - 📦 **.mapp Package Importer** for bundled applications
 - 🛠️ **WASI Utilities** (ls, cat, mkdir, rm, touch)
 - ☁️ **Cloud Storage** - Google Drive & GitHub repo sync
+- 🔄 **Peer-to-Peer Sync** - Data stored in user's own GitHub repo
+- ⏱️ **Activity Tracking** - Daily active time tracking with auto-reset
 
 ## Available Applications
 
@@ -27,6 +29,7 @@ A browser-hosted "micro-OS" shell that runs two kinds of sandboxed WASM apps:
 - **Calculator** - Basic calculator with WASM compute
 - **Terminal** - Run WASI binaries and utilities
 - **Package Importer** - Import .mapp application bundles
+- **Settings** - System configuration with sync controls
 
 ### WASI Binaries (Terminal)
 - **shell.wasm** - ZynqOS kernel shell with built-in commands
@@ -36,6 +39,17 @@ A browser-hosted "micro-OS" shell that runs two kinds of sandboxed WASM apps:
 - **rm.wasm** - Remove files and directories
 - **touch.wasm** - Create empty files
 - **terminal-wasi.wasm** - Sample WASI program
+
+## Sync System
+
+ZynqOS implements a hybrid peer-to-peer sync architecture:
+
+- **Minimal server storage**: Only user ID, active time, and preferences stored on server
+- **P2P data storage**: Files, logs, and audit trails stored in user's own GitHub repo (`microos-data`)
+- **Flexible sync**: Manual sync button + auto-sync with configurable intervals (5m - 3h)
+- **Daily reset**: Active time automatically resets at midnight UTC
+
+See [docs/SYNC_SYSTEM.md](docs/SYNC_SYSTEM.md) for details.
 
 ## Quick Start
 

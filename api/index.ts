@@ -458,9 +458,9 @@ async function authStatus(req: VercelRequest, res: VercelResponse) {
   const session = getSessionFromCookie(req)
   if (!session) return res.status(200).json({ connected: false, authenticated: false })
   
-  // Only consider "connected" if github-app is installed (actual storage setup)
-  // Regular OAuth (google, github) is just authentication, not storage connection
-  const actuallyConnected = session.provider === 'github-app'
+  // Consider storage "connected" when GitHub OAuth or GitHub App is active.
+  // Google is auth-only unless paired with Drive storage.
+  const actuallyConnected = session.provider === 'github-app' || session.provider === 'github'
   const expired = session.expiresAt ? session.expiresAt < Date.now() : false
   
   // Build profile object
@@ -613,6 +613,9 @@ async function githubAppCallback(req: VercelRequest, res: VercelResponse) {
     const expiresAtMs = expires_at ? new Date(expires_at).getTime() : undefined
     const userEmail = userJson.email || undefined
     
+    // Use default repo name - sync service will infer full path from login
+    const repoFullName = `${userJson.login}/.zynqos_storage`
+    
     setSessionCookie(res, {
       provider: 'github-app',
       accessToken: token,
@@ -621,7 +624,8 @@ async function githubAppCallback(req: VercelRequest, res: VercelResponse) {
       userName: userJson.login || userJson.name,
       userEmail,
       userAvatar: userJson.avatar_url,
-      installationId: instIdNum
+      installationId: instIdNum,
+      repoFullName
     })
     
     recordAudit(req, res, {
@@ -633,9 +637,14 @@ async function githubAppCallback(req: VercelRequest, res: VercelResponse) {
       message: `User: ${userJson.login}, Installation: ${instIdNum}, Action: ${setup_action}`
     })
     
-    // Redirect to app with success message
-    const redirectTo = process.env.VITE_AUTH_REDIRECT_URI || 'http://localhost:3000'
-    return res.redirect(302, `${redirectTo}?storage=connected&provider=github-app`)
+    // Return JSON instead of redirect for frontend handling
+    return res.status(200).json({ 
+      success: true, 
+      provider: 'github-app', 
+      installationId: instIdNum,
+      user: userJson.login,
+      repo: repoFullName 
+    })
   } catch (e: any) {
     console.error('githubAppCallback error:', e)
     recordAudit(req, res, { route: 'auth', action: 'github_app_callback', event: 'auth.github_app_callback', status: 'error', provider: 'github-app', message: e?.message || 'Callback failed' })
@@ -742,6 +751,17 @@ async function githubUpload(req: VercelRequest, res: VercelResponse) {
     if (!session || (session.provider !== 'github' && session.provider !== 'github-app')) return res.status(401).json({ error: 'No GitHub session' })
     const { owner, repo, path, content, message, sha } = req.body || {}
     if (!owner || !repo || !path || !content) return res.status(400).json({ error: 'Missing fields' })
+    // Stricter path validation
+    if (
+      typeof path !== 'string' ||
+      path.length === 0 ||
+      path.startsWith('/') ||
+      path.includes('..') ||
+      path.includes('\\') ||
+      /[\r\n]/.test(path)
+    ) {
+      return res.status(422).json({ error: 'path contains a malformed path component' })
+    }
     const body: any = { message: message || `Update ${path}`, content }
     if (sha) body.sha = sha
     const upRes = await fetch(`https://api.github.com/repos/${owner}/${repo}/contents/${path}`, { method: 'PUT', headers: { Authorization: `Bearer ${session.accessToken}`, Accept: 'application/vnd.github+json', 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
@@ -767,6 +787,25 @@ async function githubDownload(req: VercelRequest, res: VercelResponse) {
   } catch (e: any) {
     console.error('githubDownload error:', e)
     return res.status(500).json({ error: e.message || 'GitHub download failed' })
+  }
+}
+
+async function githubList(req: VercelRequest, res: VercelResponse) {
+  try {
+    const session = getSessionFromCookie(req)
+    if (!session || (session.provider !== 'github' && session.provider !== 'github-app')) return res.status(401).json({ error: 'No GitHub session' })
+    const { owner, repo, branch } = req.query
+    if (!owner || !repo) return res.status(400).json({ error: 'Missing owner/repo' })
+    const targetBranch = typeof branch === 'string' && branch.length > 0 ? branch : 'main'
+    const treeRes = await fetch(`https://api.github.com/repos/${owner}/${repo}/git/trees/${targetBranch}?recursive=1`, {
+      headers: { Authorization: `Bearer ${session.accessToken}`, Accept: 'application/vnd.github+json' }
+    })
+    const json = await treeRes.json()
+    if (!treeRes.ok) return res.status(treeRes.status).json({ error: json.message || 'List failed' })
+    return res.status(200).json({ tree: json.tree || [], truncated: json.truncated || false })
+  } catch (e: any) {
+    console.error('githubList error:', e)
+    return res.status(500).json({ error: e.message || 'GitHub list failed' })
   }
 }
 
@@ -831,6 +870,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     // Route-based dispatch
     if (route === 'proxy') return proxy(req, res)
+    // Back-compat: /api?route=status
+    if (route === 'status') return authStatus(req, res)
     if (route === 'auth') {
       switch (action) {
         case 'exchange_google': return authExchangeGoogle(req, res)
@@ -900,6 +941,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         switch (action) {
           case 'upload': return githubUpload(req, res)
           case 'download': return githubDownload(req, res)
+          case 'list': return githubList(req, res)
           case 'webhook': return githubWebhook(req, res)
           default: return res.status(400).json({ error: 'Invalid github action' })
         }
