@@ -28,6 +28,7 @@ import './apps/settings/ui'
 // Auth helpers and redirect bootstrap
 import { bootstrapAuthRedirect } from './auth/init'
 import { getStorageStatus } from './auth/storage'
+import { auditSync } from './utils/auditSync'
 
 // Apply saved wallpaper on load
 function applySavedWallpaper() {
@@ -60,6 +61,9 @@ async function bootstrap(report: (msg: string) => void) {
 
   report('Syncing auth and session')
   await bootstrapAuthRedirect()
+  
+  report('Initializing audit sync')
+  await auditSync.init()
 
   report('Preloading Python (Pyodide)')
   await getPyodide()
@@ -135,6 +139,29 @@ function Root() {
         // Dispatch event so UI components update with fresh data
         window.dispatchEvent(new CustomEvent('zynqos:auth-initialized', { detail: status }))
       }).catch(err => console.error('Failed to initialize auth status', err))
+
+      // Set up periodic audit sync check (every 10 seconds)
+      const auditSyncInterval = setInterval(async () => {
+        try {
+          const status = await getStorageStatus()
+          if (status.connected && (status.provider === 'github' || status.provider === 'github-app')) {
+            // Fetch recent audit entries and track them
+            const res = await fetch('/api?route=auth&action=audit&limit=20', { credentials: 'include' })
+            if (res.ok) {
+              const data = await res.json()
+              if (Array.isArray(data.entries)) {
+                for (const entry of data.entries) {
+                  await auditSync.trackAuditEntry(entry)
+                }
+              }
+            }
+          }
+        } catch (err) {
+          // Silently fail - don't spam console
+        }
+      }, 10000)
+
+      return () => clearInterval(auditSyncInterval)
     }
   }, [ready])
 

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react'
 import { toast } from '../../hooks/use-toast'
 import { getStorageStatus, disconnectStorage, type StorageStatus, connectGitHubRepo } from '../../auth/storage'
 import { githubSync } from '../../storage/githubSync'
+import { auditSync, type AuditEntry as AuditSyncEntry } from '../../utils/auditSync'
 
 type TabType = 'display' | 'storage' | 'security' | 'system' | 'about'
 
@@ -45,6 +46,14 @@ export default function SettingsUI() {
     })
     const [autoSyncEnabled, setAutoSyncEnabled] = useState(false)
     const [autoSyncInterval, setAutoSyncInterval] = useState<number>(30)
+    const [auditSyncStatus, setAuditSyncStatus] = useState({
+        syncing: false,
+        pendingCount: 0,
+        lastSyncTime: null as number | null,
+        autoSync: true
+    })
+    const [showSyncedLogs, setShowSyncedLogs] = useState(false)
+    const [syncedAuditEntries, setSyncedAuditEntries] = useState<AuditSyncEntry[]>([])
 
     useEffect(() => {
         // Get session timer data if available
@@ -157,8 +166,23 @@ export default function SettingsUI() {
     useEffect(() => {
         if (activeTab === 'security') {
             fetchAuditLog()
+            // Update audit sync status
+            const status = auditSync.getStatus()
+            setAuditSyncStatus(status)
         }
     }, [activeTab])
+
+    // Listen for audit sync status changes
+    useEffect(() => {
+        const handleAuditSyncChange = (e: Event) => {
+            const customEvent = e as CustomEvent
+            setAuditSyncStatus(customEvent.detail)
+        }
+        window.addEventListener('microos:audit-sync-changed', handleAuditSyncChange as EventListener)
+        return () => {
+            window.removeEventListener('microos:audit-sync-changed', handleAuditSyncChange as EventListener)
+        }
+    }, [])
 
     const formatDuration = (ms: number): string => {
         const seconds = Math.floor(ms / 1000)
@@ -208,6 +232,67 @@ export default function SettingsUI() {
             } else {
                 setAuditError('Failed to load audit log')
             }
+        } finally {
+            setAuditLoading(false)
+        }
+    }
+
+    async function syncAuditToGitHub() {
+        try {
+            // First get the server-side audit entries
+            const res = await fetch('/api?route=auth&action=audit_sync', { credentials: 'include' })
+            if (!res.ok) {
+                throw new Error('Failed to fetch audit data')
+            }
+            const data = await res.json()
+            const entries = data.entries || []
+
+            // Track each entry for syncing
+            for (const entry of entries) {
+                await auditSync.trackAuditEntry(entry)
+            }
+
+            // Force sync to GitHub
+            await auditSync.syncToGitHub()
+
+            toast({
+                title: 'Audit Synced',
+                description: `${entries.length} audit entries synced to GitHub storage`,
+                variant: 'success'
+            })
+        } catch (e) {
+            console.error('Audit sync failed:', e)
+            toast({
+                title: 'Sync Failed',
+                description: e instanceof Error ? e.message : 'Failed to sync audit log',
+                variant: 'destructive'
+            })
+        }
+    }
+
+    async function loadSyncedAuditLogs() {
+        try {
+            setAuditLoading(true)
+            // Get last 30 days of logs
+            const endDate = new Date().toISOString().split('T')[0]
+            const startDate = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
+            
+            const logs = await auditSync.getLogsForDateRange(startDate, endDate)
+            setSyncedAuditEntries(logs)
+            setShowSyncedLogs(true)
+            
+            toast({
+                title: 'Logs Loaded',
+                description: `Loaded ${logs.length} synced audit entries`,
+                variant: 'success'
+            })
+        } catch (e) {
+            console.error('Failed to load synced logs:', e)
+            toast({
+                title: 'Load Failed',
+                description: 'Failed to load synced audit logs',
+                variant: 'destructive'
+            })
         } finally {
             setAuditLoading(false)
         }
@@ -958,6 +1043,101 @@ export default function SettingsUI() {
                     Rate limiting is enabled server-side to protect auth endpoints; burst limits can be tuned via env vars.
                 </div>
             </div>
+
+            {/* Audit Sync to GitHub */}
+            {storageStatus.connected && (storageStatus.provider === 'github' || storageStatus.provider === 'github-app') && (
+                <div className="border border-[#333] rounded-lg p-4 bg-[#1a1a1a]">
+                    <div className="flex items-center justify-between mb-3">
+                        <div className="flex items-center gap-2">
+                            <i className="fas fa-cloud-upload-alt text-blue-400"></i>
+                            <h3 className="text-white font-semibold">Audit Log Sync</h3>
+                        </div>
+                        <div className="flex items-center gap-2">
+                            {auditSyncStatus.syncing && (
+                                <span className="text-xs text-blue-400">Syncing...</span>
+                            )}
+                            {!auditSyncStatus.syncing && auditSyncStatus.pendingCount > 0 && (
+                                <span className="text-xs text-yellow-400">{auditSyncStatus.pendingCount} pending</span>
+                            )}
+                            {auditSyncStatus.lastSyncTime && (
+                                <span className="text-xs text-gray-500">
+                                    Last sync: {new Date(auditSyncStatus.lastSyncTime).toLocaleTimeString()}
+                                </span>
+                            )}
+                        </div>
+                    </div>
+                    <p className="text-gray-400 text-sm mb-3">
+                        Automatically sync audit logs to your GitHub storage repository for cross-device access and long-term retention.
+                    </p>
+                    <div className="flex gap-2">
+                        <button
+                            onClick={syncAuditToGitHub}
+                            disabled={auditSyncStatus.syncing}
+                            className="px-3 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-700 disabled:cursor-not-allowed text-white text-sm rounded transition flex items-center gap-2"
+                        >
+                            <i className="fas fa-sync-alt"></i>
+                            Sync Now
+                        </button>
+                        <button
+                            onClick={loadSyncedAuditLogs}
+                            disabled={auditLoading}
+                            className="px-3 py-2 bg-gray-700 hover:bg-gray-600 disabled:bg-gray-800 disabled:cursor-not-allowed text-white text-sm rounded transition flex items-center gap-2"
+                        >
+                            <i className="fas fa-history"></i>
+                            View History (30 days)
+                        </button>
+                    </div>
+                    <div className="mt-3 flex items-center gap-2">
+                        <input
+                            type="checkbox"
+                            id="autoAuditSync"
+                            checked={auditSyncStatus.autoSync}
+                            onChange={(e) => auditSync.setAutoSync(e.target.checked)}
+                            className="rounded border-gray-600 bg-gray-700 text-blue-500 focus:ring-blue-500"
+                        />
+                        <label htmlFor="autoAuditSync" className="text-sm text-gray-300">
+                            Enable automatic sync (debounced 5s after changes)
+                        </label>
+                    </div>
+                    {showSyncedLogs && syncedAuditEntries.length > 0 && (
+                        <div className="mt-4">
+                            <div className="flex items-center justify-between mb-2">
+                                <h4 className="text-sm font-semibold text-white">Synced History</h4>
+                                <button
+                                    onClick={() => setShowSyncedLogs(false)}
+                                    className="text-xs text-gray-400 hover:text-gray-300"
+                                >
+                                    <i className="fas fa-times"></i> Close
+                                </button>
+                            </div>
+                            <div className="bg-black/40 rounded border border-[#333] divide-y divide-[#222] max-h-60 overflow-y-auto scrollbar">
+                                <div className="grid grid-cols-5 gap-2 text-xs text-gray-400 px-3 py-2 sticky top-0 bg-black/60">
+                                    <span>Time</span>
+                                    <span>Event</span>
+                                    <span>Status</span>
+                                    <span>Provider</span>
+                                    <span>IP</span>
+                                </div>
+                                {syncedAuditEntries.map(entry => (
+                                    <div key={entry.id} className="grid grid-cols-5 gap-2 px-3 py-2 text-xs text-gray-200">
+                                        <span className="text-gray-400">{formatTimestamp(entry.ts)}</span>
+                                        <span className="font-mono text-[11px] text-gray-100">{entry.event}</span>
+                                        <span className={entry.status === 'success' ? 'text-green-400' : 'text-red-400'}>{entry.status}</span>
+                                        <span className="capitalize text-gray-300">{entry.provider || '—'}</span>
+                                        <span className="text-gray-400 truncate" title={entry.ip}>{entry.ip === '::1' ? 'localhost' : entry.ip}</span>
+                                        {entry.message && (
+                                            <span className="col-span-5 text-gray-400 text-[11px]">{entry.message}</span>
+                                        )}
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+                    <p className="text-xs text-gray-500 mt-3">
+                        Logs are stored in your .zynqos_storage repo under logs/YYYY-MM-DD.json for easy access across devices.
+                    </p>
+                </div>
+            )}
         </div>
     )
 

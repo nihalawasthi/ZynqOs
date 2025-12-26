@@ -669,6 +669,58 @@ async function authAudit(req: VercelRequest, res: VercelResponse) {
   return res.status(200).json({ entries })
 }
 
+async function auditSync(req: VercelRequest, res: VercelResponse) {
+  try {
+    const session = getSessionFromCookie(req)
+    if (!session) return res.status(401).json({ error: 'Not authenticated' })
+    if (session.provider !== 'github' && session.provider !== 'github-app') {
+      return res.status(400).json({ error: 'GitHub storage required for audit sync' })
+    }
+    
+    // Get recent audit entries from memory + session
+    const memoryEntries = auditLog.slice(-100)
+    const sessionEntries = Array.isArray(session.audit) ? session.audit : []
+    const allEntries = [...memoryEntries, ...sessionEntries]
+    
+    // Deduplicate
+    const dedup = new Map<string, AuditEntry>()
+    for (const entry of allEntries) {
+      if (!dedup.has(entry.id)) dedup.set(entry.id, entry)
+    }
+    
+    recordAudit(req, res, { route: 'auth', action: 'audit_sync', event: 'auth.audit_sync', status: 'success', provider: session.provider, message: `Syncing ${dedup.size} entries` })
+    return res.status(200).json({ entries: Array.from(dedup.values()), count: dedup.size })
+  } catch (e: any) {
+    console.error('auditSync error:', e)
+    return res.status(500).json({ error: e.message || 'Sync failed' })
+  }
+}
+
+async function auditHistory(req: VercelRequest, res: VercelResponse) {
+  try {
+    const session = getSessionFromCookie(req)
+    if (!session) return res.status(401).json({ error: 'Not authenticated' })
+    if (session.provider !== 'github' && session.provider !== 'github-app') {
+      return res.status(400).json({ error: 'GitHub storage required for audit history' })
+    }
+    
+    const { startDate, endDate, date } = req.query
+    
+    // If specific date requested, return that date's logs
+    if (date && typeof date === 'string') {
+      recordAudit(req, res, { route: 'auth', action: 'audit_history', event: 'auth.audit_history', status: 'success', provider: session.provider, message: `Date: ${date}` })
+      return res.status(200).json({ date, message: 'Use client-side auditSync service to fetch logs' })
+    }
+    
+    // Return available dates info
+    recordAudit(req, res, { route: 'auth', action: 'audit_history', event: 'auth.audit_history', status: 'success', provider: session.provider })
+    return res.status(200).json({ message: 'Use client-side auditSync service to fetch historical logs' })
+  } catch (e: any) {
+    console.error('auditHistory error:', e)
+    return res.status(500).json({ error: e.message || 'History failed' })
+  }
+}
+
 // ========== STORAGE: DRIVE ==========
 async function driveChanges(req: VercelRequest, res: VercelResponse) {
   try {
@@ -906,6 +958,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         case 'refresh': return authRefresh(req, res)
         case 'disconnect': return authDisconnect(req, res)
         case 'audit': return authAudit(req, res)
+        case 'audit_sync': return auditSync(req, res)
+        case 'audit_history': return auditHistory(req, res)
         case 'debug_session':
           // Debug endpoint to inspect session state
           const session = getSessionFromCookie(req)
