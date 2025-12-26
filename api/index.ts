@@ -655,7 +655,7 @@ async function githubAppCallback(req: VercelRequest, res: VercelResponse) {
 async function authAudit(req: VercelRequest, res: VercelResponse) {
   const session = getSessionFromCookie(req)
   if (!session) return res.status(401).json({ error: 'Not authenticated' })
-  recordAudit(req, res, { route: 'auth', action: 'audit', event: 'auth.audit_read', status: 'success', provider: session.provider })
+  // Do NOT log audit events for audit log fetches
   const limit = Math.min(Number(req.query.limit || 100), AUDIT_LIMIT)
   const memoryEntries = auditLog.slice(-limit)
   const sessionEntries = Array.isArray(session.audit) ? session.audit.slice(-limit) : []
@@ -687,8 +687,7 @@ async function auditSync(req: VercelRequest, res: VercelResponse) {
     for (const entry of allEntries) {
       if (!dedup.has(entry.id)) dedup.set(entry.id, entry)
     }
-    
-    recordAudit(req, res, { route: 'auth', action: 'audit_sync', event: 'auth.audit_sync', status: 'success', provider: session.provider, message: `Syncing ${dedup.size} entries` })
+    // Do NOT log audit events for audit sync fetches
     return res.status(200).json({ entries: Array.from(dedup.values()), count: dedup.size })
   } catch (e: any) {
     console.error('auditSync error:', e)
@@ -708,12 +707,11 @@ async function auditHistory(req: VercelRequest, res: VercelResponse) {
     
     // If specific date requested, return that date's logs
     if (date && typeof date === 'string') {
-      recordAudit(req, res, { route: 'auth', action: 'audit_history', event: 'auth.audit_history', status: 'success', provider: session.provider, message: `Date: ${date}` })
+      // Do NOT log audit events for audit history fetches
       return res.status(200).json({ date, message: 'Use client-side auditSync service to fetch logs' })
     }
-    
     // Return available dates info
-    recordAudit(req, res, { route: 'auth', action: 'audit_history', event: 'auth.audit_history', status: 'success', provider: session.provider })
+    // Do NOT log audit events for audit history fetches
     return res.status(200).json({ message: 'Use client-side auditSync service to fetch historical logs' })
   } catch (e: any) {
     console.error('auditHistory error:', e)
