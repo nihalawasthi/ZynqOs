@@ -151,7 +151,14 @@ function Root() {
               const data = await res.json()
               if (Array.isArray(data.entries)) {
                 for (const entry of data.entries) {
-                  await auditSync.trackAuditEntry(entry)
+                  if (
+                    !(
+                      (entry.action === 'audit' || entry.action === 'fetch_audit') &&
+                      (entry.route === 'auth&audit' || entry.route === '/api?route=auth&action=audit')
+                    )
+                  ) {
+                    await auditSync.trackAuditEntry(entry)
+                  }
                 }
               }
             }
@@ -159,7 +166,7 @@ function Root() {
         } catch (err) {
           // Silently fail - don't spam console
         }
-      }, 10000)
+      }, 60000) // 60 seconds
 
       return () => clearInterval(auditSyncInterval)
     }
