@@ -29,6 +29,7 @@ class GitHubSyncService {
   private db: IDBPDatabase | null = null
   private config: SyncConfig | null = null
   private syncInterval: number | null = null
+  private isPulling = false // Flag to prevent tracking during pull
   private status: SyncStatus = {
     syncing: false,
     lastSyncTime: null,
@@ -39,13 +40,16 @@ class GitHubSyncService {
   async init() {
     try {
       // Open IndexedDB for tracking sync state
-      this.db = await openDB('microos-sync', 1, {
-        upgrade(db) {
+      this.db = await openDB('microos-sync', 2, {
+        upgrade(db, oldVersion) {
           if (!db.objectStoreNames.contains('sync-config')) {
             db.createObjectStore('sync-config')
           }
           if (!db.objectStoreNames.contains('pending-changes')) {
             db.createObjectStore('pending-changes', { keyPath: 'path' })
+          }
+          if (!db.objectStoreNames.contains('pending-deletions')) {
+            db.createObjectStore('pending-deletions', { keyPath: 'path' })
           }
         }
       })
@@ -197,6 +201,11 @@ class GitHubSyncService {
   async trackChange(path: string, content: string) {
     if (!this.db) return
     
+    // Remove from deletions if it was marked for deletion
+    try {
+      await this.db.delete('pending-deletions', path)
+    } catch {}
+    
     await this.db.put('pending-changes', {
       path,
       content,
@@ -204,7 +213,30 @@ class GitHubSyncService {
     })
 
     const pendingChanges = await this.db.getAll('pending-changes')
-    this.status.pendingChanges = pendingChanges.length
+    const pendingDeletions = await this.db.getAll('pending-deletions')
+    this.status.pendingChanges = pendingChanges.length + pendingDeletions.length
+    this.notifyStatusChange()
+  }
+
+  async trackDeletion(path: string) {
+    if (!this.db) return
+    
+    // Don't track deletions during pull (remote deletions)
+    if (this.isPulling) return
+    
+    // Remove from changes if it was marked for upload
+    try {
+      await this.db.delete('pending-changes', path)
+    } catch {}
+    
+    await this.db.put('pending-deletions', {
+      path,
+      timestamp: Date.now()
+    })
+
+    const pendingChanges = await this.db.getAll('pending-changes')
+    const pendingDeletions = await this.db.getAll('pending-deletions')
+    this.status.pendingChanges = pendingChanges.length + pendingDeletions.length
     this.notifyStatusChange()
   }
 
@@ -224,8 +256,9 @@ class GitHubSyncService {
 
     try {
       const pendingChanges = await this.db.getAll('pending-changes')
+      const pendingDeletions = await this.db.getAll('pending-deletions')
       
-      if (pendingChanges.length === 0) {
+      if (pendingChanges.length === 0 && pendingDeletions.length === 0) {
         console.log('No pending changes to sync')
         this.status.syncing = false
         return
@@ -297,9 +330,46 @@ class GitHubSyncService {
         }
       }
 
-      // Clear pending changes
-      const tx = this.db.transaction('pending-changes', 'readwrite')
+      // Process deletions
+      for (const deletion of pendingDeletions) {
+        if (!deletion.path.startsWith('files/')) continue;
+        let safePath = deletion.path.replace(/^\/+/, "").replace(/\\/g, "/").replace(/\.\./g, "");
+        safePath = safePath.replace(/\/+/, '/');
+        if (!safePath.startsWith('files/')) continue;
+        
+        // Get file SHA for deletion
+        try {
+          const shaRes = await fetch(`/api?route=storage&provider=github&action=download&owner=${owner}&repo=${repo}&path=${encodeURIComponent(safePath)}`, { credentials: 'include' });
+          if (shaRes.ok) {
+            const shaJson = await shaRes.json();
+            if (shaJson.sha) {
+              // Delete the file using GitHub API
+              const delRes = await fetch(`/api?route=storage&provider=github&action=delete`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'include',
+                body: JSON.stringify({
+                  owner,
+                  repo,
+                  path: safePath,
+                  sha: shaJson.sha,
+                  message: `Delete ${safePath}`
+                })
+              });
+              if (!delRes.ok && delRes.status !== 404) {
+                console.error(`Failed to delete ${safePath}:`, await delRes.text())
+              }
+            }
+          }
+        } catch (e) {
+          console.error(`Error deleting ${safePath}:`, e)
+        }
+      }
+
+      // Clear pending changes and deletions
+      const tx = this.db.transaction(['pending-changes', 'pending-deletions'], 'readwrite')
       await tx.objectStore('pending-changes').clear()
+      await tx.objectStore('pending-deletions').clear()
       await tx.done
 
       // Update config
@@ -334,6 +404,7 @@ class GitHubSyncService {
 
     const [owner, repo] = this.config.repoFullName.split('/')
     this.status.pulling = true
+    this.isPulling = true // Set flag to prevent tracking deletions
     this.notifyStatusChange()
 
     try {
@@ -354,6 +425,31 @@ class GitHubSyncService {
       }
       const listJson = await listRes.json()
       const tree = Array.isArray(listJson.tree) ? listJson.tree : []
+
+      // Get list of files from GitHub (only files/ directory)
+      const githubFiles = tree
+        .filter((n: any) => n.type === 'blob' && typeof n.path === 'string' && n.path.startsWith('files/'))
+        .map((n: any) => n.path as string)
+
+      // Get list of files from local VFS
+      const vfsFiles = await this.listVfsFiles()
+
+      // Find files that exist in VFS but not in GitHub (deleted remotely)
+      const deletedFiles = vfsFiles.filter(vfsPath => {
+        // Convert VFS path to GitHub path format
+        const githubPath = vfsPath.startsWith('files/') ? vfsPath : `files/${vfsPath.replace(/^\//, '')}`
+        return !githubFiles.includes(githubPath)
+      })
+
+      // Delete removed files from VFS
+      for (const deletedPath of deletedFiles) {
+        try {
+          await this.deleteVfs(deletedPath)
+          console.log(`[githubSync] Deleted ${deletedPath} (removed from GitHub)`)
+        } catch (e) {
+          console.error(`[githubSync] Failed to delete ${deletedPath}:`, e)
+        }
+      }
 
       // Pull all files (including root files like README.md), but skip files/README.md if README.md exists at root
       const fileEntries = tree.filter((n: any) => n.type === 'blob' && typeof n.path === 'string');
@@ -386,6 +482,7 @@ class GitHubSyncService {
       throw error
     } finally {
       this.status.pulling = false
+      this.isPulling = false // Reset flag
       this.notifyStatusChange()
     }
   }
@@ -455,6 +552,34 @@ class GitHubSyncService {
       await mod.writeFile(vfsPath, toStore);
     } catch (e) {
       console.error('Failed to write to VFS:', e, path);
+    }
+  }
+
+  private async listVfsFiles(): Promise<string[]> {
+    try {
+      const mod = await import('../vfs/fs');
+      const allPaths = await mod.readdir('');
+      // Return paths in 'files/...' format for comparison
+      return allPaths.map(p => {
+        const normalized = p.replace(/^\//, '');
+        return normalized.startsWith('files/') ? normalized : `files/${normalized}`;
+      });
+    } catch (e) {
+      console.error('Failed to list VFS files:', e);
+      return [];
+    }
+  }
+
+  private async deleteVfs(path: string) {
+    try {
+      const mod = await import('../vfs/fs');
+      let vfsPath = path.replace(/^\/+/, "");
+      if (vfsPath.startsWith('files/')) {
+        vfsPath = vfsPath.slice('files/'.length);
+      }
+      await mod.removeFile(vfsPath);
+    } catch (e) {
+      console.error('Failed to delete from VFS:', e, path);
     }
   }
 

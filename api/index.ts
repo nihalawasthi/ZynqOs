@@ -46,17 +46,22 @@ const installStateMap = new Map<string, { token: string; createdAt: number }>()
 const STATE_TTL_MS = 600_000 // 10 minutes
 
 function logGitHubDebug(label: string, payload: any) {
-  const line = `[${new Date().toISOString()}] ${label}: ${JSON.stringify(payload).slice(0, 4000)}`
-  console.log(line)
-  try {
-    fs.appendFileSync('/tmp/github_api.log', line + '\n')
-  } catch (e) {
-    // Best-effort; ignore write failures in serverless/fileless environments
+  // Only log in development, never write sensitive data to disk
+  if (process.env.NODE_ENV !== 'production') {
+    console.log(`[${new Date().toISOString()}] ${label}:`, payload)
   }
 }
 
 // ===== GitHub App helpers =====
+// JWT cache to avoid regenerating valid tokens
+let jwtCache: { token: string; expiresAt: number } | null = null
+
 function createGitHubAppJWT(): string {
+  // Return cached JWT if still valid (with 60s buffer)
+  if (jwtCache && jwtCache.expiresAt > Date.now() + 60000) {
+    return jwtCache.token
+  }
+
   const appId = process.env.GITHUB_APP_ID
   const privateKeyPem = process.env.GITHUB_APP_PRIVATE_KEY
   if (!appId || !privateKeyPem) {
@@ -82,7 +87,15 @@ function createGitHubAppJWT(): string {
   const signer = crypto.createSign('RSA-SHA256')
   signer.update(data)
   const signature = signer.sign(privateKeyPem).toString('base64').replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_')
-  return `${data}.${signature}`
+  const token = `${data}.${signature}`
+  
+  // Cache the token
+  jwtCache = {
+    token,
+    expiresAt: (now + 600) * 1000 // Convert to milliseconds
+  }
+  
+  return token
 }
 
 async function getRepoInstallationId(owner: string, repo: string): Promise<number> {
@@ -99,7 +112,16 @@ async function getRepoInstallationId(owner: string, repo: string): Promise<numbe
   return json.id
 }
 
+// Installation token cache
+const installTokenCache = new Map<number, { token: string; expiresAt: number }>()
+
 async function createInstallationAccessToken(installationId: number): Promise<{ token: string; expires_at?: string }> {
+  // Check cache first (with 5 minute buffer before expiry)
+  const cached = installTokenCache.get(installationId)
+  if (cached && cached.expiresAt > Date.now() + 300000) {
+    return { token: cached.token, expires_at: new Date(cached.expiresAt).toISOString() }
+  }
+
   const jwt = createGitHubAppJWT()
   const url = `https://api.github.com/app/installations/${installationId}/access_tokens`
   const res = await fetch(url, {
@@ -107,10 +129,20 @@ async function createInstallationAccessToken(installationId: number): Promise<{ 
     headers: {
       Authorization: `Bearer ${jwt}`,
       Accept: 'application/vnd.github+json'
-    }
+    },
+    signal: AbortSignal.timeout(10000)
   })
   const json = await res.json()
   if (!res.ok) throw new Error(json.message || 'Failed to create access token')
+  
+  // Cache the token
+  if (json.expires_at) {
+    installTokenCache.set(installationId, {
+      token: json.token,
+      expiresAt: new Date(json.expires_at).getTime()
+    })
+  }
+  
   return { token: json.token, expires_at: json.expires_at }
 }
 
@@ -132,7 +164,7 @@ function setSessionCookie(res: VercelResponse, session: ProviderSession) {
   const encoded = encodeSession(session)
   const cookieStr = cookie.serialize(SESSION_COOKIE, encoded, {
     httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
+    secure: true, // Always enforce HTTPS
     sameSite: 'lax',
     maxAge: MAX_AGE,
     path: '/'
@@ -150,7 +182,7 @@ function getSessionFromCookie(req: VercelRequest): ProviderSession | null {
 function clearSessionCookie(res: VercelResponse) {
   const cookieStr = cookie.serialize(SESSION_COOKIE, '', {
     httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
+    secure: true, // Always enforce HTTPS
     sameSite: 'lax',
     maxAge: 0,
     path: '/'
@@ -205,8 +237,19 @@ function isRateLimited(req: VercelRequest): boolean {
 
 // ========== PROXY ==========
 async function proxy(req: VercelRequest, res: VercelResponse) {
+  const origin = req.headers.origin || ''
+  const allowedOrigins = [
+    process.env.VITE_AUTH_REDIRECT_URI || '',
+    'http://localhost:3000',
+    'http://localhost:5173'
+  ].filter(Boolean)
+  
+  const isAllowedOrigin = allowedOrigins.some(allowed => origin.startsWith(allowed))
+  
   if (req.method === 'OPTIONS') {
-    res.setHeader('Access-Control-Allow-Origin', '*')
+    if (isAllowedOrigin) {
+      res.setHeader('Access-Control-Allow-Origin', origin)
+    }
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type')
     return res.status(200).end()
@@ -216,11 +259,16 @@ async function proxy(req: VercelRequest, res: VercelResponse) {
   try {
     const targetUrl = new URL(url)
     if (!['http:', 'https:'].includes(targetUrl.protocol)) return res.status(400).json({ error: 'Invalid protocol' })
-    const response = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0', Accept: '*/*' } })
+    const response = await fetch(url, { 
+      headers: { 'User-Agent': 'Mozilla/5.0', Accept: '*/*' },
+      signal: AbortSignal.timeout(15000)
+    })
     if (!response.ok) return res.status(response.status).json({ error: `Upstream ${response.status}` })
     const contentType = response.headers.get('content-type') || 'application/octet-stream'
     const data = await response.arrayBuffer()
-    res.setHeader('Access-Control-Allow-Origin', '*')
+    if (isAllowedOrigin) {
+      res.setHeader('Access-Control-Allow-Origin', origin)
+    }
     res.setHeader('Content-Type', contentType)
     return res.status(200).send(Buffer.from(data))
   } catch (e: any) {
@@ -840,6 +888,47 @@ async function githubDownload(req: VercelRequest, res: VercelResponse) {
   }
 }
 
+async function githubDelete(req: VercelRequest, res: VercelResponse) {
+  try {
+    if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' })
+    const session = getSessionFromCookie(req)
+    if (!session || (session.provider !== 'github' && session.provider !== 'github-app')) return res.status(401).json({ error: 'No GitHub session' })
+    const { owner, repo, path, sha, message } = req.body || {}
+    if (!owner || !repo || !path || !sha) return res.status(400).json({ error: 'Missing fields' })
+    
+    // Validate path
+    if (
+      typeof path !== 'string' ||
+      path.length === 0 ||
+      path.startsWith('/') ||
+      path.includes('..') ||
+      path.includes('\\') ||
+      /[\r\n]/.test(path)
+    ) {
+      return res.status(422).json({ error: 'path contains a malformed path component' })
+    }
+    
+    const delRes = await fetch(`https://api.github.com/repos/${owner}/${repo}/contents/${path}`, {
+      method: 'DELETE',
+      headers: {
+        Authorization: `Bearer ${session.accessToken}`,
+        Accept: 'application/vnd.github+json',
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        message: message || `Delete ${path}`,
+        sha
+      })
+    })
+    const json = await delRes.json()
+    if (!delRes.ok) return res.status(delRes.status).json({ error: json.message || 'Delete failed' })
+    return res.status(200).json({ success: true, path })
+  } catch (e: any) {
+    console.error('githubDelete error:', e)
+    return res.status(500).json({ error: e.message || 'GitHub delete failed' })
+  }
+}
+
 async function githubList(req: VercelRequest, res: VercelResponse) {
   try {
     const session = getSessionFromCookie(req)
@@ -993,6 +1082,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         switch (action) {
           case 'upload': return githubUpload(req, res)
           case 'download': return githubDownload(req, res)
+          case 'delete': return githubDelete(req, res)
           case 'list': return githubList(req, res)
           case 'webhook': return githubWebhook(req, res)
           default: return res.status(400).json({ error: 'Invalid github action' })

@@ -112,4 +112,12 @@ export async function removeFile(path: string) {
   // Always normalize to leading slash
   const normPath = path.startsWith('/') ? path : '/' + path;
   await db.delete(FILE_STORE, normPath)
+  
+  // Track deletion for sync
+  try {
+    const { githubSync } = await import('../storage/githubSync');
+    await githubSync.trackDeletion(`files/${path.replace(/^\//, '')}`);
+  } catch (e) {
+    console.error('Failed to track file deletion:', e);
+  }
 }

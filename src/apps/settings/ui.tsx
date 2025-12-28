@@ -224,7 +224,16 @@ export default function SettingsUI() {
             }
             if (!res.ok) throw new Error(`status ${res.status}`)
             const data = await res.json()
-            setAuditEntries(Array.isArray(data.entries) ? data.entries : [])
+            const entries = Array.isArray(data.entries) ? data.entries : []
+            setAuditEntries(entries)
+            
+            // Track entries for auto-sync if GitHub storage is connected
+            if (storageStatus.connected && (storageStatus.provider === 'github' || storageStatus.provider === 'github-app')) {
+                // Track new entries (non-blocking)
+                entries.forEach(entry => {
+                    auditSync.trackAuditEntry(entry).catch(() => {})
+                })
+            }
         } catch (e) {
             console.error('Audit log fetch failed:', e)
             if (e instanceof Error && e.message === 'unauthorized') {

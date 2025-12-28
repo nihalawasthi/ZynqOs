@@ -54,6 +54,12 @@ class AuditLogSyncService {
    * Track a new audit entry for syncing
    */
   async trackAuditEntry(entry: AuditEntry) {
+    // Check if entry already exists (by ID)
+    const exists = this.pendingEntries.some(e => e.id === entry.id)
+    if (exists) {
+      return // Don't track duplicates
+    }
+
     this.pendingEntries.push(entry)
     this.savePendingToStorage()
 
