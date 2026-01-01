@@ -24,8 +24,19 @@ export default function CalculatorUI({ wasmModule }: CalculatorUIProps) {
 
   function calculate() {
     try {
-      // Use eval for simple expressions (or implement proper parser)
-      const computed = eval(result)
+      // Safe expression evaluation using Function constructor (more secure than eval)
+      // This only works for numeric expressions, rejecting any malicious code
+      const expression = result
+      
+      // Validate expression contains only allowed characters
+      if (!/^[0-9+\-*/(). ]*$/.test(expression)) {
+        setResult('Error')
+        return
+      }
+      
+      // Use Function constructor with restricted scope instead of eval
+      const computeFunc = new Function('return (' + expression + ')')
+      const computed = computeFunc()
       setResult(String(computed))
     } catch {
       setResult('Error')

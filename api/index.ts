@@ -45,6 +45,26 @@ const rateBucket = new Map<string, { count: number; resetAt: number }>()
 const installStateMap = new Map<string, { token: string; createdAt: number }>()
 const STATE_TTL_MS = 600_000 // 10 minutes
 
+// Periodic cleanup of expired state tokens to prevent memory leaks
+function cleanupExpiredStates() {
+  const now = Date.now()
+  const expiredStates: string[] = []
+  
+  for (const [key, value] of installStateMap.entries()) {
+    if (now - value.createdAt > STATE_TTL_MS) {
+      expiredStates.push(key)
+    }
+  }
+  
+  expiredStates.forEach(key => installStateMap.delete(key))
+  if (expiredStates.length > 0) {
+    console.log(`Cleaned up ${expiredStates.length} expired CSRF state tokens`)
+  }
+}
+
+// Run cleanup every 10 minutes
+setInterval(cleanupExpiredStates, 10 * 60 * 1000)
+
 function logGitHubDebug(label: string, payload: any) {
   // Only log in development, never write sensitive data to disk
   if (process.env.NODE_ENV !== 'production') {
@@ -237,6 +257,11 @@ function isRateLimited(req: VercelRequest): boolean {
 
 // ========== PROXY ==========
 async function proxy(req: VercelRequest, res: VercelResponse) {
+  // Disable proxy in production - security risk
+  if (process.env.NODE_ENV === 'production') {
+    return res.status(403).json({ error: 'Proxy disabled in production' })
+  }
+  
   const origin = req.headers.origin || ''
   const allowedOrigins = [
     process.env.VITE_AUTH_REDIRECT_URI || '',
@@ -849,19 +874,22 @@ async function githubUpload(req: VercelRequest, res: VercelResponse) {
     if (!session || (session.provider !== 'github' && session.provider !== 'github-app')) return res.status(401).json({ error: 'No GitHub session' })
     const { owner, repo, path, content, message, sha } = req.body || {}
     if (!owner || !repo || !path || !content) return res.status(400).json({ error: 'Missing fields' })
-    // Stricter path validation
+    
+    // Validate parameters
     if (
-      typeof path !== 'string' ||
-      path.length === 0 ||
-      path.startsWith('/') ||
-      path.includes('..') ||
-      path.includes('\\') ||
-      /[\r\n]/.test(path)
+      typeof owner !== 'string' || typeof repo !== 'string' || typeof path !== 'string' ||
+      owner.length === 0 || repo.length === 0 || path.length === 0 ||
+      /[^\w.-]/.test(owner) || /[^\w.-]/.test(repo) ||
+      path.startsWith('/') || path.includes('..') || path.includes('\\') || /[\r\n]/.test(path)
     ) {
-      return res.status(422).json({ error: 'path contains a malformed path component' })
+      return res.status(400).json({ error: 'Invalid parameters' })
     }
-    const body: any = { message: message || `Update ${path}`, content }
-    if (sha) body.sha = sha
+    
+    // Sanitize commit message to prevent injection
+    const sanitizedMessage = (typeof message === 'string' ? message : `Update ${path}`).slice(0, 500).replace(/[\r\n]/g, ' ')
+    
+    const body: any = { message: sanitizedMessage, content }
+    if (sha && typeof sha === 'string') body.sha = sha
     const upRes = await fetch(`https://api.github.com/repos/${owner}/${repo}/contents/${path}`, { method: 'PUT', headers: { Authorization: `Bearer ${session.accessToken}`, Accept: 'application/vnd.github+json', 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
     const json = await upRes.json()
     if (!upRes.ok) return res.status(upRes.status).json({ error: json.message || 'Upload failed' })
@@ -878,6 +906,17 @@ async function githubDownload(req: VercelRequest, res: VercelResponse) {
     if (!session || (session.provider !== 'github' && session.provider !== 'github-app')) return res.status(401).json({ error: 'No GitHub session' })
     const { owner, repo, path } = req.query
     if (!owner || !repo || !path) return res.status(400).json({ error: 'Missing owner/repo/path' })
+    
+    // Validate path parameters to prevent path traversal
+    if (
+      typeof owner !== 'string' || typeof repo !== 'string' || typeof path !== 'string' ||
+      owner.length === 0 || repo.length === 0 || path.length === 0 ||
+      /[^\w.-]/.test(owner) || /[^\w.-]/.test(repo) ||
+      path.startsWith('/') || path.includes('..') || path.includes('\\') || /[\r\n]/.test(path)
+    ) {
+      return res.status(400).json({ error: 'Invalid path parameters' })
+    }
+    
     const dlRes = await fetch(`https://api.github.com/repos/${owner}/${repo}/contents/${path}`, { headers: { Authorization: `Bearer ${session.accessToken}`, Accept: 'application/vnd.github+json' } })
     const json = await dlRes.json()
     if (!dlRes.ok) return res.status(dlRes.status).json({ error: json.message || 'Download failed' })
@@ -896,17 +935,18 @@ async function githubDelete(req: VercelRequest, res: VercelResponse) {
     const { owner, repo, path, sha, message } = req.body || {}
     if (!owner || !repo || !path || !sha) return res.status(400).json({ error: 'Missing fields' })
     
-    // Validate path
+    // Validate parameters
     if (
-      typeof path !== 'string' ||
-      path.length === 0 ||
-      path.startsWith('/') ||
-      path.includes('..') ||
-      path.includes('\\') ||
-      /[\r\n]/.test(path)
+      typeof owner !== 'string' || typeof repo !== 'string' || typeof path !== 'string' || typeof sha !== 'string' ||
+      owner.length === 0 || repo.length === 0 || path.length === 0 || sha.length === 0 ||
+      /[^\w.-]/.test(owner) || /[^\w.-]/.test(repo) ||
+      path.startsWith('/') || path.includes('..') || path.includes('\\') || /[\r\n]/.test(path)
     ) {
-      return res.status(422).json({ error: 'path contains a malformed path component' })
+      return res.status(400).json({ error: 'Invalid parameters' })
     }
+    
+    // Sanitize commit message
+    const sanitizedMessage = (typeof message === 'string' ? message : `Delete ${path}`).slice(0, 500).replace(/[\r\n]/g, ' ')
     
     const delRes = await fetch(`https://api.github.com/repos/${owner}/${repo}/contents/${path}`, {
       method: 'DELETE',
@@ -916,7 +956,7 @@ async function githubDelete(req: VercelRequest, res: VercelResponse) {
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
-        message: message || `Delete ${path}`,
+        message: sanitizedMessage,
         sha
       })
     })
@@ -935,7 +975,25 @@ async function githubList(req: VercelRequest, res: VercelResponse) {
     if (!session || (session.provider !== 'github' && session.provider !== 'github-app')) return res.status(401).json({ error: 'No GitHub session' })
     const { owner, repo, branch } = req.query
     if (!owner || !repo) return res.status(400).json({ error: 'Missing owner/repo' })
-    const targetBranch = typeof branch === 'string' && branch.length > 0 ? branch : 'main'
+    
+    // Validate parameters
+    if (
+      typeof owner !== 'string' || typeof repo !== 'string' ||
+      owner.length === 0 || repo.length === 0 ||
+      /[^\w.-]/.test(owner) || /[^\w.-]/.test(repo)
+    ) {
+      return res.status(400).json({ error: 'Invalid owner/repo' })
+    }
+    
+    let targetBranch = 'main'
+    if (typeof branch === 'string' && branch.length > 0) {
+      // Validate branch name - prevent path traversal
+      if (/[^\w\-./]/.test(branch) || branch.startsWith('/') || branch.includes('..')) {
+        return res.status(400).json({ error: 'Invalid branch name' })
+      }
+      targetBranch = branch
+    }
+    
     const treeRes = await fetch(`https://api.github.com/repos/${owner}/${repo}/git/trees/${targetBranch}?recursive=1`, {
       headers: { Authorization: `Bearer ${session.accessToken}`, Accept: 'application/vnd.github+json' }
     })
@@ -976,18 +1034,37 @@ async function githubWebhook(req: VercelRequest, res: VercelResponse) {
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const { route, action } = req.query
   
-  // CORS preflight
+  // CORS preflight - restrict to allowed origins only
   if (req.method === 'OPTIONS') {
-    res.setHeader('Access-Control-Allow-Origin', '*')
+    const origin = req.headers.origin || ''
+    const allowedOrigins = [
+      process.env.VITE_AUTH_REDIRECT_URI || '',
+      'http://localhost:3000',
+      'http://localhost:5173'
+    ].filter(Boolean)
+    const isAllowedOrigin = allowedOrigins.some(allowed => origin.startsWith(allowed))
+    if (isAllowedOrigin) {
+      res.setHeader('Access-Control-Allow-Origin', origin)
+      res.setHeader('Access-Control-Allow-Credentials', 'true')
+    }
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS')
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization')
-    res.setHeader('Access-Control-Allow-Credentials', 'true')
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type')
     return res.status(200).end()
   }
   
-  // Add CORS headers to all responses
-  res.setHeader('Access-Control-Allow-Origin', req.headers.origin || '*')
-  res.setHeader('Access-Control-Allow-Credentials', 'true')
+  // Add CORS headers to all responses - restrict to allowed origins
+  const origin = req.headers.origin || ''
+  const allowedOrigins = [
+    process.env.VITE_AUTH_REDIRECT_URI || '',
+    'http://localhost:3000',
+    'http://localhost:5173',
+    'https://zynqos.vercel.app'
+  ].filter(Boolean)
+  const isAllowedOrigin = allowedOrigins.some(allowed => origin.startsWith(allowed))
+  if (isAllowedOrigin) {
+    res.setHeader('Access-Control-Allow-Origin', origin)
+    res.setHeader('Access-Control-Allow-Credentials', 'true')
+  }
   
   // Log request details for debugging
   console.log('API Request:', {
@@ -1047,24 +1124,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         case 'audit': return authAudit(req, res)
         case 'audit_sync': return auditSync(req, res)
         case 'audit_history': return auditHistory(req, res)
-        case 'debug_session':
-          // Debug endpoint to inspect session state
-          const session = getSessionFromCookie(req)
-          return res.status(200).json({
-            hasSession: !!session,
-            sessionData: session ? {
-              provider: session.provider,
-              userId: session.userId,
-              userName: session.userName,
-              userEmail: session.userEmail,
-              userAvatar: session.userAvatar?.substring?.(0, 50),
-              repoFullName: session.repoFullName,
-              installationId: session.installationId,
-              expiresAt: session.expiresAt,
-              audit: session.audit?.length || 0
-            } : null,
-            cookieValue: null
-          })
+        // debug_session endpoint removed - information disclosure vulnerability
         default: return res.status(400).json({ error: 'Invalid auth action' })
       }
     }
