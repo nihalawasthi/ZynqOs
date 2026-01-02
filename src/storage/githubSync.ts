@@ -271,8 +271,9 @@ class GitHubSyncService {
         let safePath = change.path.replace(/^\/+/, "").replace(/\\/g, "/").replace(/\.\./g, "");
         // Remove any accidental double slashes
         safePath = safePath.replace(/\/+/, '/');
-        // Add 'files/' prefix for GitHub storage
-        const githubPath = `files/${safePath}`;
+        // Don't add 'files/' prefix for logs/ directory and settings.json (they're at repo root)
+        const isSpecialPath = safePath.startsWith('logs/') || safePath === 'settings.json';
+        const githubPath = isSpecialPath ? safePath : `files/${safePath}`;
         // Ensure content is valid Base64, support binary files
         let base64Content = change.content;
         function isBase64(str) {
@@ -293,15 +294,20 @@ class GitHubSyncService {
           // Use streaming-safe base64 encoder
           base64Content = btoa(Array.prototype.map.call(bytes, (ch) => String.fromCharCode(ch)).join(''));
         }
-        // Fetch latest SHA for the file (required for update)
+        // Fetch latest SHA for the file (required for update, 404 means new file)
         let sha = undefined;
         try {
           const shaRes = await fetch(`/api?route=storage&provider=github&action=download&owner=${owner}&repo=${repo}&path=${encodeURIComponent(githubPath)}`, { credentials: 'include' });
           if (shaRes.ok) {
             const shaJson = await shaRes.json();
             if (shaJson.sha) sha = shaJson.sha;
+          } else if (shaRes.status !== 404) {
+            console.warn(`Failed to fetch SHA for ${githubPath}:`, shaRes.status);
           }
-        } catch {}
+          // 404 is expected for new files, no warning needed
+        } catch (e) {
+          console.debug('SHA fetch error (file may not exist yet):', e);
+        }
         const upRes = await fetch('/api?route=storage&provider=github&action=upload', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -332,8 +338,9 @@ class GitHubSyncService {
       for (const deletion of pendingDeletions) {
         let safePath = deletion.path.replace(/^\/+/, "").replace(/\\/g, "/").replace(/\.\./g, "");
         safePath = safePath.replace(/\/+/, '/');
-        // Add 'files/' prefix for GitHub storage
-        const githubPath = `files/${safePath}`;
+        // Don't add 'files/' prefix for logs/ directory and settings.json (they're at repo root)
+        const isSpecialPath = safePath.startsWith('logs/') || safePath === 'settings.json';
+        const githubPath = isSpecialPath ? safePath : `files/${safePath}`;
         
         // Get file SHA for deletion
         try {
@@ -358,9 +365,11 @@ class GitHubSyncService {
                 console.error(`Failed to delete ${githubPath}:`, await delRes.text())
               }
             }
+          } else if (shaRes.status === 404) {
+            console.debug(`File ${githubPath} already deleted from GitHub`)
           }
         } catch (e) {
-          console.error(`Error deleting ${githubPath}:`, e)
+          console.debug(`Error fetching SHA for deletion of ${githubPath}:`, e)
         }
       }
 
@@ -424,8 +433,12 @@ class GitHubSyncService {
       const listJson = await listRes.json()
       const tree = Array.isArray(listJson.tree) ? listJson.tree : []
 
-      // Pull only files from the 'files/' directory
-      const fileEntries = tree.filter((n: any) => n.type === 'blob' && typeof n.path === 'string' && n.path.startsWith('files/'));
+      // Pull files from files/, logs/ directory, and settings.json
+      const fileEntries = tree.filter((n: any) => {
+        if (n.type !== 'blob' || typeof n.path !== 'string') return false;
+        const path = n.path as string;
+        return path.startsWith('files/') || path.startsWith('logs/') || path === 'settings.json';
+      });
 
       for (const entry of fileEntries) {
         const githubPath = entry.path as string;
@@ -500,9 +513,11 @@ class GitHubSyncService {
     try {
       const mod = await import('../vfs/fs');
       let vfsPath = path.replace(/^\/+/, "");
+      // Strip 'files/' prefix but keep logs/, settings/, audit/ as-is
       if (vfsPath.startsWith('files/')) {
         vfsPath = vfsPath.slice('files/'.length);
       }
+      // logs/, settings/, audit/ remain at their paths
       // Heuristic: treat as text if .md, .txt, .js, .ts, .json, .py, .html, .css, .csv, .log, .sh, .xml, .yml, .yaml
       const isText = /\.(md|txt|js|ts|json|py|html|css|csv|log|sh|xml|yml|yaml)$/i.test(vfsPath);
       let toStore: string | Uint8Array = data;
@@ -537,9 +552,11 @@ class GitHubSyncService {
     try {
       const mod = await import('../vfs/fs');
       let vfsPath = path.replace(/^\/+/, "");
+      // Strip 'files/' prefix but keep logs/, settings/, audit/ as-is
       if (vfsPath.startsWith('files/')) {
         vfsPath = vfsPath.slice('files/'.length);
       }
+      // logs/, settings/, audit/ remain at their paths
       await mod.removeFile(vfsPath);
     } catch (e) {
       console.error('Failed to delete from VFS:', e, path);

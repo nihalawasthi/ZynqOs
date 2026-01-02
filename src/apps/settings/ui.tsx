@@ -3,8 +3,49 @@ import { toast } from '../../hooks/use-toast'
 import { getStorageStatus, disconnectStorage, type StorageStatus, connectGitHubRepo } from '../../auth/storage'
 import { githubSync } from '../../storage/githubSync'
 import { auditSync, type AuditEntry as AuditSyncEntry } from '../../utils/auditSync'
+import { readFile, writeFile } from '../../vfs/fs'
 
 type TabType = 'display' | 'storage' | 'security' | 'system' | 'about'
+
+type UserSettings = {
+    version: string
+    display: {
+        theme: 'dark' | 'light'
+        wallpaper: {
+            source: string
+            size: string
+            position: string
+            repeat: string
+        }
+    }
+    sync: {
+        autoSyncEnabled: boolean
+        autoSyncIntervalMinutes: number
+    }
+    audit: {
+        autoSync: boolean
+    }
+}
+
+const DEFAULT_SETTINGS: UserSettings = {
+    version: '1.0.0',
+    display: {
+        theme: 'dark',
+        wallpaper: {
+            source: '/assets/wallpaper.png',
+            size: '60%',
+            position: 'center',
+            repeat: 'no-repeat'
+        }
+    },
+    sync: {
+        autoSyncEnabled: false,
+        autoSyncIntervalMinutes: 30
+    },
+    audit: {
+        autoSync: true
+    }
+}
 
 type AuditEntry = {
     id: string
@@ -26,14 +67,13 @@ type SyncStatus = {
 }
 
 export default function SettingsUI() {
+    const [settings, setSettings] = useState<UserSettings>(DEFAULT_SETTINGS)
     const [activeTab, setActiveTab] = useState<TabType>('about')
     const [storageStatus, setStorageStatus] = useState<StorageStatus>({ connected: false })
     const [sessionTime, setSessionTime] = useState<string>('0s')
     const [cacheSize, setCacheSize] = useState<string>('calculating...')
     const [cacheRatio, setCacheRatio] = useState<number>(0)
     const [profile, setProfile] = useState<any>(null)
-    const [wallpaperSource, setWallpaperSource] = useState<string>('')
-    const [backgroundSize, setBackgroundSize] = useState<string>('60%')
     const [wallpaperLoading, setWallpaperLoading] = useState(false)
     const [auditEntries, setAuditEntries] = useState<AuditEntry[]>([])
     const [auditLoading, setAuditLoading] = useState(false)
@@ -55,7 +95,47 @@ export default function SettingsUI() {
     const [showSyncedLogs, setShowSyncedLogs] = useState(false)
     const [syncedAuditEntries, setSyncedAuditEntries] = useState<AuditSyncEntry[]>([])
 
+    // Save settings to VFS and track for sync
+    const saveSettings = async (newSettings: UserSettings) => {
+        try {
+            const settingsJson = JSON.stringify(newSettings, null, 2)
+            await writeFile('settings.json', settingsJson)
+            await githubSync.trackChange('settings.json', settingsJson)
+            setSettings(newSettings)
+        } catch (error) {
+            console.error('Failed to save settings:', error)
+        }
+    }
+
+    // Load settings from VFS
+    const loadSettings = async () => {
+        try {
+            const data = await readFile('settings.json')
+            if (data && typeof data === 'string') {
+                const loadedSettings = JSON.parse(data) as UserSettings
+                setSettings(loadedSettings)
+                return loadedSettings
+            }
+        } catch (error) {
+            console.debug('No saved settings found, using defaults')
+        }
+        return DEFAULT_SETTINGS
+    }
+
     useEffect(() => {
+        // Load settings from VFS
+        loadSettings().then(loadedSettings => {
+            // Apply wallpaper from settings
+            const root = document.querySelector('.h-screen')
+            if (root && root instanceof HTMLElement) {
+                const wp = loadedSettings.display.wallpaper
+                root.style.backgroundImage = `url('${wp.source}')`
+                root.style.backgroundSize = wp.size
+                root.style.backgroundRepeat = wp.repeat
+                root.style.backgroundPosition = wp.position
+            }
+        })
+
         // Get session timer data if available
         const updateSessionTime = () => {
             const sessionTimerData = localStorage.getItem('zynqos_session_timer')
@@ -73,32 +153,6 @@ export default function SettingsUI() {
         // Calculate cache size
         calculateCacheSize()
 
-        // Load saved wallpaper settings
-        const savedWallpaper = localStorage.getItem('zynqos_wallpaper_source')
-        const savedSize = localStorage.getItem('zynqos_background_size')
-
-        if (savedWallpaper) {
-            setWallpaperSource(savedWallpaper)
-        }
-        if (savedSize) {
-            setBackgroundSize(savedSize)
-        }
-
-        // Apply wallpaper immediately if saved
-        if (savedWallpaper || savedSize) {
-            const root = document.querySelector('.h-screen')
-            if (root && root instanceof HTMLElement) {
-                if (savedWallpaper) {
-                    root.style.backgroundImage = `url('${savedWallpaper}')`
-                }
-                if (savedSize) {
-                    root.style.backgroundSize = savedSize
-                }
-                root.style.backgroundRepeat = 'no-repeat'
-                root.style.backgroundPosition = 'center'
-            }
-        }
-
         // Initialize GitHub sync
         githubSync.init().then(() => {
             const status = githubSync.getStatus()
@@ -108,6 +162,14 @@ export default function SettingsUI() {
             if (config) {
                 setAutoSyncEnabled(config.autoSyncEnabled)
                 setAutoSyncInterval(config.autoSyncIntervalMinutes || 30)
+                // Update settings state with loaded sync config
+                setSettings(prev => ({
+                    ...prev,
+                    sync: {
+                        autoSyncEnabled: config.autoSyncEnabled,
+                        autoSyncIntervalMinutes: config.autoSyncIntervalMinutes || 30
+                    }
+                }))
             }
         })
 
@@ -401,12 +463,20 @@ export default function SettingsUI() {
         setWallpaperLoading(true)
         try {
             const reader = new FileReader()
-            reader.onload = (event) => {
+            reader.onload = async (event) => {
                 const dataUrl = event.target?.result as string
-                localStorage.setItem('zynqos_wallpaper_source', dataUrl)
-                setWallpaperSource(dataUrl)
-                // Apply immediately
-                applyWallpaper(dataUrl)
+                const newSettings = {
+                    ...settings,
+                    display: {
+                        ...settings.display,
+                        wallpaper: {
+                            ...settings.display.wallpaper,
+                            source: dataUrl
+                        }
+                    }
+                }
+                await saveSettings(newSettings)
+                applyWallpaper(newSettings.display.wallpaper)
                 setWallpaperLoading(false)
             }
             reader.readAsDataURL(file)
@@ -417,15 +487,23 @@ export default function SettingsUI() {
         }
     }
 
-    const handleWallpaperUrl = () => {
+    const handleWallpaperUrl = async () => {
         const url = prompt('Enter image URL:')
         if (url) {
             try {
-                // Test if URL is valid
                 new URL(url)
-                localStorage.setItem('zynqos_wallpaper_source', url)
-                setWallpaperSource(url)
-                applyWallpaper(url)
+                const newSettings = {
+                    ...settings,
+                    display: {
+                        ...settings.display,
+                        wallpaper: {
+                            ...settings.display.wallpaper,
+                            source: url
+                        }
+                    }
+                }
+                await saveSettings(newSettings)
+                applyWallpaper(newSettings.display.wallpaper)
             } catch {
                 toast({ title: 'Error', description: 'Invalid URL', variant: 'destructive' })
             }
@@ -439,20 +517,17 @@ export default function SettingsUI() {
             variant: 'default',
             action: (
                 <button
-                    onClick={() => {
+                    onClick={async () => {
                         dismiss()
-                        localStorage.removeItem('zynqos_wallpaper_source')
-                        localStorage.removeItem('zynqos_background_size')
-                        setWallpaperSource('')
-                        setBackgroundSize('60%')
-                        // Apply default wallpaper without refresh
-                        const root = document.querySelector('.h-screen')
-                        if (root && root instanceof HTMLElement) {
-                            root.style.backgroundImage = `url('/assets/wallpaper.png')`
-                            root.style.backgroundSize = '60%'
-                            root.style.backgroundRepeat = 'no-repeat'
-                            root.style.backgroundPosition = 'center'
+                        const newSettings = {
+                            ...settings,
+                            display: {
+                                ...settings.display,
+                                wallpaper: DEFAULT_SETTINGS.display.wallpaper
+                            }
                         }
+                        await saveSettings(newSettings)
+                        applyWallpaper(newSettings.display.wallpaper)
                         toast({ title: 'Success', description: 'Wallpaper reset to default', variant: 'success' })
                     }}
                     className="px-3 py-1 text-sm bg-blue-600 rounded hover:bg-blue-700"
@@ -463,34 +538,50 @@ export default function SettingsUI() {
         })
     }
 
-    const handleWallpaperInputChange = (newUrl: string) => {
+    const handleWallpaperInputChange = async (newUrl: string) => {
         if (newUrl.trim()) {
             try {
-                // Test if URL is valid
                 new URL(newUrl)
-                localStorage.setItem('zynqos_wallpaper_source', newUrl)
-                setWallpaperSource(newUrl)
-                applyWallpaper(newUrl)
+                const newSettings = {
+                    ...settings,
+                    display: {
+                        ...settings.display,
+                        wallpaper: {
+                            ...settings.display.wallpaper,
+                            source: newUrl
+                        }
+                    }
+                }
+                await saveSettings(newSettings)
+                applyWallpaper(newSettings.display.wallpaper)
             } catch {
-                // If not a valid URL, just update the state but don't apply
-                setWallpaperSource(newUrl)
+                // Invalid URL, ignore
             }
         }
     }
 
-    const applyWallpaper = (source: string) => {
+    const applyWallpaper = (wallpaper: UserSettings['display']['wallpaper']) => {
         const root = document.querySelector('.h-screen')
         if (root && root instanceof HTMLElement) {
-            root.style.backgroundImage = `url('${source}')`
-            root.style.backgroundSize = backgroundSize
-            root.style.backgroundRepeat = 'no-repeat'
-            root.style.backgroundPosition = 'center'
+            root.style.backgroundImage = `url('${wallpaper.source}')`
+            root.style.backgroundSize = wallpaper.size
+            root.style.backgroundRepeat = wallpaper.repeat
+            root.style.backgroundPosition = wallpaper.position
         }
     }
 
-    const handleBackgroundSizeChange = (size: string) => {
-        setBackgroundSize(size)
-        localStorage.setItem('zynqos_background_size', size)
+    const handleBackgroundSizeChange = async (size: string) => {
+        const newSettings = {
+            ...settings,
+            display: {
+                ...settings.display,
+                wallpaper: {
+                    ...settings.display.wallpaper,
+                    size: size
+                }
+            }
+        }
+        await saveSettings(newSettings)
         const root = document.querySelector('.h-screen')
         if (root && root instanceof HTMLElement) {
             root.style.backgroundSize = size
@@ -542,8 +633,15 @@ export default function SettingsUI() {
         if (autoSyncEnabled) {
             try {
                 await githubSync.setAutoSync(true, newInterval)
-                // Track settings change
-                await githubSync.trackChange('settings/auto-sync.json', JSON.stringify({ autoSyncIntervalMinutes: newInterval }, null, 2))
+                // Update settings object
+                const newSettings = {
+                    ...settings,
+                    sync: {
+                        ...settings.sync,
+                        autoSyncIntervalMinutes: newInterval
+                    }
+                }
+                await saveSettings(newSettings)
                 toast({ 
                     title: 'Auto-sync updated',
                     description: `Now syncing every ${newInterval} minutes`,
@@ -580,7 +678,7 @@ export default function SettingsUI() {
                     </h3>
 
                     {/* Reset Button */}
-                    {wallpaperSource && (
+                    {settings.display.wallpaper.source !== DEFAULT_SETTINGS.display.wallpaper.source && (
                         <button
                             onClick={handleResetWallpaper}
                             className="transition text-gray-400 hover:text-gray-200 ml-auto"
@@ -594,11 +692,11 @@ export default function SettingsUI() {
                     {/* All Wallpaper Controls - Single Line */}
                     <div className="bg-black/50 rounded p-3">
                         <div className="flex gap-2 items-center">
-                            <input type="text" value={wallpaperSource || '/assets/wallpaper.png'} onChange={(e) => handleWallpaperInputChange(e.target.value)} className="flex-1 bg-gray-900 text-gray-300 px-3 py-2 rounded text-xs border border-gray-700 focus:border-blue-500 focus:outline-none" placeholder="Wallpaper URL" />
+                            <input type="text" value={settings.display.wallpaper.source} onChange={(e) => handleWallpaperInputChange(e.target.value)} className="flex-1 bg-gray-900 text-gray-300 px-3 py-2 rounded text-xs border border-gray-700 focus:border-blue-500 focus:outline-none" placeholder="Wallpaper URL" />
                             <input type="file" id="wallpaper-upload" accept="image/*" onChange={handleWallpaperUpload} disabled={wallpaperLoading} className="hidden" />
                             <button onClick={() => document.getElementById('wallpaper-upload')?.click()} disabled={wallpaperLoading} className="px-3 py-2 bg-blue-600/80 hover:bg-blue-700/80 disabled:bg-gray-600 text-white text-xs rounded transition whitespace-nowrap">{wallpaperLoading ? 'Uploading...' : <i className="fa-solid fa-upload"></i>}</button>
                             {/* <button onClick={handleWallpaperUrl} className="px-3 py-2 bg-blue-600/80 hover:bg-blue-700/80 text-white text-xs rounded transition whitespace-nowrap">🔗 URL</button> */}
-                            <select value={backgroundSize} onChange={(e) => handleBackgroundSizeChange(e.target.value)} className="bg-gray-900 text-gray-300 p-2 rounded text-xs border border-gray-700 focus:border-blue-500 focus:outline-none cursor-pointer">
+                            <select value={settings.display.wallpaper.size} onChange={(e) => handleBackgroundSizeChange(e.target.value)} className="bg-gray-900 text-gray-300 p-2 rounded text-xs border border-gray-700 focus:border-blue-500 focus:outline-none cursor-pointer">
                                 <option value="100% 100%">Full</option>
                                 <option value="cover">Cover</option>
                                 <option value="contain">Contain</option>
