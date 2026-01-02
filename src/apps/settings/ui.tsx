@@ -378,12 +378,23 @@ export default function SettingsUI() {
             const startDate = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
             
             const logs = await auditSync.getLogsForDateRange(startDate, endDate)
-            setSyncedAuditEntries(logs)
+            
+            // Deduplicate entries by ID (keep most recent by timestamp)
+            const uniqueLogsMap = new Map<string, AuditSyncEntry>()
+            logs.forEach(entry => {
+                const existing = uniqueLogsMap.get(entry.id)
+                if (!existing || entry.ts > existing.ts) {
+                    uniqueLogsMap.set(entry.id, entry)
+                }
+            })
+            const uniqueLogs = Array.from(uniqueLogsMap.values()).sort((a, b) => b.ts - a.ts)
+            
+            setSyncedAuditEntries(uniqueLogs)
             setShowSyncedLogs(true)
             
             toast({
                 title: 'Logs Loaded',
-                description: `Loaded ${logs.length} synced audit entries`,
+                description: `Loaded ${uniqueLogs.length} unique audit entries (${logs.length} total)`,
                 variant: 'success'
             })
         } catch (e) {
@@ -721,11 +732,11 @@ export default function SettingsUI() {
                     {/* All Wallpaper Controls - Single Line */}
                     <div className="bg-black/50 rounded p-3">
                         <div className="flex gap-2 items-center">
-                            <input type="text" value={settings.display.wallpaper.source} onChange={(e) => handleWallpaperInputChange(e.target.value)} className="flex-1 bg-gray-900 text-gray-300 px-3 py-2 rounded text-xs border border-gray-700 focus:border-blue-500 focus:outline-none" placeholder="Wallpaper URL" />
+                            <input type="text" value={settings.display.wallpaper.source || ''} onChange={(e) => handleWallpaperInputChange(e.target.value)} className="flex-1 bg-gray-900 text-gray-300 px-3 py-2 rounded text-xs border border-gray-700 focus:border-blue-500 focus:outline-none" placeholder="Wallpaper URL" />
                             <input type="file" id="wallpaper-upload" accept="image/*" onChange={handleWallpaperUpload} disabled={wallpaperLoading} className="hidden" />
                             <button onClick={() => document.getElementById('wallpaper-upload')?.click()} disabled={wallpaperLoading} className="px-3 py-2 bg-blue-600/80 hover:bg-blue-700/80 disabled:bg-gray-600 text-white text-xs rounded transition whitespace-nowrap">{wallpaperLoading ? 'Uploading...' : <i className="fa-solid fa-upload"></i>}</button>
                             {/* <button onClick={handleWallpaperUrl} className="px-3 py-2 bg-blue-600/80 hover:bg-blue-700/80 text-white text-xs rounded transition whitespace-nowrap">🔗 URL</button> */}
-                            <select value={settings.display.wallpaper.size} onChange={(e) => handleBackgroundSizeChange(e.target.value)} className="bg-gray-900 text-gray-300 p-2 rounded text-xs border border-gray-700 focus:border-blue-500 focus:outline-none cursor-pointer">
+                            <select value={settings.display.wallpaper.size || '60%'} onChange={(e) => handleBackgroundSizeChange(e.target.value)} className="bg-gray-900 text-gray-300 p-2 rounded text-xs border border-gray-700 focus:border-blue-500 focus:outline-none cursor-pointer">
                                 <option value="100% 100%">Full</option>
                                 <option value="cover">Cover</option>
                                 <option value="contain">Contain</option>
@@ -1163,7 +1174,7 @@ export default function SettingsUI() {
                         <div className="px-3 py-3 text-sm text-gray-400">No audit events recorded yet.</div>
                     )}
                     {!auditLoading && !auditError && auditEntries.map(entry => (
-                        <div key={entry.id} className="grid grid-cols-5 gap-2 px-3 py-2 text-xs text-gray-200">
+                        <div key={`local-${entry.id}`} className="grid grid-cols-5 gap-2 px-3 py-2 text-xs text-gray-200">
                             <span className="text-gray-400">{formatTimestamp(entry.ts)}</span>
                             <span className="font-mono text-[11px] text-gray-100">{entry.event}</span>
                             <span className={entry.status === 'success' ? 'text-green-400' : 'text-red-400'}>{entry.status}</span>
@@ -1255,7 +1266,7 @@ export default function SettingsUI() {
                                     <span>IP</span>
                                 </div>
                                 {syncedAuditEntries.map(entry => (
-                                    <div key={entry.id} className="grid grid-cols-5 gap-2 px-3 py-2 text-xs text-gray-200">
+                                    <div key={`synced-${entry.id}`} className="grid grid-cols-5 gap-2 px-3 py-2 text-xs text-gray-200">
                                         <span className="text-gray-400">{formatTimestamp(entry.ts)}</span>
                                         <span className="font-mono text-[11px] text-gray-100">{entry.event}</span>
                                         <span className={entry.status === 'success' ? 'text-green-400' : 'text-red-400'}>{entry.status}</span>
