@@ -290,7 +290,7 @@ class GitHubSyncService {
           } else {
             bytes = new TextEncoder().encode(String(change.content));
           }
-          // Use a streaming-safe base64 encoder
+          // Use streaming-safe base64 encoder
           base64Content = btoa(Array.prototype.map.call(bytes, (ch) => String.fromCharCode(ch)).join(''));
         }
         // Fetch latest SHA for the file (required for update)
@@ -424,27 +424,6 @@ class GitHubSyncService {
       const listJson = await listRes.json()
       const tree = Array.isArray(listJson.tree) ? listJson.tree : []
 
-      // Get list of files from GitHub (only files/ directory) - strip 'files/' prefix
-      const githubFiles = tree
-        .filter((n: any) => n.type === 'blob' && typeof n.path === 'string' && n.path.startsWith('files/'))
-        .map((n: any) => (n.path as string).slice('files/'.length))
-
-      // Get list of files from local VFS
-      const vfsFiles = await this.listVfsFiles()
-
-      // Find files that exist in VFS but not in GitHub (deleted remotely)
-      const deletedFiles = vfsFiles.filter(vfsPath => !githubFiles.includes(vfsPath))
-
-      // Delete removed files from VFS
-      for (const deletedPath of deletedFiles) {
-        try {
-          await this.deleteVfs(deletedPath)
-          console.log(`[githubSync] Deleted ${deletedPath} (removed from GitHub)`)
-        } catch (e) {
-          console.error(`[githubSync] Failed to delete ${deletedPath}:`, e)
-        }
-      }
-
       // Pull only files from the 'files/' directory
       const fileEntries = tree.filter((n: any) => n.type === 'blob' && typeof n.path === 'string' && n.path.startsWith('files/'));
 
@@ -500,7 +479,9 @@ class GitHubSyncService {
     
     this.syncInterval = window.setInterval(async () => {
       try {
+        // Push first to ensure local VFS changes are uploaded to GitHub
         await this.syncToGitHub()
+        // Then pull to get any remote changes
         await this.pullFromGitHub()
       } catch (error) {
         console.error('Auto-sync error:', error)
