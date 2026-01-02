@@ -267,14 +267,12 @@ class GitHubSyncService {
       // Use server-side upload per file (token comes from session cookie)
       const [owner, repo] = this.config.repoFullName.split('/')
       for (const change of pendingChanges) {
-        // Only sync files under 'files/'
-        if (!change.path.startsWith('files/')) continue;
         // Sanitize path: remove leading slashes, backslashes, and '..'
         let safePath = change.path.replace(/^\/+/, "").replace(/\\/g, "/").replace(/\.\./g, "");
         // Remove any accidental double slashes
         safePath = safePath.replace(/\/+/, '/');
-        // Only sync files under 'files/'
-        if (!safePath.startsWith('files/')) continue;
+        // Add 'files/' prefix for GitHub storage
+        const githubPath = `files/${safePath}`;
         // Ensure content is valid Base64, support binary files
         let base64Content = change.content;
         function isBase64(str) {
@@ -298,7 +296,7 @@ class GitHubSyncService {
         // Fetch latest SHA for the file (required for update)
         let sha = undefined;
         try {
-          const shaRes = await fetch(`/api?route=storage&provider=github&action=download&owner=${owner}&repo=${repo}&path=${encodeURIComponent(safePath)}`, { credentials: 'include' });
+          const shaRes = await fetch(`/api?route=storage&provider=github&action=download&owner=${owner}&repo=${repo}&path=${encodeURIComponent(githubPath)}`, { credentials: 'include' });
           if (shaRes.ok) {
             const shaJson = await shaRes.json();
             if (shaJson.sha) sha = shaJson.sha;
@@ -311,9 +309,9 @@ class GitHubSyncService {
           body: JSON.stringify({
             owner,
             repo,
-            path: safePath,
+            path: githubPath,
             content: base64Content,
-            message: `Sync ${safePath}`,
+            message: `Sync ${githubPath}`,
             ...(sha ? { sha } : {})
           })
         });
@@ -332,14 +330,14 @@ class GitHubSyncService {
 
       // Process deletions
       for (const deletion of pendingDeletions) {
-        if (!deletion.path.startsWith('files/')) continue;
         let safePath = deletion.path.replace(/^\/+/, "").replace(/\\/g, "/").replace(/\.\./g, "");
         safePath = safePath.replace(/\/+/, '/');
-        if (!safePath.startsWith('files/')) continue;
+        // Add 'files/' prefix for GitHub storage
+        const githubPath = `files/${safePath}`;
         
         // Get file SHA for deletion
         try {
-          const shaRes = await fetch(`/api?route=storage&provider=github&action=download&owner=${owner}&repo=${repo}&path=${encodeURIComponent(safePath)}`, { credentials: 'include' });
+          const shaRes = await fetch(`/api?route=storage&provider=github&action=download&owner=${owner}&repo=${repo}&path=${encodeURIComponent(githubPath)}`, { credentials: 'include' });
           if (shaRes.ok) {
             const shaJson = await shaRes.json();
             if (shaJson.sha) {
@@ -351,18 +349,18 @@ class GitHubSyncService {
                 body: JSON.stringify({
                   owner,
                   repo,
-                  path: safePath,
+                  path: githubPath,
                   sha: shaJson.sha,
-                  message: `Delete ${safePath}`
+                  message: `Delete ${githubPath}`
                 })
               });
               if (!delRes.ok && delRes.status !== 404) {
-                console.error(`Failed to delete ${safePath}:`, await delRes.text())
+                console.error(`Failed to delete ${githubPath}:`, await delRes.text())
               }
             }
           }
         } catch (e) {
-          console.error(`Error deleting ${safePath}:`, e)
+          console.error(`Error deleting ${githubPath}:`, e)
         }
       }
 
@@ -426,20 +424,16 @@ class GitHubSyncService {
       const listJson = await listRes.json()
       const tree = Array.isArray(listJson.tree) ? listJson.tree : []
 
-      // Get list of files from GitHub (only files/ directory)
+      // Get list of files from GitHub (only files/ directory) - strip 'files/' prefix
       const githubFiles = tree
         .filter((n: any) => n.type === 'blob' && typeof n.path === 'string' && n.path.startsWith('files/'))
-        .map((n: any) => n.path as string)
+        .map((n: any) => (n.path as string).slice('files/'.length))
 
       // Get list of files from local VFS
       const vfsFiles = await this.listVfsFiles()
 
       // Find files that exist in VFS but not in GitHub (deleted remotely)
-      const deletedFiles = vfsFiles.filter(vfsPath => {
-        // Convert VFS path to GitHub path format
-        const githubPath = vfsPath.startsWith('files/') ? vfsPath : `files/${vfsPath.replace(/^\//, '')}`
-        return !githubFiles.includes(githubPath)
-      })
+      const deletedFiles = vfsFiles.filter(vfsPath => !githubFiles.includes(vfsPath))
 
       // Delete removed files from VFS
       for (const deletedPath of deletedFiles) {
@@ -451,29 +445,20 @@ class GitHubSyncService {
         }
       }
 
-      // Pull all files (including root files like README.md), but skip files/README.md if README.md exists at root
-      const fileEntries = tree.filter((n: any) => n.type === 'blob' && typeof n.path === 'string');
-      // Prefer root README.md over files/README.md
-      const hasRootReadme = fileEntries.some(f => f.path === 'README.md');
+      // Pull only files from the 'files/' directory
+      const fileEntries = tree.filter((n: any) => n.type === 'blob' && typeof n.path === 'string' && n.path.startsWith('files/'));
 
       for (const entry of fileEntries) {
-        const path = entry.path as string;
-        // Skip files/README.md if root README.md exists
-        if (hasRootReadme && path === 'files/README.md') continue;
-        // Skip any files/ duplicates if the same file exists at root
-        if (path.startsWith('files/')) {
-          const rootPath = path.slice('files/'.length);
-          if (fileEntries.some(f => f.path === rootPath)) continue;
-        }
-        const dlRes = await fetch(`/api?route=storage&provider=github&action=download&owner=${owner}&repo=${repo}&path=${encodeURIComponent(path)}`, {
+        const githubPath = entry.path as string;
+        const dlRes = await fetch(`/api?route=storage&provider=github&action=download&owner=${owner}&repo=${repo}&path=${encodeURIComponent(githubPath)}`, {
           credentials: 'include'
         });
         if (!dlRes.ok) continue;
         const dlJson = await dlRes.json();
         if (!dlJson.content) continue;
         const decoded = Uint8Array.from(atob(dlJson.content), c => c.charCodeAt(0));
-        // Store without leading slash for consistency
-        await this.writeVfs(path, decoded);
+        // Store in VFS after stripping 'files/' prefix (handled by writeVfs)
+        await this.writeVfs(githubPath, decoded);
       }
 
       this.status.error = null
@@ -559,11 +544,8 @@ class GitHubSyncService {
     try {
       const mod = await import('../vfs/fs');
       const allPaths = await mod.readdir('');
-      // Return paths in 'files/...' format for comparison
-      return allPaths.map(p => {
-        const normalized = p.replace(/^\//, '');
-        return normalized.startsWith('files/') ? normalized : `files/${normalized}`;
-      });
+      // Return paths without 'files/' prefix (VFS paths)
+      return allPaths.map(p => p.replace(/^\//, ''));
     } catch (e) {
       console.error('Failed to list VFS files:', e);
       return [];

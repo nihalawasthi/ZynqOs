@@ -330,6 +330,28 @@ export default function Workspace() {
 
   useEffect(() => {
     refreshFiles().catch(console.error)
+    
+    // Auto-refresh when sync status changes (especially after pull/push)
+    const handleSyncStatusChange = (e: Event) => {
+      const detail = (e as CustomEvent).detail
+      // Refresh after pull completes or when syncing stops (includes pull operations)
+      if (detail && !detail.syncing && !detail.pulling) {
+        refreshFiles().catch(console.error)
+      }
+    }
+    
+    // Auto-refresh when VFS changes (file write/delete operations)
+    const handleVfsChange = () => {
+      refreshFiles().catch(console.error)
+    }
+    
+    window.addEventListener('microos:sync-status-changed', handleSyncStatusChange)
+    window.addEventListener('microos:vfs-changed', handleVfsChange)
+    
+    return () => {
+      window.removeEventListener('microos:sync-status-changed', handleSyncStatusChange)
+      window.removeEventListener('microos:vfs-changed', handleVfsChange)
+    }
   }, [])
 
   const showStatus = (message: string, duration = 2000) => {

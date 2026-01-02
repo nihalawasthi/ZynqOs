@@ -58,10 +58,14 @@ export async function writeFile(path: string, data: Uint8Array | string) {
   try {
     const { githubSync } = await import('../storage/githubSync');
     const contentStr = typeof value === 'string' ? value : Buffer.from(value).toString('base64');
-    await githubSync.trackChange(`files/${path}`, contentStr);
+    // Path should not have 'files/' prefix - githubSync will add it when pushing
+    const cleanPath = path.replace(/^\//, '');
+    await githubSync.trackChange(cleanPath, contentStr);
   } catch (e) {
     console.error('Failed to track file change:', e);
   }
+  // Notify file system change
+  window.dispatchEvent(new CustomEvent('microos:vfs-changed', { detail: { type: 'write', path: normPath } }));
 }
 
 export async function readFile(path: string): Promise<Uint8Array | string | undefined> {
@@ -116,8 +120,12 @@ export async function removeFile(path: string) {
   // Track deletion for sync
   try {
     const { githubSync } = await import('../storage/githubSync');
-    await githubSync.trackDeletion(`files/${path.replace(/^\//, '')}`);
+    // Path should not have 'files/' prefix - githubSync will add it when pushing
+    const cleanPath = path.replace(/^\//, '');
+    await githubSync.trackDeletion(cleanPath);
   } catch (e) {
     console.error('Failed to track file deletion:', e);
   }
+  // Notify file system change
+  window.dispatchEvent(new CustomEvent('microos:vfs-changed', { detail: { type: 'delete', path: normPath } }));
 }
