@@ -3,6 +3,20 @@ import crypto from 'crypto'
 import cookie from 'cookie'
 import fs from 'fs'
 
+// Logger functions - gracefully handle if module not available
+let logGitHubAPI: any = null
+let logAPIEvent: any = null
+try {
+  // Try to import logger if available
+  const logger = require('./logger')
+  logGitHubAPI = logger.logGitHubAPI || (() => {})
+  logAPIEvent = logger.logAPIEvent || (() => {})
+} catch (e) {
+  // Fallback: silent functions if logger not available
+  logGitHubAPI = () => {}
+  logAPIEvent = () => {}
+}
+
 // Inline session utilities to avoid import issues in Vercel
 type ProviderSession = {
   provider: 'google' | 'github' | 'github-app'
@@ -199,6 +213,21 @@ function getSessionFromCookie(req: VercelRequest): ProviderSession | null {
   return decodeSession(sessionData)
 }
 
+function invalidateGitHubToken(res: VercelResponse) {
+  // Preserve session metadata (user info) but invalidate the GitHub token
+  // This ensures user details are still visible but GitHub operations fail gracefully
+  // User will be prompted to re-authenticate
+  // In a real implementation, you might want to completely clear the session
+  const cookieStr = cookie.serialize(SESSION_COOKIE, '', {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'lax',
+    maxAge: 0,
+    path: '/'
+  })
+  res.setHeader('Set-Cookie', cookieStr)
+}
+
 function clearSessionCookie(res: VercelResponse) {
   const cookieStr = cookie.serialize(SESSION_COOKIE, '', {
     httpOnly: true,
@@ -230,6 +259,13 @@ function recordAudit(req: VercelRequest, res: VercelResponse, entry: Omit<AuditE
   if (auditLog.length > AUDIT_LIMIT) auditLog.splice(0, auditLog.length - AUDIT_LIMIT)
 
   // Persist limited audit trail in the session cookie so entries survive cold starts.
+  // BUT: if a session cookie was already set in this response (e.g., from GitHub App flow),
+  // don't overwrite it. Only update the session from request cookie if no response cookie exists.
+  const existingSetCookie = res.getHeader('Set-Cookie')
+  if (existingSetCookie) {
+    return
+  }
+  
   const session = getSessionFromCookie(req)
   if (session) {
     const trail = Array.isArray(session.audit) ? [...session.audit, audit] : [audit]
@@ -412,7 +448,75 @@ async function authExchangeGoogle(req: VercelRequest, res: VercelResponse) {
 
 async function authExchangeGitHub(req: VercelRequest, res: VercelResponse) {
   try {
-    const { code, redirectUri } = req.body || {}
+    const { code, redirectUri, installation_id } = req.body || {}
+    
+    // If installation_id is present, use GitHub App flow
+    if (installation_id && typeof installation_id === 'string') {
+      const instIdNum = parseInt(installation_id, 10)
+      if (isNaN(instIdNum)) {
+        recordAudit(req, res, { route: 'auth', action: 'exchange_github', event: 'auth.exchange_github', status: 'error', provider: 'github-app', message: 'Invalid installation_id format' })
+        return res.status(400).json({ error: 'Invalid installation_id' })
+      }
+
+      try {
+        // First, get installation details to get account info
+        const jwt = createGitHubAppJWT()
+        const instRes = await fetch(`https://api.github.com/app/installations/${instIdNum}`, {
+          headers: {
+            Authorization: `Bearer ${jwt}`,
+            Accept: 'application/vnd.github+json'
+          }
+        })
+        const instJson = await instRes.json()
+        if (!instRes.ok) throw new Error(instJson.message || 'Failed to get installation details')
+        
+        // Get account info from installation
+        const account = instJson.account
+        if (!account) throw new Error('No account info in installation')
+        
+        // Create installation access token
+        const { token, expires_at } = await createInstallationAccessToken(instIdNum)
+        
+        const expiresAtMs = expires_at ? new Date(expires_at).getTime() : undefined
+        const repoFullName = `${account.login}/.zynqos_storage`
+        
+        setSessionCookie(res, {
+          provider: 'github-app',
+          accessToken: token,
+          expiresAt: expiresAtMs,
+          userId: String(account.id),
+          userName: account.login,
+          userEmail: undefined, // App tokens don't have access to email
+          userAvatar: account.avatar_url,
+          installationId: instIdNum,
+          repoFullName
+        })
+        
+        recordAudit(req, res, {
+          route: 'auth',
+          action: 'exchange_github',
+          event: 'auth.exchange_github',
+          status: 'success',
+          provider: 'github-app',
+          message: `GitHub App Installation: ${instIdNum}, User: ${account.login}`
+        })
+        
+        // Return success for frontend to handle
+        return res.status(200).json({
+          success: true,
+          provider: 'github-app',
+          installationId: instIdNum,
+          user: account.login,
+          repoFullName
+        })
+      } catch (e: any) {
+        console.error('GitHub App token exchange error:', e)
+        recordAudit(req, res, { route: 'auth', action: 'exchange_github', event: 'auth.exchange_github', status: 'error', provider: 'github-app', message: e?.message || 'App token exchange failed' })
+        return res.status(500).json({ error: e.message || 'GitHub App authentication failed' })
+      }
+    }
+    
+    // Regular GitHub OAuth flow
     const clientId = process.env.GITHUB_CLIENT_ID
     const clientSecret = process.env.GITHUB_CLIENT_SECRET
     
@@ -443,6 +547,7 @@ async function authExchangeGitHub(req: VercelRequest, res: VercelResponse) {
       })
     } catch (fetchError: any) {
       console.error('authExchangeGitHub: Fetch failed', fetchError)
+      logAPIEvent('github.oauth.token_exchange', { error: fetchError.message }, 500)
       return res.status(500).json({ error: 'Failed to contact GitHub: ' + (fetchError.message || 'Network error') })
     }
     
@@ -451,11 +556,15 @@ async function authExchangeGitHub(req: VercelRequest, res: VercelResponse) {
       json = await tokenRes.json()
     } catch (parseError: any) {
       console.error('authExchangeGitHub: JSON parse failed', parseError)
+      logAPIEvent('github.oauth.token_exchange', { parseError: parseError.message }, 500)
       return res.status(500).json({ error: 'Invalid response from GitHub' })
     }
     
+    logGitHubAPI('POST', 'https://github.com/login/oauth/access_token', tokenRes.status, undefined, undefined, json)
+    
     if (json.error) {
       console.error('authExchangeGitHub: GitHub returned error', json)
+      logAPIEvent('github.oauth.token_exchange', { error: json.error, error_description: json.error_description }, 400)
       recordAudit(req, res, { route: 'auth', action: 'exchange_github', event: 'auth.exchange_github', status: 'error', provider: 'github', message: json.error })
       return res.status(400).json(json)
     }
@@ -474,9 +583,11 @@ async function authExchangeGitHub(req: VercelRequest, res: VercelResponse) {
       const ures = await fetch('https://api.github.com/user', {
         headers: { Authorization: `Bearer ${json.access_token}`, Accept: 'application/vnd.github+json' }
       })
+      const userBody = await ures.json()
+      logGitHubAPI('GET', 'https://api.github.com/user', ures.status, undefined, Object.fromEntries(ures.headers.entries()), userBody)
       logGitHubDebug('github.user.status', { status: ures.status })
       if (ures.ok) {
-        const ujson = await ures.json()
+        const ujson = userBody
         logGitHubDebug('github.user.payload', { login: ujson.login, name: ujson.name, email: ujson.email, id: ujson.id })
         userName = ujson.login || ujson.name
         userAvatar = ujson.avatar_url
@@ -487,14 +598,16 @@ async function authExchangeGitHub(req: VercelRequest, res: VercelResponse) {
           const eres = await fetch('https://api.github.com/user/emails', {
             headers: { Authorization: `Bearer ${json.access_token}`, Accept: 'application/vnd.github+json' }
           })
+          const emailsBody = await eres.json()
+          logGitHubAPI('GET', 'https://api.github.com/user/emails', eres.status, undefined, Object.fromEntries(eres.headers.entries()), emailsBody)
           logGitHubDebug('github.emails.status', { status: eres.status })
           if (eres.ok) {
-            const ejson = await eres.json()
+            const ejson = emailsBody
             const primary = Array.isArray(ejson) ? ejson.find((e: any) => e.primary) : null
             logGitHubDebug('github.emails.payload', { primary })
             userEmail = primary?.email
           } else {
-            const errText = await eres.text()
+            const errText = JSON.stringify(emailsBody)
             logGitHubDebug('github.emails.error', { status: eres.status, body: errText?.slice(0, 500) })
           }
         }
@@ -516,6 +629,7 @@ async function authExchangeGitHub(req: VercelRequest, res: VercelResponse) {
       userAvatar
     })
     recordAudit(req, res, { route: 'auth', action: 'exchange_github', event: 'auth.exchange_github', status: 'success', provider: 'github', message: `User: ${userName || 'unknown'}` })
+    // Return success for frontend to handle
     return res.status(200).json({
       success: true,
       provider: 'github'
@@ -891,8 +1005,13 @@ async function githubUpload(req: VercelRequest, res: VercelResponse) {
     const body: any = { message: sanitizedMessage, content }
     if (sha && typeof sha === 'string') body.sha = sha
     const upRes = await fetch(`https://api.github.com/repos/${owner}/${repo}/contents/${path}`, { method: 'PUT', headers: { Authorization: `Bearer ${session.accessToken}`, Accept: 'application/vnd.github+json', 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
-    const json = await upRes.json()
-    if (!upRes.ok) return res.status(upRes.status).json({ error: json.message || 'Upload failed' })
+    const uploadBody = await upRes.json()
+    logGitHubAPI('PUT', `https://api.github.com/repos/${owner}/${repo}/contents/${path}`, upRes.status, { Authorization: 'Bearer [REDACTED]' }, Object.fromEntries(upRes.headers.entries()), uploadBody)
+    const json = uploadBody
+    if (!upRes.ok) {
+      logAPIEvent('github.sync.upload', { owner, repo, path, status: upRes.status, error: json.message || 'Upload failed' }, upRes.status)
+      return res.status(upRes.status).json({ error: json.message || 'Upload failed' })
+    }
     return res.status(200).json({ success: true, sha: json.content?.sha, path: json.content?.path })
   } catch (e: any) {
     console.error('githubUpload error:', e)
@@ -919,7 +1038,11 @@ async function githubDownload(req: VercelRequest, res: VercelResponse) {
     
     const dlRes = await fetch(`https://api.github.com/repos/${owner}/${repo}/contents/${path}`, { headers: { Authorization: `Bearer ${session.accessToken}`, Accept: 'application/vnd.github+json' } })
     const json = await dlRes.json()
-    if (!dlRes.ok) return res.status(dlRes.status).json({ error: json.message || 'Download failed' })
+    logGitHubAPI('GET', `https://api.github.com/repos/${owner}/${repo}/contents/${path}`, dlRes.status, { Authorization: 'Bearer [REDACTED]' }, Object.fromEntries(dlRes.headers.entries()), json)
+    if (!dlRes.ok) {
+      logAPIEvent('github.sync.download', { owner, repo, path, status: dlRes.status, error: json.message || 'Download failed' }, dlRes.status)
+      return res.status(dlRes.status).json({ error: json.message || 'Download failed' })
+    }
     return res.status(200).json({ success: true, content: json.content, sha: json.sha })
   } catch (e: any) {
     console.error('githubDownload error:', e)
@@ -961,7 +1084,11 @@ async function githubDelete(req: VercelRequest, res: VercelResponse) {
       })
     })
     const json = await delRes.json()
-    if (!delRes.ok) return res.status(delRes.status).json({ error: json.message || 'Delete failed' })
+    logGitHubAPI('DELETE', `https://api.github.com/repos/${owner}/${repo}/contents/${path}`, delRes.status, { Authorization: 'Bearer [REDACTED]' }, Object.fromEntries(delRes.headers.entries()), json)
+    if (!delRes.ok) {
+      logAPIEvent('github.sync.delete', { owner, repo, path, status: delRes.status, error: json.message || 'Delete failed' }, delRes.status)
+      return res.status(delRes.status).json({ error: json.message || 'Delete failed' })
+    }
     return res.status(200).json({ success: true, path })
   } catch (e: any) {
     console.error('githubDelete error:', e)
@@ -998,7 +1125,11 @@ async function githubList(req: VercelRequest, res: VercelResponse) {
       headers: { Authorization: `Bearer ${session.accessToken}`, Accept: 'application/vnd.github+json' }
     })
     const json = await treeRes.json()
-    if (!treeRes.ok) return res.status(treeRes.status).json({ error: json.message || 'List failed' })
+    logGitHubAPI('GET', `https://api.github.com/repos/${owner}/${repo}/git/trees/${targetBranch}?recursive=1`, treeRes.status, { Authorization: 'Bearer [REDACTED]' }, Object.fromEntries(treeRes.headers.entries()), { truncated: json.truncated, tree_count: Array.isArray(json.tree) ? json.tree.length : 0 })
+    if (!treeRes.ok) {
+      logAPIEvent('github.sync.list_files', { owner, repo, branch: targetBranch, status: treeRes.status, error: json.message || 'List failed' }, treeRes.status)
+      return res.status(treeRes.status).json({ error: json.message || 'List failed' })
+    }
     return res.status(200).json({ tree: json.tree || [], truncated: json.truncated || false })
   } catch (e: any) {
     console.error('githubList error:', e)
@@ -1066,16 +1197,25 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     res.setHeader('Access-Control-Allow-Credentials', 'true')
   }
   
-  // Log request details for debugging
-  console.log('API Request:', {
-    method: req.method,
-    route,
-    action,
-    hasBody: !!req.body,
-    bodyKeys: req.body ? Object.keys(req.body) : [],
-    contentType: req.headers['content-type'],
-    ip: getClientIp(req)
-  })
+  // Log only auth and storage mutations for debugging (skip frequent status/list checks)
+  if (route === 'auth' && action !== 'status' && action !== 'audit') {
+    console.log('API Request:', {
+      method: req.method,
+      route,
+      action,
+      hasBody: !!req.body,
+      bodyKeys: req.body ? Object.keys(req.body) : [],
+      contentType: req.headers['content-type'],
+      ip: getClientIp(req)
+    })
+  } else if (route === 'storage' && (action === 'upload' || action === 'delete')) {
+    console.log('API Request:', {
+      method: req.method,
+      route,
+      action,
+      bodyKeys: req.body ? Object.keys(req.body) : []
+    })
+  }
   
   try {
     if (route === 'auth' && isRateLimited(req)) {
@@ -1149,6 +1289,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         }
       }
       return res.status(400).json({ error: 'Invalid provider' })
+    }
+    if (route === 'logs') {
+      // Only available in development or with auth
+      if (process.env.NODE_ENV === 'production') {
+        const session = getSessionFromCookie(req)
+        if (!session) return res.status(401).json({ error: 'Unauthorized' })
+      }
+      // Logs endpoint - use view-logs.js script instead
+      return res.status(200).json({ 
+        message: 'Use "node view-logs.js" command to view logs',
+        path: './logs/github-api.log'
+      })
     }
     return res.status(400).json({ error: 'Invalid route' })
   } catch (e: any) {

@@ -84,8 +84,8 @@ export default function SettingsUI() {
         error: null,
         pendingChanges: 0
     })
-    const [autoSyncEnabled, setAutoSyncEnabled] = useState(false)
-    const [autoSyncInterval, setAutoSyncInterval] = useState<number>(30)
+    const [autoSyncEnabled, setAutoSyncEnabled] = useState(DEFAULT_SETTINGS.sync.autoSyncEnabled)
+    const [autoSyncInterval, setAutoSyncInterval] = useState<number>(DEFAULT_SETTINGS.sync.autoSyncIntervalMinutes)
     const [auditSyncStatus, setAuditSyncStatus] = useState({
         syncing: false,
         pendingCount: 0,
@@ -125,6 +125,10 @@ export default function SettingsUI() {
     useEffect(() => {
         // Load settings from VFS
         loadSettings().then(loadedSettings => {
+            // Initialize autoSync states from loaded settings
+            setAutoSyncEnabled(loadedSettings.sync.autoSyncEnabled)
+            setAutoSyncInterval(loadedSettings.sync.autoSyncIntervalMinutes)
+            
             // Apply wallpaper from settings
             const root = document.querySelector('.h-screen')
             if (root && root instanceof HTMLElement) {
@@ -178,11 +182,36 @@ export default function SettingsUI() {
             const customEvent = e as CustomEvent<SyncStatus>
             setSyncStatus(customEvent.detail)
         }
+        // Listen for authentication required events
+        const handleAuthRequired = (e: Event) => {
+            const customEvent = e as CustomEvent
+            const { provider } = customEvent.detail
+            toast({
+                title: 'Re-authentication Required',
+                description: `Your ${provider} session has expired. Please log in again.`,
+                variant: 'destructive',
+                action: (
+                    <button
+                        onClick={() => {
+                            if (provider === 'github') {
+                                (window as any).ZynqOS_startGitHubAuth?.()
+                            }
+                        }}
+                        className="px-3 py-1 text-sm bg-blue-600 rounded hover:bg-blue-700"
+                    >
+                        Login
+                    </button>
+                )
+            })
+        }
+        
         window.addEventListener('microos:sync-status-changed', handleSyncStatusChange as EventListener)
+        window.addEventListener('microos:auth-required', handleAuthRequired as EventListener)
 
         return () => {
             clearInterval(interval)
             window.removeEventListener('microos:sync-status-changed', handleSyncStatusChange as EventListener)
+            window.removeEventListener('microos:auth-required', handleAuthRequired as EventListener)
         }
     }, [])
 

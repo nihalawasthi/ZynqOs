@@ -37,6 +37,30 @@ class GitHubSyncService {
     pendingChanges: 0
   }
 
+  // Handle 401 responses with automatic re-authentication check
+  private async handleUnauthorized() {
+    try {
+      console.warn('[githubSync] Received 401 Unauthorized, checking session validity')
+      // Check if we still have a valid session
+      const statusRes = await fetch('/api?route=auth&action=status', { credentials: 'include' })
+      const statusJson = await statusRes.json()
+      
+      if (!statusJson.authenticated && !statusJson.connected) {
+        // Session is invalid, prompt user to re-authenticate
+        throw new Error('GitHub session expired. Please re-authenticate.')
+      }
+      // Session is still valid, might be a temporary issue
+      return true
+    } catch (error) {
+      console.error('[githubSync] Session check failed:', error)
+      this.status.error = 'GitHub authentication failed. Please log in again.'
+      this.notifyStatusChange()
+      // Dispatch event to prompt UI for re-authentication
+      window.dispatchEvent(new CustomEvent('microos:auth-required', { detail: { provider: 'github' } }))
+      return false
+    }
+  }
+
   async init() {
     try {
       // Open IndexedDB for tracking sync state
@@ -301,6 +325,9 @@ class GitHubSyncService {
           if (shaRes.ok) {
             const shaJson = await shaRes.json();
             if (shaJson.sha) sha = shaJson.sha;
+          } else if (shaRes.status === 401) {
+            const handled = await this.handleUnauthorized();
+            if (!handled) throw new Error('GitHub session expired');
           } else if (shaRes.status !== 404) {
             console.warn(`Failed to fetch SHA for ${githubPath}:`, shaRes.status);
           }
@@ -321,6 +348,10 @@ class GitHubSyncService {
             ...(sha ? { sha } : {})
           })
         });
+        if (upRes.status === 401) {
+          const handled = await this.handleUnauthorized();
+          if (!handled) throw new Error('GitHub session expired');
+        }
         if (!upRes.ok) {
           const err = await upRes.json().catch(() => ({ error: 'Upload failed' }))
           if (upRes.status === 401) {
@@ -420,14 +451,11 @@ class GitHubSyncService {
         credentials: 'include'
       })
       if (!listRes.ok) {
-        const err = await listRes.json().catch(() => ({ error: 'List failed' }))
         if (listRes.status === 401) {
-          const session = await this.getSession()
-          if (session?.provider === 'github') {
-            throw new Error('Your GitHub OAuth token does not have repo read access. Click "Configure GitHub App" to sign in via the app for full sync access to ' + repo)
-          }
-          throw new Error('GitHub authentication failed. Ensure the app is installed on the correct repository.')
+          const handled = await this.handleUnauthorized();
+          if (!handled) throw new Error('GitHub session expired. Please log in again.');
         }
+        const err = await listRes.json().catch(() => ({ error: 'List failed' }))
         throw new Error(err.error || 'List failed')
       }
       const listJson = await listRes.json()
@@ -445,6 +473,10 @@ class GitHubSyncService {
         const dlRes = await fetch(`/api?route=storage&provider=github&action=download&owner=${owner}&repo=${repo}&path=${encodeURIComponent(githubPath)}`, {
           credentials: 'include'
         });
+        if (dlRes.status === 401) {
+          const handled = await this.handleUnauthorized();
+          if (!handled) throw new Error('GitHub session expired');
+        }
         if (!dlRes.ok) continue;
         const dlJson = await dlRes.json();
         if (!dlJson.content) continue;

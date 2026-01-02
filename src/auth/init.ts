@@ -39,34 +39,50 @@ export async function bootstrapAuthRedirect() {
   const installationId = url.searchParams.get('installation_id')
   const setupAction = url.searchParams.get('setup_action')
   
-  // Handle GitHub App OAuth callback (installation_id + setup_action)
-  if (installationId && setupAction) {
-    console.log('[Auth] GitHub App OAuth callback detected, completing auth...')
+  // Handle GitHub App installation callback (code + installation_id)
+  if (code && installationId) {
     try {
-      const res = await fetch(`/api?route=auth&action=github_app_callback&installation_id=${installationId}&setup_action=${setupAction}`, {
-        method: 'GET',
-        credentials: 'include'
+      const res = await fetch('/api?route=auth&action=exchange_github', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ 
+          code, 
+          redirectUri: AUTH_REDIRECT_URI, 
+          installation_id: installationId 
+        })
       })
-      if (res.ok) {
-        const json = await res.json()
-        console.log('[Auth] GitHub App auth completed:', json)
+      
+      const json = await res.json()
+      
+      if (res.ok && json.success) {
         // Clean URL
         url.searchParams.delete('code')
         url.searchParams.delete('installation_id')
         url.searchParams.delete('setup_action')
         history.replaceState({}, document.title, url.pathname + url.search + url.hash)
+        
         // Refresh status and notify
         clearStatusCache()
         const statusRes = await fetch('/api?route=auth&action=status', { credentials: 'include' })
         const statusJson = await statusRes.json()
+        
+        const root = { provider: 'github' as const, id: 'server-session' }
+        await setRemoteRoot(root)
+        console.log('GitHub App authenticated via secure session', root)
+        
+        if (statusJson.connected) {
+          startSync().catch(console.error)
+        }
+        
         window.dispatchEvent(new CustomEvent('zynqos:auth-initialized', { detail: statusJson }))
         window.dispatchEvent(new CustomEvent('zynqos:storage-connected', { detail: { provider: 'github-app' } }))
         return
       } else {
-        console.error('[Auth] GitHub App callback failed:', await res.text())
+        console.error('[Auth] GitHub App installation failed:', json)
       }
     } catch (e) {
-      console.error('[Auth] GitHub App callback error:', e)
+      console.error('[Auth] GitHub App installation error:', e)
     }
   }
   

@@ -142,7 +142,15 @@ class SessionTimer {
     if (!isLeader) return
 
     const state = this.ensureState()
-    const delta = Math.max(0, now - state.lastUpdateTs)
+    let delta = Math.max(0, now - state.lastUpdateTs)
+    
+    // Cap delta to prevent counting time when browser was closed
+    // If more than 5 minutes elapsed, assume browser was closed and reset
+    const MAX_TICK_DELTA = 5 * 60 * 1000 // 5 minutes
+    if (delta > MAX_TICK_DELTA) {
+      delta = 0 // Don't count time when browser was closed
+    }
+    
     const isActive = now - state.lastActivityTs < this.idleThresholdMs
 
     const nextState: SessionTimerState = {
