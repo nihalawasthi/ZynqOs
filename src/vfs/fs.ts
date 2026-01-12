@@ -54,7 +54,7 @@ export async function writeFile(path: string, data: Uint8Array | string) {
   const value = data instanceof Uint8Array ? Array.from(data) : data;
   console.debug('[vfs] writeFile', { path: normPath, type: typeof data, isArray: Array.isArray(data), len: data?.length });
   await db.put(FILE_STORE, value, normPath);
-  // Track for sync
+  // Track for sync - all files including imports are tracked for changes
   try {
     const { githubSync } = await import('../storage/githubSync');
     const contentStr = typeof value === 'string' ? value : Buffer.from(value).toString('base64');

@@ -19,12 +19,14 @@ export type AuditEntry = {
 export type AuditSyncConfig = {
   autoSync: boolean
   lastSyncTime: number | null
+  syncedDates?: Set<string> // Track which dates have been synced to avoid re-uploading
 }
 
 class AuditLogSyncService {
   private config: AuditSyncConfig = {
     autoSync: true,
-    lastSyncTime: null
+    lastSyncTime: null,
+    syncedDates: new Set()
   }
   private syncInProgress = false
   private pendingEntries: AuditEntry[] = []
@@ -34,7 +36,12 @@ class AuditLogSyncService {
       // Load config from localStorage
       const savedConfig = localStorage.getItem('zynqos_audit_sync_config')
       if (savedConfig) {
-        this.config = JSON.parse(savedConfig)
+        const parsed = JSON.parse(savedConfig)
+        this.config = {
+          ...parsed,
+          // Convert array back to Set if needed
+          syncedDates: parsed.syncedDates ? new Set(parsed.syncedDates) : new Set()
+        }
       }
 
       // Load pending entries from localStorage
@@ -102,9 +109,11 @@ class AuditLogSyncService {
       // Group entries by date
       const entriesByDate = this.groupEntriesByDate(this.pendingEntries)
 
-      // Sync each date's logs
+      // Sync only dates with pending entries (not all dates from history)
       for (const [date, entries] of Object.entries(entriesByDate)) {
         await this.syncDateLog(date, entries)
+        // Mark date as synced to avoid re-uploading
+        this.config.syncedDates?.add(date)
       }
 
       // Clear pending entries
@@ -136,9 +145,9 @@ class AuditLogSyncService {
 
       const [owner, repo] = this.getRepoFullName(session).split('/')
 
-      // List all files in logs/ directory
+      // List files in logs/ directory only (not entire repo)
       const listRes = await fetch(
-        `/api?route=storage&provider=github&action=list&owner=${owner}&repo=${repo}`,
+        `/api?route=storage&provider=github&action=list&owner=${owner}&repo=${repo}&path=logs`,
         { credentials: 'include' }
       )
 
@@ -149,11 +158,10 @@ class AuditLogSyncService {
       const listJson = await listRes.json()
       const tree = Array.isArray(listJson.tree) ? listJson.tree : []
       
-      // Filter for logs/*.json files
+      // Filter for *.json files (endpoint already filters to logs/ directory)
       const logFiles = tree.filter(
         (n: any) => n.type === 'blob' && 
         typeof n.path === 'string' && 
-        n.path.startsWith('logs/') && 
         n.path.endsWith('.json')
       )
 
@@ -344,7 +352,12 @@ class AuditLogSyncService {
    */
   private saveConfig() {
     try {
-      localStorage.setItem('zynqos_audit_sync_config', JSON.stringify(this.config))
+      // Convert Set to array for JSON serialization
+      const configToSave = {
+        ...this.config,
+        syncedDates: Array.from(this.config.syncedDates || [])
+      }
+      localStorage.setItem('zynqos_audit_sync_config', JSON.stringify(configToSave))
     } catch (e) {
       console.error('[AuditSync] Failed to save config:', e)
     }

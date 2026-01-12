@@ -216,8 +216,8 @@ export default function StartMenu() {
         setImportStatus(`Importing ${files.length} file(s)...`)
 
         try {
-            // Create the imports directory marker if it doesn't exist
-            await writeFile('/home/imports/', '')
+            // Create the imports directory marker with .gitkeep to ensure it's treated as folder
+            await writeFile('/home/imports/.gitkeep', '')
 
             for (const file of Array.from(files)) {
                 const fileName = file.name

@@ -45,7 +45,7 @@ type AuditEntry = {
 }
 
 const SESSION_COOKIE = 'zynqos_session'
-const MAX_AGE = 7 * 24 * 60 * 60
+const MAX_AGE = 30 * 24 * 60 * 60 // 30 days session cookie
 
 const AUDIT_LIMIT = 300
 const auditLog: AuditEntry[] = []

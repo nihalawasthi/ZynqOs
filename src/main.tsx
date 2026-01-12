@@ -28,6 +28,7 @@ import './apps/settings/ui'
 // Auth helpers and redirect bootstrap
 import { bootstrapAuthRedirect } from './auth/init'
 import { getStorageStatus } from './auth/storage'
+import { autoRefreshAuth } from './auth/quietAuth'
 import { auditSync } from './utils/auditSync'
 
 // Apply saved wallpaper on load
@@ -65,11 +66,12 @@ async function bootstrap(report: (msg: string) => void) {
   report('Initializing audit sync')
   await auditSync.init()
 
-  report('Preloading Python (Pyodide)')
-  await getPyodide()
-
-  report('Preloading terminal runtime (Wasmer + bash/coreutils)')
-  await preloadWasmerPackages((m) => report(m))
+  // Start preloading in background without blocking (cache for future use)
+  report('Loading core (Python & Bash in background)')
+  
+  // Non-blocking background preload - don't await
+  getPyodide().catch(e => console.warn('Pyodide preload failed:', e))
+  preloadWasmerPackages((m) => console.log('[Background]', m)).catch(e => console.warn('Wasmer preload failed:', e))
 
   report('Finalizing session startup')
 }
@@ -138,9 +140,25 @@ function Root() {
       getStorageStatus(true).then(status => {
         // Dispatch event so UI components update with fresh data
         window.dispatchEvent(new CustomEvent('zynqos:auth-initialized', { detail: status }))
+        
+        // Set up periodic session validation (every 5 minutes)
+        const sessionCheckInterval = setInterval(async () => {
+          try {
+            const currentStatus = await getStorageStatus(true) // Force fresh check
+            if (!currentStatus.connected && !currentStatus.authenticated && status.connected) {
+              // Session expired - attempt quiet re-auth
+              console.log('[SessionCheck] Detected expired session, initiating quiet re-auth')
+              await autoRefreshAuth(status.provider)
+            }
+          } catch (err) {
+            console.warn('[SessionCheck] Failed to validate session:', err)
+          }
+        }, 5 * 60 * 1000) // Check every 5 minutes
+        
+        return () => clearInterval(sessionCheckInterval)
       }).catch(err => console.error('Failed to initialize auth status', err))
 
-      // Set up periodic audit sync check (every 10 seconds)
+      // Set up periodic audit sync check (every 60 seconds)
       const auditSyncInterval = setInterval(async () => {
         try {
           const status = await getStorageStatus()
