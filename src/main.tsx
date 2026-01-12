@@ -67,11 +67,12 @@ async function bootstrap(report: (msg: string) => void) {
   await auditSync.init()
 
   // Start preloading in background without blocking (cache for future use)
-  report('Loading core (Python & Bash in background)')
+  report('Loading Python & Bash in background')
   
-  // Non-blocking background preload - don't await
-  getPyodide().catch(e => console.warn('Pyodide preload failed:', e))
-  preloadWasmerPackages((m) => console.log('[Background]', m)).catch(e => console.warn('Wasmer preload failed:', e))
+  // Start both immediately in parallel - don't await to avoid blocking app load
+  // Pyodide worker will start downloading immediately when created
+  getPyodide().then(() => console.log('[Preload] Pyodide ready')).catch(e => console.warn('Pyodide preload failed:', e))
+  preloadWasmerPackages((m) => console.log('[Preload]', m)).catch(e => console.warn('Wasmer preload failed:', e))
 
   report('Finalizing session startup')
 }

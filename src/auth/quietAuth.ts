@@ -8,7 +8,7 @@ import { startGitHubOAuth } from './github'
 import { startGoogleOAuth } from './google'
 import { clearStatusCache } from './storage'
 
-type AuthProvider = 'github' | 'google'
+type AuthProvider = 'github' | 'google' | 'github-app'
 
 /**
  * Check if session is still valid
@@ -38,7 +38,7 @@ export function quietAuth(provider: AuthProvider): Promise<{ success: boolean; e
     
     // Generate auth URL based on provider
     let authUrl: string
-    if (provider === 'github') {
+    if (provider === 'github' || provider === 'github-app') {
       authUrl = startGitHubOAuth({ 
         clientId: GITHUB_CLIENT_ID, 
         redirectUri: AUTH_REDIRECT_URI 

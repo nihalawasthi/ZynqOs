@@ -3,14 +3,27 @@
 
 let pyodide = null;
 let initialized = false;
+let initPromise = null;
 
+// Start loading Pyodide immediately when worker is created
 async function ensurePyodide() {
   if (initialized && pyodide) return pyodide;
-  self.importScripts('https://cdn.jsdelivr.net/pyodide/v0.26.4/full/pyodide.js');
-  pyodide = await loadPyodide({ indexURL: 'https://cdn.jsdelivr.net/pyodide/v0.26.4/full/' });
-  initialized = true;
-  return pyodide;
+  if (initPromise) return initPromise;
+  
+  initPromise = (async () => {
+    self.importScripts('https://cdn.jsdelivr.net/pyodide/v0.26.4/full/pyodide.js');
+    pyodide = await loadPyodide({ indexURL: 'https://cdn.jsdelivr.net/pyodide/v0.26.4/full/' });
+    initialized = true;
+    return pyodide;
+  })();
+  
+  return initPromise;
 }
+
+// Start preloading immediately when worker starts
+ensurePyodide().catch(err => {
+  console.error('[Pyodide Worker] Failed to preload:', err);
+});
 
 async function runCode(code, reqId) {
   const p = await ensurePyodide();
