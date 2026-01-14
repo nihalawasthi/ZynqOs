@@ -313,10 +313,14 @@ class GitHubSyncService {
           } else if (Array.isArray(change.content)) {
             bytes = Uint8Array.from(change.content);
           } else {
-            bytes = new TextEncoder().encode(String(change.content));
+            bytes = new TextEncoder().encode(String(change.content || ''));
           }
           // Use streaming-safe base64 encoder
           base64Content = btoa(Array.prototype.map.call(bytes, (ch) => String.fromCharCode(ch)).join(''));
+        }
+        // Ensure content is always a valid base64 string (even if empty file)
+        if (!base64Content) {
+          base64Content = btoa('');
         }
         // Fetch latest SHA for the file (required for update, 404 means new file)
         let sha = undefined;

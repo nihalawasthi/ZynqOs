@@ -111,6 +111,20 @@ const getLanguageFromPath = (path: string | null): string => {
   return 'plaintext'
 }
 
+const isPreviewableFile = (path: string): boolean => {
+  if (!path) return false
+  const lower = path.toLowerCase()
+  return (
+    lower.endsWith('.pdf') ||
+    lower.endsWith('.png') ||
+    lower.endsWith('.jpg') ||
+    lower.endsWith('.jpeg') ||
+    lower.endsWith('.gif') ||
+    lower.endsWith('.webp') ||
+    lower.endsWith('.svg')
+  )
+}
+
 function FileRow({
   node,
   depth,
@@ -238,9 +252,10 @@ function EditorPane(
     textareaRef?: React.RefObject<HTMLTextAreaElement>
     onKeyDown?: (e: React.KeyboardEvent<HTMLTextAreaElement>) => void
     showLineNumbers?: boolean
+    binaryData?: Uint8Array | null
   }
 ) {
-  const { path, content, onChange, readOnly, textareaRef, onKeyDown, showLineNumbers } = props
+  const { path, content, onChange, readOnly, textareaRef, onKeyDown, showLineNumbers, binaryData } = props
   const scrollContainerRef = React.useRef<HTMLDivElement>(null)
   const localTextareaRef = React.useRef<HTMLTextAreaElement>(null)
   const actualTextareaRef = textareaRef || localTextareaRef
@@ -265,6 +280,33 @@ function EditorPane(
   }
 
   const language = getLanguageFromPath(path)
+
+  // Show image/PDF preview if binary data exists
+  if (binaryData && isPreviewableFile(path || '')) {
+    const lower = path?.toLowerCase() || ''
+    const isPdf = lower.endsWith('.pdf')
+    const isImage = lower.endsWith('.png') || lower.endsWith('.jpg') || lower.endsWith('.jpeg') || lower.endsWith('.gif') || lower.endsWith('.webp') || lower.endsWith('.svg')
+    
+    if (isImage) {
+      const blob = new Blob([binaryData])
+      const url = URL.createObjectURL(blob)
+      return (
+        <div className="flex flex-1 overflow-hidden bg-white dark:bg-[#161f29]">
+          <div className="flex-1 flex items-center justify-center overflow-auto">
+            <img src={url} alt={path} className="max-w-full max-h-full object-contain" />
+          </div>
+        </div>
+      )
+    } else if (isPdf) {
+      const blob = new Blob([binaryData], { type: 'application/pdf' })
+      const url = URL.createObjectURL(blob)
+      return (
+        <div className="flex flex-1 overflow-hidden bg-white dark:bg-[#161f29]">
+          <embed src={url} type="application/pdf" className="w-full h-full" />
+        </div>
+      )
+    }
+  }
 
   return (
     <div className="flex flex-1 overflow-hidden font-mono text-sm leading-6 relative bg-white dark:bg-[#161f29]">
@@ -308,6 +350,7 @@ export default function Workspace() {
   const [isResizing, setIsResizing] = useState(false)
   const [isFolderMode, setIsFolderMode] = useState(false)
   const [showLineNumbers, setShowLineNumbers] = useState(true)
+  const [binaryData, setBinaryData] = useState<Uint8Array | null>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const newEntryInputRef = useRef<HTMLInputElement>(null)
 
@@ -325,6 +368,7 @@ export default function Workspace() {
       setSelectedPath(null)
       setFileContent('')
       setLoadedContent('')
+      setBinaryData(null)
     }
   }
 
@@ -383,11 +427,20 @@ export default function Workspace() {
         if (decoded !== null) {
           setFileContent(decoded)
           setLoadedContent(decoded)
+          setBinaryData(null)
           setReadOnly(false)
           showStatus(`Opened ${normalized} (${getFileTypeDescription(normalized)})`)
+        } else if (isPreviewableFile(normalized)) {
+          // Store binary data for preview
+          setBinaryData(data)
+          setFileContent('')
+          setLoadedContent('')
+          setReadOnly(true)
+          showStatus('Preview - read only')
         } else {
           setFileContent(`[Binary file: ${data.length} bytes - ${getFileTypeDescription(normalized)}]`)
           setLoadedContent(`[Binary file: ${data.length} bytes - ${getFileTypeDescription(normalized)}]`)
+          setBinaryData(null)
           setReadOnly(true)
           showStatus('Binary preview - read only')
         }
@@ -398,11 +451,20 @@ export default function Workspace() {
         if (decoded !== null) {
           setFileContent(decoded)
           setLoadedContent(decoded)
+          setBinaryData(null)
           setReadOnly(false)
           showStatus(`Opened ${normalized} (${getFileTypeDescription(normalized)})`)
+        } else if (isPreviewableFile(normalized)) {
+          // Store binary data for preview
+          setBinaryData(arr)
+          setFileContent('')
+          setLoadedContent('')
+          setReadOnly(true)
+          showStatus('Preview - read only')
         } else {
           setFileContent(`[Binary file: ${arr.length} bytes - ${getFileTypeDescription(normalized)}]`)
           setLoadedContent(`[Binary file: ${arr.length} bytes - ${getFileTypeDescription(normalized)}]`)
+          setBinaryData(null)
           setReadOnly(true)
           showStatus('Binary preview - read only')
         }
@@ -465,6 +527,7 @@ export default function Workspace() {
               setSelectedPath(null)
               setFileContent('')
               setLoadedContent('')
+              setBinaryData(null)
             }
             await refreshFiles()
             showStatus(`Deleted ${path}`)
@@ -871,7 +934,7 @@ export default function Workspace() {
           </div>
 
           <div className="relative flex-1">
-            <EditorPane path={selectedPath} content={fileContent} onChange={setFileContent} readOnly={readOnly} textareaRef={textareaRef} onKeyDown={handleKeyDown} showLineNumbers={showLineNumbers} />
+            <EditorPane path={selectedPath} content={fileContent} onChange={setFileContent} readOnly={readOnly} textareaRef={textareaRef} onKeyDown={handleKeyDown} showLineNumbers={showLineNumbers} binaryData={binaryData} />
             {loading && (
               <div className="absolute inset-0 bg-black/30 flex items-center justify-center text-white text-sm">Loading...</div>
             )}

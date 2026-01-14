@@ -987,7 +987,7 @@ async function githubUpload(req: VercelRequest, res: VercelResponse) {
     const session = getSessionFromCookie(req)
     if (!session || (session.provider !== 'github' && session.provider !== 'github-app')) return res.status(401).json({ error: 'No GitHub session' })
     const { owner, repo, path, content, message, sha } = req.body || {}
-    if (!owner || !repo || !path || !content) return res.status(400).json({ error: 'Missing fields' })
+    if (!owner || !repo || !path || content === undefined || content === null) return res.status(400).json({ error: 'Missing fields' })
     
     // Validate parameters
     if (
