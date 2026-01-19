@@ -192,11 +192,13 @@ export async function bootstrapAuthRedirect() {
         }
         // Notify UI
         window.dispatchEvent(new CustomEvent('zynqos:storage-connected', { detail: { provider: 'google' } }))
-        if (url.searchParams.get('popup') === '1') {
-          try { window.opener?.postMessage({ type: 'zynqos-auth-complete', provider: 'google' }, '*') } catch {}
-          window.close()
-          return
-        }
+      }
+      
+      // Always close popup if this was a popup flow
+      if (url.searchParams.get('popup') === '1') {
+        try { window.opener?.postMessage({ type: 'zynqos-auth-complete', provider: 'google' }, '*') } catch {}
+        window.close()
+        return
       }
     } else if (state === 'github') {
       clearStatusCache()
@@ -227,11 +229,13 @@ export async function bootstrapAuthRedirect() {
         }
         // Notify UI
         window.dispatchEvent(new CustomEvent('zynqos:storage-connected', { detail: { provider: 'github' } }))
-        if (url.searchParams.get('popup') === '1') {
-          try { window.opener?.postMessage({ type: 'zynqos-auth-complete', provider: 'github' }, '*') } catch {}
-          window.close()
-          return
-        }
+      }
+      
+      // Always close popup if this was a popup flow
+      if (url.searchParams.get('popup') === '1') {
+        try { window.opener?.postMessage({ type: 'zynqos-auth-complete', provider: 'github' }, '*') } catch {}
+        window.close()
+        return
       }
     }
   } catch (e) {

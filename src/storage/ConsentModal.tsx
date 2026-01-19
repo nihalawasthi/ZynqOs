@@ -1,7 +1,60 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 
 export default function ConsentModal({ onClose }: { onClose: () => void }) {
   const [provider, setProvider] = useState<'google' | 'github' | null>(null)
+  const [waiting, setWaiting] = useState(false)
+  const [pollCount, setPollCount] = useState(0)
+
+  useEffect(() => {
+    if (!waiting) return
+
+    const checkAuth = async () => {
+      try {
+        const res = await fetch('/api?route=auth&action=status', { credentials: 'include' })
+        const json = await res.json()
+        if (json.connected || json.authenticated) {
+          setWaiting(false)
+          onClose()
+        }
+      } catch (e) {
+        console.error('[ConsentModal] Poll failed', e)
+      }
+    }
+
+    // Poll every 5 seconds
+    const interval = setInterval(() => {
+      setPollCount(prev => prev + 1)
+      checkAuth()
+    }, 5000)
+
+    // Also listen for message from popup
+    const handleMessage = (event: MessageEvent) => {
+      if (event.data?.type === 'zynqos-auth-complete') {
+        setWaiting(false)
+        onClose()
+      }
+    }
+    window.addEventListener('message', handleMessage)
+
+    return () => {
+      clearInterval(interval)
+      window.removeEventListener('message', handleMessage)
+    }
+  }, [waiting, onClose])
+
+  if (waiting) {
+    return (
+      <div className="p-6 text-[#e0e0e0] bg-[#1a1a1a] w-[520px]">
+        <h2 className="text-xl font-semibold mb-2">Waiting for authentication...</h2>
+        <div className="flex flex-col items-center justify-center py-8">
+          <div className="w-16 h-16 border-4 border-[#4a9eff] border-t-transparent rounded-full animate-spin mb-4"></div>
+          <p className="text-sm text-[#808080]">Please complete the authentication in the popup window.</p>
+          <p className="text-xs text-[#606060] mt-2">Checking every 5 seconds...</p>
+        </div>
+        <button onClick={() => { setWaiting(false); onClose() }} className="w-full px-4 py-2 rounded bg-[#2a2a2a] hover:bg-[#333] mt-4">Cancel</button>
+      </div>
+    )
+  }
 
   return (
     <div className="p-6 text-[#e0e0e0] bg-[#1a1a1a] w-[520px]">
@@ -31,11 +84,13 @@ export default function ConsentModal({ onClose }: { onClose: () => void }) {
         <button onClick={onClose} className="px-4 py-2 rounded bg-[#2a2a2a] hover:bg-[#333]">Cancel</button>
         <button onClick={() => {
           if (provider === 'google') {
-            (window as any).ZynqOS_startGoogleAuth?.()
+            setWaiting(true)
+            ;(window as any).ZynqOS_startGoogleAuth?.()
           } else if (provider === 'github') {
-            (window as any).ZynqOS_startGitHubAuth?.()
+            setWaiting(true)
+            ;(window as any).ZynqOS_startGitHubAuth?.()
           }
-        }} className="px-4 py-2 rounded bg-[#4a9eff] hover:bg-[#3a8eef] text-black font-medium">Continue</button>
+        }} disabled={!provider} className="px-4 py-2 rounded bg-[#4a9eff] hover:bg-[#3a8eef] text-black font-medium disabled:opacity-50 disabled:cursor-not-allowed">Continue</button>
       </div>
     </div>
   )
