@@ -285,9 +285,8 @@ function isRateLimited(req: VercelRequest): boolean {
     bucket.resetAt = now + RATE_LIMIT_WINDOW_MS
   }
   bucket.count += 1
-  rateBucket.set(ip, bucket)
   const limited = bucket.count > RATE_LIMIT_MAX
-  if (limited) rateBucket.set(ip, bucket)
+  rateBucket.set(ip, bucket)
   return limited
 }
 

@@ -631,7 +631,7 @@ export async function executePackage(
             for (let i = 0; i < binaryString.length; i++) {
               bytes[i] = binaryString.charCodeAt(i)
             }
-            const blob = new Blob([bytes])
+            const blob = new Blob([bytes.buffer])
             assetUrls[filename] = URL.createObjectURL(blob)
           } else {
             // Text asset
@@ -642,12 +642,16 @@ export async function executePackage(
       }
       
       // Create a data URL for the WASM binary
-      // @ts-ignore - Uint8Array buffer is compatible with BlobPart
-      const wasmBlob = new Blob([binary], { type: 'application/wasm' })
+      // Create a new Uint8Array with regular ArrayBuffer to ensure Blob compatibility
+      const binaryData = new Uint8Array(binary)
+      const wasmBlob = new Blob([binaryData], { type: 'application/wasm' })
       const wasmUrl = URL.createObjectURL(wasmBlob)
       
       // Find the main JS file (usually *_bg.js or the first one)
       const mainJsEntry = jsFileEntries.find(([name]) => name.includes('_bg.js')) || jsFileEntries[0]
+      if (!mainJsEntry) {
+        throw new Error('No JavaScript files found in wasm-bindgen package')
+      }
       const [jsFilename, jsCode] = mainJsEntry
       
       // Modify JS code to use our blob URLs
@@ -718,8 +722,8 @@ export async function executePackage(
     // Create import object based on package type or auto-detect from module imports
     let imports = importObject
     if (!imports) {
-      // @ts-ignore - Uint8Array is compatible with BufferSource
-      const module = await WebAssembly.compile(binary)
+      // Compile the binary to inspect imports
+      const module = await WebAssembly.compile(binary.buffer as ArrayBuffer)
       const moduleImports = WebAssembly.Module.imports(module)
       
       // Check what imports the module needs
@@ -743,8 +747,7 @@ export async function executePackage(
     }
 
     // If custom imports provided, use them
-    // @ts-ignore - Uint8Array is compatible with BufferSource
-    const module = await WebAssembly.compile(binary)
+    const module = await WebAssembly.compile(binary.buffer as ArrayBuffer)
     const instance = await WebAssembly.instantiate(module, imports)
 
     console.log(`[PackageManager] Executed ${packageId}`)

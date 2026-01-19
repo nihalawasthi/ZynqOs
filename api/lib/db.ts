@@ -176,6 +176,10 @@ export async function updateUserActiveTime(
       }
       return
     }
+    // Ensure activeTimeMs is a valid number to prevent SQL injection
+    if (typeof activeTimeMs !== 'number' || !isFinite(activeTimeMs) || activeTimeMs < 0) {
+      throw new Error('Invalid activeTimeMs value')
+    }
     await sql`
       UPDATE microos_users 
       SET total_active_time_ms = ${activeTimeMs},
@@ -254,6 +258,11 @@ export async function updateAutoSyncInterval(
   const now = Date.now()
 
   try {
+    // Validate intervalMinutes
+    if (intervalMinutes !== null && (typeof intervalMinutes !== 'number' || !isFinite(intervalMinutes) || intervalMinutes <= 0)) {
+      throw new Error('Invalid intervalMinutes value')
+    }
+    
     if (!HAS_DB) {
       const u = memoryDb.get(userId)
       if (u) {

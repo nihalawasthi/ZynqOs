@@ -288,7 +288,7 @@ function EditorPane(
     const isImage = lower.endsWith('.png') || lower.endsWith('.jpg') || lower.endsWith('.jpeg') || lower.endsWith('.gif') || lower.endsWith('.webp') || lower.endsWith('.svg')
     
     if (isImage) {
-      const blob = new Blob([binaryData])
+      const blob = new Blob([binaryData instanceof Uint8Array ? new Uint8Array(binaryData) : binaryData])
       const url = URL.createObjectURL(blob)
       return (
         <div className="flex flex-1 overflow-hidden bg-white dark:bg-[#161f29]">
@@ -298,7 +298,8 @@ function EditorPane(
         </div>
       )
     } else if (isPdf) {
-      const blob = new Blob([binaryData], { type: 'application/pdf' })
+      const arr = binaryData instanceof Uint8Array ? new Uint8Array(binaryData) : new Uint8Array([])
+      const blob = new Blob([arr.buffer], { type: 'application/pdf' })
       const url = URL.createObjectURL(blob)
       return (
         <div className="flex flex-1 overflow-hidden bg-white dark:bg-[#161f29]">
@@ -635,7 +636,8 @@ export default function Workspace() {
           e.preventDefault()
           const line = prompt('Go to line:')
           if (line && textareaRef.current) {
-            const lineNum = parseInt(line) - 1
+            const lineNum = parseInt(line, 10) - 1
+            if (isNaN(lineNum) || lineNum < 0) break
             const lines = fileContent.split('\n')
             let charCount = 0
             for (let i = 0; i < lineNum && i < lines.length; i++) {

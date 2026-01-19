@@ -127,7 +127,10 @@ export default function PythonUI() {
               min={1000}
               step={1000}
               value={timeoutMs}
-              onChange={(e) => setTimeoutMs(parseInt((e.target as HTMLInputElement).value || '8000', 10))}
+              onChange={(e) => {
+                const val = parseInt((e.target as HTMLInputElement).value || '8000', 10)
+                setTimeoutMs(isNaN(val) || val < 1000 ? 8000 : val)
+              }}
             />
           </div>
           <button

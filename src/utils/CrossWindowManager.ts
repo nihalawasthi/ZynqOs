@@ -237,14 +237,23 @@ class CrossWindowManager {
   }
 
   /**
+   * Get window count
+   */
+  getWindowCount(): number {
+    return this.windows.length;
+  }
+
+  /**
    * Cleanup on destroy
    */
   destroy() {
-    if (this.updateInterval) {
-      clearInterval(this.updateInterval);
+    if (this.updateInterval !== null) {
+      clearInterval(this.updateInterval)
+      this.updateInterval = null
     }
-    if (this.cleanupInterval) {
-      clearInterval(this.cleanupInterval);
+    if (this.cleanupInterval !== null) {
+      clearInterval(this.cleanupInterval)
+      this.cleanupInterval = null
     }
 
     const index = this.getWindowIndexFromId(this.id);

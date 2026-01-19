@@ -356,6 +356,7 @@ export default function WindowManager() {
       {Array.isArray(windowGroups) && windowGroups.length > 0 ? (
         windowGroups.map((group, idx) => {
         const activeWindow = group.windows.find(w => w.id === group.activeTabId) || group.windows[0]
+        if (!activeWindow) return null // Skip if no active window
         const hasTabs = group.windows.length > 1
         const tilePos = tilePositions.get(group.id)
         const isActive = activeWindowId === group.id

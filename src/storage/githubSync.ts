@@ -293,8 +293,8 @@ class GitHubSyncService {
       for (const change of pendingChanges) {
         // Sanitize path: remove leading slashes, backslashes, and '..'
         let safePath = change.path.replace(/^\/+/, "").replace(/\\/g, "/").replace(/\.\./g, "");
-        // Remove any accidental double slashes
-        safePath = safePath.replace(/\/+/, '/');
+        // Remove any accidental double slashes (global flag)
+        safePath = safePath.replace(/\/+/g, '/');
         // Don't add 'files/' prefix for logs/ directory and settings.json (they're at repo root)
         const isSpecialPath = safePath.startsWith('logs/') || safePath === 'settings.json';
         const githubPath = isSpecialPath ? safePath : `files/${safePath}`;
@@ -372,7 +372,7 @@ class GitHubSyncService {
       // Process deletions
       for (const deletion of pendingDeletions) {
         let safePath = deletion.path.replace(/^\/+/, "").replace(/\\/g, "/").replace(/\.\./g, "");
-        safePath = safePath.replace(/\/+/, '/');
+        safePath = safePath.replace(/\/+/g, '/');
         // Don't add 'files/' prefix for logs/ directory and settings.json (they're at repo root)
         const isSpecialPath = safePath.startsWith('logs/') || safePath === 'settings.json';
         const githubPath = isSpecialPath ? safePath : `files/${safePath}`;

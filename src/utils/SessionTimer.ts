@@ -155,7 +155,7 @@ class SessionTimer {
 
     const nextState: SessionTimerState = {
       ...state,
-      totalActiveMs: state.totalActiveMs + (isActive ? delta : 0),
+      totalActiveMs: Math.max(0, state.totalActiveMs + (isActive ? delta : 0)),
       lastUpdateTs: now,
     }
 

@@ -155,9 +155,9 @@ function Root() {
             console.warn('[SessionCheck] Failed to validate session:', err)
           }
         }, 5 * 60 * 1000) // Check every 5 minutes
-        
-        return () => clearInterval(sessionCheckInterval)
       }).catch(err => console.error('Failed to initialize auth status', err))
+
+      // Note: sessionCheckInterval cleanup should be handled by component unmount if needed
 
       // Set up periodic audit sync check (every 60 seconds)
       const auditSyncInterval = setInterval(async () => {

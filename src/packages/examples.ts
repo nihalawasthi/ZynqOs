@@ -286,6 +286,8 @@ export async function exampleCompleteWorkflow() {
     console.log(`Step 2: Installing ${packageToInstall.name}...`)
     await installPackage(packageToInstall.id)
     console.log('')
+  } else {
+    console.log('Step 2: No packages available to install\n')
   }
 
   // 3. List installed
