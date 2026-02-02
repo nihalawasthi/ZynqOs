@@ -293,7 +293,8 @@ async function createInstallationAccessToken(installationId: number): Promise<{ 
 
 function encodeSession(session: ProviderSession): string {
   // Use JWT with HS256 encryption instead of plain base64
-  const secret = process.env.SESSION_SECRET || crypto.randomBytes(32).toString('hex');
+  // Use ENV.SESSION_SECRET which is stable, fallback to a hardcoded dev default
+  const secret = ENV.SESSION_SECRET || 'dev-default-session-secret-change-in-production';
   
   // JWT header
   const header = { alg: 'HS256', typ: 'JWT' };
@@ -333,7 +334,8 @@ function encodeSession(session: ProviderSession): string {
 
 function decodeSession(token: string): ProviderSession | null {
   try {
-    const secret = process.env.SESSION_SECRET || crypto.randomBytes(32).toString('hex');
+    // Use ENV.SESSION_SECRET which is stable, fallback to a hardcoded dev default
+    const secret = ENV.SESSION_SECRET || 'dev-default-session-secret-change-in-production';
     const parts = token.split('.');
     
     if (parts.length !== 3) {
