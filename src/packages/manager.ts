@@ -20,6 +20,7 @@ import {
   updatePackageMetadata,
   packageExists
 } from './storage'
+import { uint8ArrayToBase64 } from '../utils/encoding'
 import { registryManager } from './registry'
 
 /**
@@ -186,7 +187,7 @@ export async function installPackage(
           tsFilesMap[basename] = await entry.async('text')
         } else if (basename.match(/\.(png|jpg|jpeg|gif|svg|ico|woff|woff2|ttf|eot)$/i)) {
           const arrayBuffer = await entry.async('arraybuffer')
-          const base64 = btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)))
+          const base64 = uint8ArrayToBase64(new Uint8Array(arrayBuffer))
           assetsMap[basename] = base64
         } else {
           try {
@@ -194,7 +195,7 @@ export async function installPackage(
             assetsMap[basename] = text
           } catch {
             const arrayBuffer = await entry.async('arraybuffer')
-            const base64 = btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)))
+            const base64 = uint8ArrayToBase64(new Uint8Array(arrayBuffer))
             assetsMap[basename] = base64
           }
         }
@@ -325,7 +326,7 @@ export async function uploadPackage(upload: PackageUpload): Promise<InstallResul
         } else if (basename.match(/\.(png|jpg|jpeg|gif|svg|ico|woff|woff2|ttf|eot)$/i)) {
           // Store assets as base64
           const arrayBuffer = await entry.async('arraybuffer')
-          const base64 = btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)))
+          const base64 = uint8ArrayToBase64(new Uint8Array(arrayBuffer))
           assetsMap[basename] = base64
         } else {
           // Store other text files as-is
@@ -335,7 +336,7 @@ export async function uploadPackage(upload: PackageUpload): Promise<InstallResul
           } catch {
             // Binary file, store as base64
             const arrayBuffer = await entry.async('arraybuffer')
-            const base64 = btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)))
+            const base64 = uint8ArrayToBase64(new Uint8Array(arrayBuffer))
             assetsMap[basename] = base64
           }
         }

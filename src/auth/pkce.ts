@@ -1,4 +1,6 @@
 // PKCE helper functions
+import { uint8ArrayToBase64, toBase64Url } from '../utils/encoding'
+
 export function generateCodeVerifier(length = 64): string {
   const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~'
   let verifier = ''
@@ -13,7 +15,6 @@ export function generateCodeVerifier(length = 64): string {
 export async function generateCodeChallenge(verifier: string): Promise<string> {
   const data = new TextEncoder().encode(verifier)
   const digest = await crypto.subtle.digest('SHA-256', data)
-  const base64 = btoa(String.fromCharCode(...Array.from(new Uint8Array(digest))))
-    .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
-  return base64
+  // Use centralized base64url encoding
+  return toBase64Url(uint8ArrayToBase64(new Uint8Array(digest)));
 }

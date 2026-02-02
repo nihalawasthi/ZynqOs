@@ -1,6 +1,7 @@
 // Client-side sync helpers for background polling and upload queue processing
 import { getRemoteRoot, getFileMeta, setFileMeta, listUploadQueue, clearUploadQueueItem, enqueueUpload } from '../vfs/map'
 import { readFile } from '../vfs/fs'
+import { uint8ArrayToBase64, stringToBase64Legacy } from '../utils/encoding'
 
 export type SyncChange = {
   path: string
@@ -80,8 +81,8 @@ async function processUploadQueue() {
       if (content === undefined) continue
       
       const base64 = content instanceof Uint8Array
-        ? btoa(String.fromCharCode(...content))
-        : btoa(content)
+        ? uint8ArrayToBase64(content)
+        : stringToBase64Legacy(content)
       
       // Determine provider and upload
       const root = await getRemoteRoot()

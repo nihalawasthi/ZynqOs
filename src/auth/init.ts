@@ -5,9 +5,20 @@ import { GOOGLE_CLIENT_ID, GITHUB_CLIENT_ID, AUTH_REDIRECT_URI } from './config'
 import { setRemoteRoot } from '../vfs/map'
 import { startSync } from '../storage/sync'
 import { clearStatusCache } from './storage'
+import { toast } from '../hooks/use-toast'
 
 function attachGlobals() {
   (window as any).ZynqOS_startGoogleAuth = async () => {
+    // Check if Google credentials are configured
+    if (!GOOGLE_CLIENT_ID) {
+      toast({
+        title: 'Google Login',
+        description: 'Google authentication is coming soon! Please use GitHub login for now.',
+        variant: 'default'
+      })
+      return
+    }
+    
     const url = await startGoogleOAuth({ clientId: GOOGLE_CLIENT_ID, redirectUri: AUTH_REDIRECT_URI })
     const withState = url + '&state=google&popup=1'
     const popup = window.open(withState, 'oauth-google', 'width=640,height=760,menubar=no,toolbar=no,location=yes,status=no')

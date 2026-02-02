@@ -4,6 +4,8 @@
  * Logs are saved as YYYY-MM-DD.json for easy cross-device access
  */
 
+import { fetchGitHubFile, uploadGitHubFile, listGitHubFiles } from './githubApi'
+
 export type AuditEntry = {
   id: string
   ts: number
@@ -145,49 +147,34 @@ class AuditLogSyncService {
 
       const [owner, repo] = this.getRepoFullName(session).split('/')
 
-      // List files in logs/ directory only (not entire repo)
-      const listRes = await fetch(
-        `/api?route=storage&provider=github&action=list&owner=${owner}&repo=${repo}&path=logs`,
-        { credentials: 'include' }
-      )
-
-      if (!listRes.ok) {
-        throw new Error('Failed to list audit logs')
-      }
-
-      const listJson = await listRes.json()
-      const tree = Array.isArray(listJson.tree) ? listJson.tree : []
+      // List files in logs/ directory using centralized API
+      const logFiles = await listGitHubFiles(owner, repo, 'logs')
       
-      // Filter for *.json files (endpoint already filters to logs/ directory)
-      const logFiles = tree.filter(
-        (n: any) => n.type === 'blob' && 
-        typeof n.path === 'string' && 
-        n.path.endsWith('.json')
+      // Filter for *.json files
+      const jsonFiles = logFiles.filter(
+        (n: any) => n.type === 'blob' && n.path.endsWith('.json')
       )
 
       // Download and parse each log file
       const allLogs: Record<string, AuditEntry[]> = {}
-      for (const file of logFiles) {
+      for (const file of jsonFiles) {
         const path = file.path as string
         const date = path.replace('logs/', '').replace('.json', '')
 
-        const dlRes = await fetch(
-          `/api?route=storage&provider=github&action=download&owner=${owner}&repo=${repo}&path=${encodeURIComponent(path)}`,
-          { credentials: 'include' }
-        )
+        const result = await fetchGitHubFile(owner, repo, path)
 
-        if (dlRes.ok) {
-          const dlJson = await dlRes.json()
-          if (dlJson.content) {
-            try {
-              const decoded = atob(dlJson.content)
-              const entries = JSON.parse(decoded)
-              if (Array.isArray(entries)) {
-                allLogs[date] = entries
-              }
-            } catch (e) {
-              console.error(`[AuditSync] Failed to parse log file ${path}:`, e)
+        if (result?.content) {
+          try {
+            // Content is already decoded by fetchGitHubFile as Uint8Array
+            const text = typeof result.content === 'string' 
+              ? result.content 
+              : new TextDecoder().decode(result.content);
+            const entries = JSON.parse(text)
+            if (Array.isArray(entries)) {
+              allLogs[date] = entries
             }
+          } catch (e) {
+            console.error(`[AuditSync] Failed to parse log file ${path}:`, e)
           }
         }
       }
@@ -235,26 +222,15 @@ class AuditLogSyncService {
     const [owner, repo] = this.getRepoFullName(session).split('/')
     const path = `logs/${date}.json`
 
-    // Try to fetch existing log file
+    // Fetch existing log file to get SHA and merge entries
     let existingEntries: AuditEntry[] = []
     let sha: string | undefined
 
-    try {
-      const dlRes = await fetch(
-        `/api?route=storage&provider=github&action=download&owner=${owner}&repo=${repo}&path=${encodeURIComponent(path)}`,
-        { credentials: 'include' }
-      )
-
-      if (dlRes.ok) {
-        const dlJson = await dlRes.json()
-        if (dlJson.content && dlJson.sha) {
-          const decoded = atob(dlJson.content)
-          existingEntries = JSON.parse(decoded)
-          sha = dlJson.sha
-        }
-      }
-    } catch (e) {
-      // File doesn't exist yet, that's fine
+    const existingFile = await fetchGitHubFile(owner, repo, path)
+    if (existingFile?.content && existingFile?.sha) {
+      const decoded = atob(existingFile.content)
+      existingEntries = JSON.parse(decoded)
+      sha = existingFile.sha
     }
 
     // Merge entries (dedupe by ID)
@@ -270,27 +246,15 @@ class AuditLogSyncService {
     // Sort by timestamp
     mergedEntries.sort((a, b) => a.ts - b.ts)
 
-    // Upload to GitHub
-    const content = btoa(JSON.stringify(mergedEntries, null, 2))
-    
-    const upRes = await fetch('/api?route=storage&provider=github&action=upload', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      credentials: 'include',
-      body: JSON.stringify({
-        owner,
-        repo,
-        path,
-        content,
-        message: `Update audit log for ${date}`,
-        ...(sha ? { sha } : {})
-      })
+    // Upload to GitHub using centralized API
+    await uploadGitHubFile({
+      owner,
+      repo,
+      path,
+      content: JSON.stringify(mergedEntries, null, 2),
+      message: `Update audit log for ${date}`,
+      sha
     })
-
-    if (!upRes.ok) {
-      const err = await upRes.json().catch(() => ({ error: 'Upload failed' }))
-      throw new Error(err.error || 'Failed to sync audit log')
-    }
   }
 
   /**

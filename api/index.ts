@@ -3,6 +3,64 @@ import crypto from 'crypto'
 import cookie from 'cookie'
 import fs from 'fs'
 
+// ===== Configuration Constants =====
+const ENV = {
+  // Node environment
+  NODE_ENV: process.env.NODE_ENV || 'development',
+  IS_PRODUCTION: process.env.NODE_ENV === 'production',
+  IS_DEV: process.env.NODE_ENV !== 'production',
+
+  // OAuth Providers
+  GOOGLE_CLIENT_ID: process.env.GOOGLE_CLIENT_ID || '',
+  GOOGLE_CLIENT_SECRET: process.env.GOOGLE_CLIENT_SECRET || '',
+  GITHUB_CLIENT_ID: process.env.GITHUB_CLIENT_ID || '',
+  GITHUB_CLIENT_SECRET: process.env.GITHUB_CLIENT_SECRET || '',
+
+  // GitHub App
+  GITHUB_APP_ID: process.env.GITHUB_APP_ID || '',
+  GITHUB_APP_PRIVATE_KEY: process.env.GITHUB_APP_PRIVATE_KEY || '',
+  GITHUB_APP_INSTALL_URL: process.env.VITE_GITHUB_APP_INSTALL_URL || process.env.GITHUB_APP_INSTALL_URL || '',
+  GITHUB_WEBHOOK_SECRET: process.env.GITHUB_WEBHOOK_SECRET || '',
+
+  // Session & Security
+  SESSION_SECRET: process.env.SESSION_SECRET || '',
+  VITE_AUTH_REDIRECT_URI: process.env.VITE_AUTH_REDIRECT_URI || 'http://localhost:3000',
+
+  // Rate limiting
+  RATE_LIMIT_ENABLED: process.env.RATE_LIMIT_ENABLED !== 'false',
+  RATE_LIMIT_MAX: Number(process.env.RATE_LIMIT_MAX || 20),
+  RATE_LIMIT_WINDOW_MS: 60_000,
+}
+
+const API = {
+  SESSION_COOKIE: 'zynqos_session',
+  MAX_AGE: 30 * 24 * 60 * 60, // 30 days session cookie
+  AUDIT_LIMIT: 300,
+  STATE_TTL_MS: 600_000, // 10 minutes for CSRF state tokens
+}
+
+const HTTP = {
+  OK: 200,
+  CREATED: 201,
+  BAD_REQUEST: 400,
+  UNAUTHORIZED: 401,
+  FORBIDDEN: 403,
+  NOT_FOUND: 404,
+  CONFLICT: 409,
+  RATE_LIMIT: 429,
+  SERVER_ERROR: 500,
+}
+
+// Helper function for allowed origins
+function isAllowedOrigin(origin: string): boolean {
+  const allowedOrigins = [
+    ENV.VITE_AUTH_REDIRECT_URI,
+    'http://localhost:3000',
+    'http://localhost:5173',
+  ].filter(Boolean)
+  return allowedOrigins.some(allowed => origin.startsWith(allowed))
+}
+
 // Logger functions - gracefully handle if module not available
 let logGitHubAPI: any = null
 let logAPIEvent: any = null
@@ -44,20 +102,11 @@ type AuditEntry = {
   message?: string
 }
 
-const SESSION_COOKIE = 'zynqos_session'
-const MAX_AGE = 30 * 24 * 60 * 60 // 30 days session cookie
-
-const AUDIT_LIMIT = 300
 const auditLog: AuditEntry[] = []
-
-const RATE_LIMIT_ENABLED = process.env.RATE_LIMIT_ENABLED !== 'false'
-const RATE_LIMIT_WINDOW_MS = 60_000
-const RATE_LIMIT_MAX = Number(process.env.RATE_LIMIT_MAX || 20)
 const rateBucket = new Map<string, { count: number; resetAt: number }>()
 
 // CSRF state tokens for GitHub App installation flow
 const installStateMap = new Map<string, { token: string; createdAt: number }>()
-const STATE_TTL_MS = 600_000 // 10 minutes
 
 // Periodic cleanup of expired state tokens to prevent memory leaks
 function cleanupExpiredStates() {
@@ -65,7 +114,7 @@ function cleanupExpiredStates() {
   const expiredStates: string[] = []
   
   for (const [key, value] of installStateMap.entries()) {
-    if (now - value.createdAt > STATE_TTL_MS) {
+    if (now - value.createdAt > API.STATE_TTL_MS) {
       expiredStates.push(key)
     }
   }
@@ -81,9 +130,71 @@ setInterval(cleanupExpiredStates, 10 * 60 * 1000)
 
 function logGitHubDebug(label: string, payload: any) {
   // Only log in development, never write sensitive data to disk
-  if (process.env.NODE_ENV !== 'production') {
+  if (ENV.IS_DEV) {
     console.log(`[${new Date().toISOString()}] ${label}:`, payload)
   }
+}
+
+// ===== Session token refresh helpers =====
+async function refreshGoogleAccessToken(refreshToken: string): Promise<{ accessToken: string; expiresIn: number } | null> {
+  try {
+    if (!ENV.GOOGLE_CLIENT_ID || !ENV.GOOGLE_CLIENT_SECRET) {
+      console.error('[Token Refresh] Missing Google credentials for refresh')
+      return null
+    }
+    
+    const body = new URLSearchParams({
+      client_id: ENV.GOOGLE_CLIENT_ID,
+      client_secret: ENV.GOOGLE_CLIENT_SECRET,
+      refresh_token: refreshToken,
+      grant_type: 'refresh_token'
+    })
+    
+    const res = await fetch(OAUTH_URLS.GOOGLE_TOKEN, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body,
+      signal: AbortSignal.timeout(10000)
+    })
+    
+    const json = await res.json()
+    
+    if (!res.ok || json.error) {
+      console.error('[Token Refresh] Google token refresh failed:', json.error)
+      return null
+    }
+    
+    return {
+      accessToken: json.access_token,
+      expiresIn: json.expires_in || 3600
+    };
+  } catch (e: any) {
+    console.error('[Token Refresh] Google refresh error:', e.message);
+    return null;
+  }
+}
+
+async function refreshGitHubToken(installationId: number): Promise<{ accessToken: string; expiresAt: string } | null> {
+  try {
+    // Create new installation access token (they expire in 1 hour)
+    const result = await createInstallationAccessToken(installationId);
+    return {
+      accessToken: result.token,
+      expiresAt: result.expires_at || new Date(Date.now() + 3600000).toISOString()
+    };
+  } catch (e: any) {
+    console.error('[Token Refresh] GitHub token refresh failed:', e.message);
+    return null;
+  }
+}
+
+// Helper to check if token needs refresh (used before making API calls)
+function shouldRefreshToken(expiresAt?: number): boolean {
+  if (!expiresAt) return false;
+  const now = Date.now();
+  const timeUntilExpiry = expiresAt - now;
+  // Refresh if less than 5 minutes remaining
+  return timeUntilExpiry < 5 * 60 * 1000;
 }
 
 // ===== GitHub App helpers =====
@@ -181,26 +292,104 @@ async function createInstallationAccessToken(installationId: number): Promise<{ 
 }
 
 function encodeSession(session: ProviderSession): string {
-  const json = JSON.stringify(session)
-  return Buffer.from(json).toString('base64')
+  // Use JWT with HS256 encryption instead of plain base64
+  const secret = process.env.SESSION_SECRET || crypto.randomBytes(32).toString('hex');
+  
+  // JWT header
+  const header = { alg: 'HS256', typ: 'JWT' };
+  
+  // JWT payload with expiration
+  const now = Math.floor(Date.now() / 1000);
+  const payload = {
+    ...session,
+    iat: now,
+    exp: now + API.MAX_AGE
+  };
+  
+  // Encode to base64url
+  function b64url(obj: any) {
+    return Buffer.from(JSON.stringify(obj))
+      .toString('base64')
+      .replace(/=/g, '')
+      .replace(/\+/g, '-')
+      .replace(/\//g, '_');
+  }
+  
+  const encodedHeader = b64url(header);
+  const encodedPayload = b64url(payload);
+  const data = `${encodedHeader}.${encodedPayload}`;
+  
+  // Create HMAC signature
+  const hmac = crypto.createHmac('sha256', secret);
+  hmac.update(data);
+  const signature = hmac
+    .digest('base64')
+    .replace(/=/g, '')
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_');
+  
+  return `${data}.${signature}`;
 }
 
-function decodeSession(encoded: string): ProviderSession | null {
+function decodeSession(token: string): ProviderSession | null {
   try {
-    const json = Buffer.from(encoded, 'base64').toString('utf-8')
-    return JSON.parse(json)
-  } catch {
-    return null
+    const secret = process.env.SESSION_SECRET || crypto.randomBytes(32).toString('hex');
+    const parts = token.split('.');
+    
+    if (parts.length !== 3) {
+      console.warn('[Auth] Invalid JWT format');
+      return null;
+    }
+    
+    const [encodedHeader, encodedPayload, signature] = parts;
+    
+    // Verify signature
+    function b64urlDecode(str: string) {
+      const b64 = str.replace(/-/g, '+').replace(/_/g, '/');
+      return Buffer.from(b64, 'base64').toString('utf-8');
+    }
+    
+    const data = `${encodedHeader}.${encodedPayload}`;
+    const hmac = crypto.createHmac('sha256', secret);
+    hmac.update(data);
+    const expectedSignature = hmac
+      .digest('base64')
+      .replace(/=/g, '')
+      .replace(/\+/g, '-')
+      .replace(/\//g, '_');
+    
+    if (signature !== expectedSignature) {
+      console.warn('[Auth] JWT signature mismatch - possible tampering');
+      return null;
+    }
+    
+    // Decode payload
+    const payloadJson = b64urlDecode(encodedPayload);
+    const payload = JSON.parse(payloadJson);
+    
+    // Check expiration
+    const now = Math.floor(Date.now() / 1000);
+    if (payload.exp && payload.exp < now) {
+      console.warn('[Auth] JWT token expired');
+      return null;
+    }
+    
+    // Remove JWT-specific fields from session
+    const { iat, exp, ...session } = payload;
+    return session as ProviderSession;
+  } catch (error) {
+    console.error('[Auth] JWT decode error:', error);
+    return null;
   }
 }
 
 function setSessionCookie(res: VercelResponse, session: ProviderSession) {
   const encoded = encodeSession(session)
-  const cookieStr = cookie.serialize(SESSION_COOKIE, encoded, {
+  const cookieStr = cookie.serialize(API.SESSION_COOKIE, encoded, {
     httpOnly: true,
     secure: true, // Always enforce HTTPS
     sameSite: 'lax',
-    maxAge: MAX_AGE,
+    maxAge: API.MAX_AGE,
     path: '/'
   })
   res.setHeader('Set-Cookie', cookieStr)
@@ -208,7 +397,7 @@ function setSessionCookie(res: VercelResponse, session: ProviderSession) {
 
 function getSessionFromCookie(req: VercelRequest): ProviderSession | null {
   const cookies = cookie.parse(req.headers.cookie || '')
-  const sessionData = cookies[SESSION_COOKIE]
+  const sessionData = cookies[API.SESSION_COOKIE]
   if (!sessionData) return null
   return decodeSession(sessionData)
 }
@@ -218,9 +407,9 @@ function invalidateGitHubToken(res: VercelResponse) {
   // This ensures user details are still visible but GitHub operations fail gracefully
   // User will be prompted to re-authenticate
   // In a real implementation, you might want to completely clear the session
-  const cookieStr = cookie.serialize(SESSION_COOKIE, '', {
+  const cookieStr = cookie.serialize(API.SESSION_COOKIE, '', {
     httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
+    secure: ENV.IS_PRODUCTION,
     sameSite: 'lax',
     maxAge: 0,
     path: '/'
@@ -229,7 +418,7 @@ function invalidateGitHubToken(res: VercelResponse) {
 }
 
 function clearSessionCookie(res: VercelResponse) {
-  const cookieStr = cookie.serialize(SESSION_COOKIE, '', {
+  const cookieStr = cookie.serialize(API.SESSION_COOKIE, '', {
     httpOnly: true,
     secure: true, // Always enforce HTTPS
     sameSite: 'lax',
@@ -276,16 +465,16 @@ function recordAudit(req: VercelRequest, res: VercelResponse, entry: Omit<AuditE
 }
 
 function isRateLimited(req: VercelRequest): boolean {
-  if (!RATE_LIMIT_ENABLED) return false
+  if (!ENV.RATE_LIMIT_ENABLED) return false
   const ip = getClientIp(req)
   const now = Date.now()
-  const bucket = rateBucket.get(ip) || { count: 0, resetAt: now + RATE_LIMIT_WINDOW_MS }
+  const bucket = rateBucket.get(ip) || { count: 0, resetAt: now + ENV.RATE_LIMIT_WINDOW_MS }
   if (now > bucket.resetAt) {
     bucket.count = 0
-    bucket.resetAt = now + RATE_LIMIT_WINDOW_MS
+    bucket.resetAt = now + ENV.RATE_LIMIT_WINDOW_MS
   }
   bucket.count += 1
-  const limited = bucket.count > RATE_LIMIT_MAX
+  const limited = bucket.count > ENV.RATE_LIMIT_MAX
   rateBucket.set(ip, bucket)
   return limited
 }
@@ -641,16 +830,51 @@ async function authExchangeGitHub(req: VercelRequest, res: VercelResponse) {
 }
 
 async function authStatus(req: VercelRequest, res: VercelResponse) {
-  const session = getSessionFromCookie(req)
-  if (!session) return res.status(200).json({ connected: false, authenticated: false })
+  let session = getSessionFromCookie(req);
+  if (!session) return res.status(200).json({ connected: false, authenticated: false });
+  
+  // Check if token needs refresh
+  if (shouldRefreshToken(session.expiresAt)) {
+    console.log('[Auth] Token approaching expiration, attempting refresh');
+    
+    if (session.provider === 'google' && session.refreshToken) {
+      const refreshed = await refreshGoogleAccessToken(session.refreshToken);
+      if (refreshed) {
+        const expiresAt = Date.now() + refreshed.expiresIn * 1000;
+        session = {
+          ...session,
+          accessToken: refreshed.accessToken,
+          expiresAt
+        };
+        setSessionCookie(res, session);
+        console.log('[Auth] Google token refreshed successfully');
+      } else {
+        console.warn('[Auth] Failed to refresh Google token, will attempt later');
+      }
+    } else if (session.provider === 'github-app' && session.installationId) {
+      const refreshed = await refreshGitHubToken(session.installationId);
+      if (refreshed) {
+        const expiresAt = new Date(refreshed.expiresAt).getTime();
+        session = {
+          ...session,
+          accessToken: refreshed.accessToken,
+          expiresAt
+        };
+        setSessionCookie(res, session);
+        console.log('[Auth] GitHub App token refreshed successfully');
+      } else {
+        console.warn('[Auth] Failed to refresh GitHub App token');
+      }
+    }
+  }
   
   // Consider storage "connected" when GitHub OAuth or GitHub App is active.
   // Google is auth-only unless paired with Drive storage.
-  const actuallyConnected = session.provider === 'github-app' || session.provider === 'github'
-  const expired = session.expiresAt ? session.expiresAt < Date.now() : false
+  const actuallyConnected = session.provider === 'github-app' || session.provider === 'github';
+  const expired = session.expiresAt ? session.expiresAt < Date.now() : false;
   
   // Build profile object
-  let profile: any = {}
+  let profile: any = {};
   if (session.userName || session.userEmail || session.userAvatar) {
     profile = {
       name: session.userName || 'User',
@@ -658,10 +882,10 @@ async function authStatus(req: VercelRequest, res: VercelResponse) {
       avatar_url: session.userAvatar,
       id: session.userId,
       repoFullName: session.repoFullName
-    }
+    };
   }
   
-  recordAudit(req, res, { route: 'auth', action: 'status', event: 'auth.status', status: 'success', provider: session.provider })
+  recordAudit(req, res, { route: 'auth', action: 'status', event: 'auth.status', status: 'success', provider: session.provider });
   return res.status(200).json({
     connected: actuallyConnected,
     authenticated: !!session,
@@ -669,7 +893,7 @@ async function authStatus(req: VercelRequest, res: VercelResponse) {
     profile,
     expiresAt: session.expiresAt,
     expired
-  })
+  });
 }
 
 async function authRefresh(req: VercelRequest, res: VercelResponse) {

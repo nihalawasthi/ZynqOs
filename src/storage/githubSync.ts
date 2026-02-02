@@ -1,5 +1,8 @@
 // GitHub sync service for pushing/pulling user data to their own repo
 import { openDB, type IDBPDatabase } from 'idb'
+import { fetchGitHubFileSha, uploadGitHubFile, deleteGitHubFile, listGitHubFiles, downloadGitHubFile } from '../utils/githubApi'
+import { sanitizeGitHubPath, vfsToGitHubPath, githubToVfsPath } from '../utils/pathUtils'
+import { toBase64, uint8ArrayToBase64 } from '../utils/encoding'
 
 const SYNC_REPO_NAME = '.zynqos_storage'
 const SYNC_BRANCH = 'main'
@@ -185,7 +188,7 @@ class GitHubSyncService {
   }
 
   private async createInitialStructure(accessToken: string, repoFullName: string) {
-    const readme = btoa('# MicroOS Data\n\nThis repository stores your MicroOS data, including files, settings, and logs.')
+    const readme = toBase64('# MicroOS Data\n\nThis repository stores your MicroOS data, including files, settings, and logs.')
     
     try {
       await fetch(`https://api.github.com/repos/${repoFullName}/contents/README.md`, {
@@ -213,7 +216,7 @@ class GitHubSyncService {
           },
           body: JSON.stringify({
             message: `Create ${dir} directory`,
-            content: btoa('')
+            content: toBase64('')
           })
         })
       }
@@ -222,7 +225,7 @@ class GitHubSyncService {
     }
   }
 
-  async trackChange(path: string, content: string) {
+  async trackChange(path: string, content: string | Uint8Array | ArrayBuffer) {
     if (!this.db) return
     
     // Remove from deletions if it was marked for deletion
@@ -230,10 +233,17 @@ class GitHubSyncService {
       await this.db.delete('pending-deletions', path)
     } catch {}
     
+    // Normalize content for storage
+    let storedContent = content;
+    if (content instanceof ArrayBuffer) {
+      storedContent = new Uint8Array(content);
+    }
+    
     await this.db.put('pending-changes', {
       path,
-      content,
-      timestamp: Date.now()
+      content: storedContent,
+      timestamp: Date.now(),
+      isBinary: content instanceof Uint8Array || content instanceof ArrayBuffer
     })
 
     const pendingChanges = await this.db.getAll('pending-changes')
@@ -291,120 +301,59 @@ class GitHubSyncService {
       // Use server-side upload per file (token comes from session cookie)
       const [owner, repo] = this.config.repoFullName.split('/')
       for (const change of pendingChanges) {
-        // Sanitize path: remove leading slashes, backslashes, and '..'
-        let safePath = change.path.replace(/^\/+/, "").replace(/\\/g, "/").replace(/\.\./g, "");
-        // Remove any accidental double slashes (global flag)
-        safePath = safePath.replace(/\/+/g, '/');
-        // Don't add 'files/' prefix for logs/ directory and settings.json (they're at repo root)
-        const isSpecialPath = safePath.startsWith('logs/') || safePath === 'settings.json';
-        const githubPath = isSpecialPath ? safePath : `files/${safePath}`;
+        // Sanitize and convert VFS path to GitHub path
+        const githubPath = vfsToGitHubPath(change.path);
         // Ensure content is valid Base64, support binary files
         let base64Content = change.content;
         function isBase64(str) {
+          if (typeof str !== 'string') return false;
           try { atob(str); return true; } catch { return false; }
         }
-        if (!isBase64(base64Content)) {
-          // If value is a string, encode as UTF-8, else assume Uint8Array
-          let bytes;
+        if (typeof base64Content !== 'string' || !isBase64(base64Content)) {
+          // Use centralized encoding utility
           if (typeof change.content === 'string') {
-            bytes = new TextEncoder().encode(change.content);
+            base64Content = toBase64(change.content);
           } else if (change.content instanceof Uint8Array) {
-            bytes = change.content;
+            base64Content = uint8ArrayToBase64(change.content);
           } else if (Array.isArray(change.content)) {
-            bytes = Uint8Array.from(change.content);
+            base64Content = uint8ArrayToBase64(Uint8Array.from(change.content));
           } else {
-            bytes = new TextEncoder().encode(String(change.content || ''));
+            base64Content = toBase64(String(change.content || ''));
           }
-          // Use streaming-safe base64 encoder
-          base64Content = btoa(Array.prototype.map.call(bytes, (ch) => String.fromCharCode(ch)).join(''));
         }
         // Ensure content is always a valid base64 string (even if empty file)
         if (!base64Content) {
-          base64Content = btoa('');
+          base64Content = toBase64('');
         }
         // Fetch latest SHA for the file (required for update, 404 means new file)
-        let sha = undefined;
-        try {
-          const shaRes = await fetch(`/api?route=storage&provider=github&action=download&owner=${owner}&repo=${repo}&path=${encodeURIComponent(githubPath)}`, { credentials: 'include' });
-          if (shaRes.ok) {
-            const shaJson = await shaRes.json();
-            if (shaJson.sha) sha = shaJson.sha;
-          } else if (shaRes.status === 401) {
-            const handled = await this.handleUnauthorized();
-            if (!handled) throw new Error('GitHub session expired');
-          } else if (shaRes.status !== 404) {
-            console.warn(`Failed to fetch SHA for ${githubPath}:`, shaRes.status);
-          }
-          // 404 is expected for new files, no warning needed
-        } catch (e) {
-          console.debug('SHA fetch error (file may not exist yet):', e);
-        }
-        const upRes = await fetch('/api?route=storage&provider=github&action=upload', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
-          body: JSON.stringify({
-            owner,
-            repo,
-            path: githubPath,
-            content: base64Content,
-            message: `Sync ${githubPath}`,
-            ...(sha ? { sha } : {})
-          })
+        const sha = await fetchGitHubFileSha(owner, repo, githubPath);
+        
+        // Upload using centralized API
+        await uploadGitHubFile({
+          owner,
+          repo,
+          path: githubPath,
+          content: base64Content,
+          message: `Sync ${githubPath}`,
+          sha: sha || undefined
         });
-        if (upRes.status === 401) {
-          const handled = await this.handleUnauthorized();
-          if (!handled) throw new Error('GitHub session expired');
-        }
-        if (!upRes.ok) {
-          const err = await upRes.json().catch(() => ({ error: 'Upload failed' }))
-          if (upRes.status === 401) {
-            const session = await this.getSession()
-            if (session?.provider === 'github') {
-              throw new Error('Your GitHub OAuth token does not have repo write access. Click "Configure GitHub App" to sign in via the app for full sync access to ' + repo)
-            }
-            throw new Error('GitHub authentication failed. Ensure the app is installed on the correct repository.')
-          }
-          throw new Error(err.error || 'Upload failed')
-        }
       }
 
       // Process deletions
       for (const deletion of pendingDeletions) {
-        let safePath = deletion.path.replace(/^\/+/, "").replace(/\\/g, "/").replace(/\.\./g, "");
-        safePath = safePath.replace(/\/+/g, '/');
-        // Don't add 'files/' prefix for logs/ directory and settings.json (they're at repo root)
-        const isSpecialPath = safePath.startsWith('logs/') || safePath === 'settings.json';
-        const githubPath = isSpecialPath ? safePath : `files/${safePath}`;
+        // Sanitize and convert VFS path to GitHub path
+        const githubPath = vfsToGitHubPath(deletion.path);
         
         // Get file SHA for deletion
-        try {
-          const shaRes = await fetch(`/api?route=storage&provider=github&action=download&owner=${owner}&repo=${repo}&path=${encodeURIComponent(githubPath)}`, { credentials: 'include' });
-          if (shaRes.ok) {
-            const shaJson = await shaRes.json();
-            if (shaJson.sha) {
-              // Delete the file using GitHub API
-              const delRes = await fetch(`/api?route=storage&provider=github&action=delete`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                credentials: 'include',
-                body: JSON.stringify({
-                  owner,
-                  repo,
-                  path: githubPath,
-                  sha: shaJson.sha,
-                  message: `Delete ${githubPath}`
-                })
-              });
-              if (!delRes.ok && delRes.status !== 404) {
-                console.error(`Failed to delete ${githubPath}:`, await delRes.text())
-              }
-            }
-          } else if (shaRes.status === 404) {
-            console.debug(`File ${githubPath} already deleted from GitHub`)
-          }
-        } catch (e) {
-          console.debug(`Error fetching SHA for deletion of ${githubPath}:`, e)
+        const sha = await fetchGitHubFileSha(owner, repo, githubPath);
+        if (sha) {
+          await deleteGitHubFile({
+            owner,
+            repo,
+            path: githubPath,
+            sha,
+            message: `Delete ${githubPath}`
+          });
         }
       }
 
@@ -450,20 +399,8 @@ class GitHubSyncService {
     this.notifyStatusChange()
 
     try {
-      // List tree
-      const listRes = await fetch(`/api?route=storage&provider=github&action=list&owner=${owner}&repo=${repo}`, {
-        credentials: 'include'
-      })
-      if (!listRes.ok) {
-        if (listRes.status === 401) {
-          const handled = await this.handleUnauthorized();
-          if (!handled) throw new Error('GitHub session expired. Please log in again.');
-        }
-        const err = await listRes.json().catch(() => ({ error: 'List failed' }))
-        throw new Error(err.error || 'List failed')
-      }
-      const listJson = await listRes.json()
-      const tree = Array.isArray(listJson.tree) ? listJson.tree : []
+      // List tree using centralized API
+      const tree = await listGitHubFiles(owner, repo);
 
       // Pull files from files/, logs/ directory, and settings.json
       const fileEntries = tree.filter((n: any) => {
@@ -474,19 +411,12 @@ class GitHubSyncService {
 
       for (const entry of fileEntries) {
         const githubPath = entry.path as string;
-        const dlRes = await fetch(`/api?route=storage&provider=github&action=download&owner=${owner}&repo=${repo}&path=${encodeURIComponent(githubPath)}`, {
-          credentials: 'include'
-        });
-        if (dlRes.status === 401) {
-          const handled = await this.handleUnauthorized();
-          if (!handled) throw new Error('GitHub session expired');
+        const result = await downloadGitHubFile(owner, repo, githubPath);
+        
+        if (result?.content instanceof Uint8Array) {
+          // Store in VFS
+          await this.writeVfs(githubPath, result.content);
         }
-        if (!dlRes.ok) continue;
-        const dlJson = await dlRes.json();
-        if (!dlJson.content) continue;
-        const decoded = Uint8Array.from(atob(dlJson.content), c => c.charCodeAt(0));
-        // Store in VFS after stripping 'files/' prefix (handled by writeVfs)
-        await this.writeVfs(githubPath, decoded);
       }
 
       this.status.error = null
@@ -548,24 +478,26 @@ class GitHubSyncService {
   private async writeVfs(path: string, data: Uint8Array) {
     try {
       const mod = await import('../vfs/fs');
-      let vfsPath = path.replace(/^\/+/, "");
-      // Strip 'files/' prefix but keep logs/, settings/, audit/ as-is
-      if (vfsPath.startsWith('files/')) {
-        vfsPath = vfsPath.slice('files/'.length);
-      }
-      // logs/, settings/, audit/ remain at their paths
+      // Convert GitHub path to VFS path
+      const vfsPath = githubToVfsPath(path);
+      
       // Heuristic: treat as text if .md, .txt, .js, .ts, .json, .py, .html, .css, .csv, .log, .sh, .xml, .yml, .yaml
+      // Binary formats: pdf, png, jpg, jpeg, gif, webp, zip, tar, gz, bin, wasm
       const isText = /\.(md|txt|js|ts|json|py|html|css|csv|log|sh|xml|yml|yaml)$/i.test(vfsPath);
+      const isBinary = /\.(pdf|png|jpg|jpeg|gif|webp|zip|tar|gz|bin|wasm|exe|dll|so|dylib)$/i.test(vfsPath);
       let toStore: string | Uint8Array = data;
-      if (isText) {
+      
+      if (isText && !isBinary) {
         try {
-          toStore = new TextDecoder('utf-8').decode(data);
+          toStore = new TextDecoder('utf-8', { fatal: true }).decode(data);
         } catch (e) {
-          // fallback: store as Uint8Array
+          // fallback: store as Uint8Array for encoding errors
+          console.debug('[githubSync] Could not decode as UTF-8, storing as binary:', vfsPath);
           toStore = data;
         }
       }
-      console.debug('[githubSync] writeVfs', { path, vfsPath, isText, dataType: data?.constructor?.name, dataLen: data?.length });
+      // Binary files always stored as Uint8Array
+      console.debug('[githubSync] writeVfs', { path, vfsPath, isText, isBinary, dataType: data?.constructor?.name, dataLen: data?.length });
       await mod.writeFile(vfsPath, toStore);
     } catch (e) {
       console.error('Failed to write to VFS:', e, path);
@@ -587,12 +519,8 @@ class GitHubSyncService {
   private async deleteVfs(path: string) {
     try {
       const mod = await import('../vfs/fs');
-      let vfsPath = path.replace(/^\/+/, "");
-      // Strip 'files/' prefix but keep logs/, settings/, audit/ as-is
-      if (vfsPath.startsWith('files/')) {
-        vfsPath = vfsPath.slice('files/'.length);
-      }
-      // logs/, settings/, audit/ remain at their paths
+      // Convert GitHub path to VFS path
+      const vfsPath = githubToVfsPath(path);
       await mod.removeFile(vfsPath);
     } catch (e) {
       console.error('Failed to delete from VFS:', e, path);

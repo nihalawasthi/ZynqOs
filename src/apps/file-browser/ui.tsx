@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState, useRef, useCallback } from 'react'
 import { toast } from '../../hooks/use-toast'
 import { readFile, readdir, removeFile, writeFile } from '../../vfs/fs'
 import { getFileTypeDescription, isEditable, tryDecodeText } from '../../vfs/fileTypes'
+import { uploadFile } from '../../utils/fileUpload'
 
 type FileNode = {
   name: string
@@ -554,14 +555,22 @@ export default function Workspace() {
   const handleUpload = () => {
     const input = document.createElement('input')
     input.type = 'file'
+    input.multiple = true
     input.onchange = async (e) => {
-      const file = (e.target as HTMLInputElement).files?.[0]
-      if (file) {
-        const content = await file.text()
-        const path = normalizePath(`/home/${file.name}`)
-        await writeFile(path, content)
-        await refreshFiles()
-        showStatus(`Uploaded ${file.name}`)
+      const files = (e.target as HTMLInputElement).files
+      if (files && files.length > 0) {
+        try {
+          showStatus(`Uploading ${files.length} file(s)...`)
+          for (const file of Array.from(files)) {
+            const path = normalizePath(`/home/${file.name}`)
+            await uploadFile(file, path)
+          }
+          await refreshFiles()
+          showStatus(`✓ Uploaded ${files.length} file(s)`)
+        } catch (error) {
+          showStatus(`✗ Upload failed: ${error}`)
+          console.error('Upload error:', error)
+        }
       }
     }
     input.click()

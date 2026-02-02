@@ -1,4 +1,5 @@
 import type { StorageProvider, RemoteRoot, RemoteFileMeta } from './provider'
+import { uint8ArrayToBase64, stringToBase64Legacy } from '../utils/encoding'
 
 export class GitHubRepoProvider implements StorageProvider {
   private token: string
@@ -51,7 +52,7 @@ export class GitHubRepoProvider implements StorageProvider {
 
   async upload(path: string, data: Uint8Array | string): Promise<RemoteFileMeta> {
     if (!this.repo) throw new Error('Root not initialized')
-    const content = data instanceof Uint8Array ? btoa(String.fromCharCode(...data)) : btoa(unescape(encodeURIComponent(data)))
+    const content = data instanceof Uint8Array ? uint8ArrayToBase64(data) : stringToBase64Legacy(data)
     const res = await fetch(`https://api.github.com/repos/${this.owner}/${this.repo}/contents/${path}`, {
       method: 'PUT',
       headers: { Authorization: `Bearer ${this.token}`, 'Accept': 'application/vnd.github+json' },

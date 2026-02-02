@@ -44,6 +44,12 @@ export function quietAuth(provider: AuthProvider): Promise<{ success: boolean; e
         redirectUri: AUTH_REDIRECT_URI 
       }) + '&state=github'
     } else {
+      // Check if Google credentials are configured
+      if (!GOOGLE_CLIENT_ID) {
+        resolve({ success: false, error: 'Google authentication is coming soon' })
+        return
+      }
+      
       // Google OAuth URL generation (async, but we can start the URL generation)
       startGoogleOAuth({ 
         clientId: GOOGLE_CLIENT_ID, 

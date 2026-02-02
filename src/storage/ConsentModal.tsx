@@ -4,6 +4,15 @@ export default function ConsentModal({ onClose }: { onClose: () => void }) {
   const [provider, setProvider] = useState<'google' | 'github' | null>(null)
   const [waiting, setWaiting] = useState(false)
   const [pollCount, setPollCount] = useState(0)
+  const [envStatus, setEnvStatus] = useState<any>(null)
+
+  useEffect(() => {
+    // Check what credentials are available
+    fetch('/api?route=auth&action=env_status', { credentials: 'include' })
+      .then(res => res.json())
+      .then(data => setEnvStatus(data))
+      .catch(e => console.error('[ConsentModal] Failed to fetch env status', e))
+  }, [])
 
   useEffect(() => {
     if (!waiting) return
@@ -62,8 +71,14 @@ export default function ConsentModal({ onClose }: { onClose: () => void }) {
       <p className="text-sm text-[#808080] mb-4">ZynqOS will create and manage a dedicated storage namespace in your provider. We request the minimum scopes needed.</p>
 
       <div className="space-y-3">
-        <button onClick={() => setProvider('google')} className={`w-full px-4 py-2 rounded-lg border ${provider==='google'?'border-[#4a9eff]':'border-[#333]'} bg-[#0d0d0d] hover:bg-[#2a2a2a] text-left`}> 
-          <span className="mr-2"><i className="fab fa-google"></i></span> Google Drive (drive.file)
+        <button 
+          onClick={() => setProvider('google')} 
+          disabled={!envStatus?.google?.clientId}
+          className={`w-full px-4 py-2 rounded-lg border ${
+            provider==='google'?'border-[#4a9eff]':'border-[#333]'
+          } bg-[#0d0d0d] hover:bg-[#2a2a2a] text-left disabled:opacity-50 disabled:cursor-not-allowed`}> 
+          <span className="mr-2"><i className="fab fa-google"></i></span> 
+          {envStatus?.google?.clientId ? 'Google Drive (drive.file)' : 'Google Drive - Coming Soon'}
         </button>
         <button onClick={() => setProvider('github')} className={`w-full px-4 py-2 rounded-lg border ${provider==='github'?'border-[#4a9eff]':'border-[#333]'} bg-[#0d0d0d] hover:bg-[#2a2a2a] text-left`}> 
           <span className="mr-2"><i className="fab fa-github"></i></span> GitHub (private repo)
@@ -84,13 +99,16 @@ export default function ConsentModal({ onClose }: { onClose: () => void }) {
         <button onClick={onClose} className="px-4 py-2 rounded bg-[#2a2a2a] hover:bg-[#333]">Cancel</button>
         <button onClick={() => {
           if (provider === 'google') {
+            if (!envStatus?.google?.clientId) {
+              return
+            }
             setWaiting(true)
             ;(window as any).ZynqOS_startGoogleAuth?.()
           } else if (provider === 'github') {
             setWaiting(true)
             ;(window as any).ZynqOS_startGitHubAuth?.()
           }
-        }} disabled={!provider} className="px-4 py-2 rounded bg-[#4a9eff] hover:bg-[#3a8eef] text-black font-medium disabled:opacity-50 disabled:cursor-not-allowed">Continue</button>
+        }} disabled={!provider || (provider === 'google' && !envStatus?.google?.clientId)} className="px-4 py-2 rounded bg-[#4a9eff] hover:bg-[#3a8eef] text-black font-medium disabled:opacity-50 disabled:cursor-not-allowed">Continue</button>
       </div>
     </div>
   )

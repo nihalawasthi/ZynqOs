@@ -2,6 +2,7 @@ import React, { useState, useMemo, useEffect, useRef } from 'react'
 import { writeFile, readFile, readdir } from '../vfs/fs'
 import { getStorageStatus, disconnectStorage, type StorageStatus } from '../auth/storage'
 import { isTextFile } from '../vfs/fileTypes'
+import { uploadFiles } from '../utils/fileUpload'
 import { getInstalledPackages, executePackage } from '../packages/manager'
 import type { InstalledPackage } from '../packages/types'
 import CalculatorUI from '../apps/calculator-runtime/CalculatorUI'
@@ -216,30 +217,16 @@ export default function StartMenu() {
         setImportStatus(`Importing ${files.length} file(s)...`)
 
         try {
-            // Create the imports directory marker with .gitkeep to ensure it's treated as folder
-            await writeFile('/home/imports/.gitkeep', '')
-
-            for (const file of Array.from(files)) {
-                const fileName = file.name
-                const isText = isTextFile(fileName) || file.type.startsWith('text/')
-
-                const filePath = `/home/imports/${file.name}`
-
-                if (isText) {
-                    // Store text files as strings
-                    const text = await file.text()
-                    await writeFile(filePath, text)
-                } else {
-                    // Store binary files as Uint8Array
-                    const arrayBuffer = await file.arrayBuffer()
-                    const uint8Array = new Uint8Array(arrayBuffer)
-                    await writeFile(filePath, uint8Array)
-                }
-            }
+            // Use centralized upload utility
+            await uploadFiles(files, '/home/imports', (current, total, fileName) => {
+                setImportStatus(`Importing ${current}/${total}: ${fileName}`)
+            })
+            
             setImportStatus(`✓ Imported ${files.length} file(s) to /home/imports/`)
             setTimeout(() => setImportStatus(''), 3000)
         } catch (error) {
             setImportStatus(`✗ Import failed: ${error}`)
+            console.error('Import error:', error)
         }
     }
 
