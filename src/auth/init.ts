@@ -20,7 +20,7 @@ function attachGlobals() {
     }
     
     const url = await startGoogleOAuth({ clientId: GOOGLE_CLIENT_ID, redirectUri: AUTH_REDIRECT_URI })
-    const withState = url + '&state=google&popup=1'
+    const withState = url + '&state=google'
     const popup = window.open(withState, 'oauth-google', 'width=640,height=760,menubar=no,toolbar=no,location=yes,status=no')
     // If popup blocked, fall back to same-page redirect
     if (!popup) {
@@ -31,7 +31,7 @@ function attachGlobals() {
   }
   (window as any).ZynqOS_startGitHubAuth = () => {
     const url = startGitHubOAuth({ clientId: GITHUB_CLIENT_ID, redirectUri: AUTH_REDIRECT_URI })
-    const withState = url + '&state=github&popup=1'
+    const withState = url + '&state=github'
     const popup = window.open(withState, 'oauth-github', 'width=640,height=760,menubar=no,toolbar=no,location=yes,status=no')
     if (!popup) {
       location.href = withState
@@ -82,6 +82,7 @@ export async function bootstrapAuthRedirect() {
   const providerParam = url.searchParams.get('provider')
   const installationId = url.searchParams.get('installation_id')
   const setupAction = url.searchParams.get('setup_action')
+
   
   // Handle GitHub App installation callback (code + installation_id)
   if (code && installationId) {
@@ -106,7 +107,14 @@ export async function bootstrapAuthRedirect() {
         url.searchParams.delete('setup_action')
         history.replaceState({}, document.title, url.pathname + url.search + url.hash)
         
-        // Refresh status and notify
+        // If this is a popup, close it immediately and let parent handle initialization
+        if (window.opener) {
+          try { window.opener?.postMessage({ type: 'zynqos-auth-complete', provider: 'github-app' }, '*') } catch {}
+          window.close()
+          return
+        }
+        
+        // For non-popup flows, initialize here
         clearStatusCache()
         const statusRes = await fetch('/api?route=auth&action=status', { credentials: 'include' })
         const statusJson = await statusRes.json()
@@ -121,12 +129,6 @@ export async function bootstrapAuthRedirect() {
         
         window.dispatchEvent(new CustomEvent('zynqos:auth-initialized', { detail: statusJson }))
         window.dispatchEvent(new CustomEvent('zynqos:storage-connected', { detail: { provider: 'github-app' } }))
-        // Close popup if this flow was initiated in a popup
-        if (url.searchParams.get('popup') === '1') {
-          try { window.opener?.postMessage({ type: 'zynqos-auth-complete', provider: 'github-app' }, '*') } catch {}
-          window.close()
-          return
-        }
         return
       } else {
         console.error('[Auth] GitHub App installation failed:', json)
@@ -186,7 +188,14 @@ export async function bootstrapAuthRedirect() {
       }
       if (!res.ok) throw new Error(json.error || 'Google exchange failed')
       
-      // Session is now stored in httpOnly cookie
+      // If this is a popup, close it immediately and let parent handle initialization
+      if (window.opener) {
+        try { window.opener?.postMessage({ type: 'zynqos-auth-complete', provider: 'google' }, '*') } catch {}
+        window.close()
+        return
+      }
+      
+      // For non-popup flows, initialize here
       const statusRes = await fetch('/api?route=auth&action=status', { credentials: 'include' })
       const copy2 = statusRes.clone()
       let statusJson: any
@@ -204,13 +213,6 @@ export async function bootstrapAuthRedirect() {
         // Notify UI
         window.dispatchEvent(new CustomEvent('zynqos:storage-connected', { detail: { provider: 'google' } }))
       }
-      
-      // Always close popup if this was a popup flow
-      if (url.searchParams.get('popup') === '1') {
-        try { window.opener?.postMessage({ type: 'zynqos-auth-complete', provider: 'google' }, '*') } catch {}
-        window.close()
-        return
-      }
     } else if (state === 'github') {
       clearStatusCache()
       // Exchange via server to avoid exposing secret
@@ -224,7 +226,14 @@ export async function bootstrapAuthRedirect() {
       try { json = await res.json() } catch { const t = await copy3.text(); throw new Error(`GitHub exchange not JSON: ${t.slice(0,120)}...`) }
       if (!res.ok) throw new Error(json.error || 'GitHub exchange failed')
       
-      // Session is now stored in httpOnly cookie
+      // If this is a popup, close it immediately and let parent handle initialization
+      if (window.opener) {
+        try { window.opener?.postMessage({ type: 'zynqos-auth-complete', provider: 'github' }, '*') } catch {}
+        window.close()
+        return
+      }
+      
+      // For non-popup flows, initialize here
       const statusRes = await fetch('/api?route=auth&action=status', { credentials: 'include' })
       const copy4 = statusRes.clone()
       let statusJson: any
@@ -240,13 +249,6 @@ export async function bootstrapAuthRedirect() {
         }
         // Notify UI
         window.dispatchEvent(new CustomEvent('zynqos:storage-connected', { detail: { provider: 'github' } }))
-      }
-      
-      // Always close popup if this was a popup flow
-      if (url.searchParams.get('popup') === '1') {
-        try { window.opener?.postMessage({ type: 'zynqos-auth-complete', provider: 'github' }, '*') } catch {}
-        window.close()
-        return
       }
     }
   } catch (e) {
