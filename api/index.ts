@@ -447,7 +447,7 @@ function recordAudit(req: VercelRequest, res: VercelResponse, entry: Omit<AuditE
   const ip = getClientIp(req)
   const audit: AuditEntry = { id: crypto.randomUUID(), ts: Date.now(), ip, ...entry }
   auditLog.push(audit)
-  if (auditLog.length > AUDIT_LIMIT) auditLog.splice(0, auditLog.length - AUDIT_LIMIT)
+  if (auditLog.length > API.AUDIT_LIMIT) auditLog.splice(0, auditLog.length - API.AUDIT_LIMIT)
 
   // Persist limited audit trail in the session cookie so entries survive cold starts.
   // BUT: if a session cookie was already set in this response (e.g., from GitHub App flow),
@@ -1068,7 +1068,7 @@ async function authAudit(req: VercelRequest, res: VercelResponse) {
   const session = getSessionFromCookie(req)
   if (!session) return res.status(401).json({ error: 'Not authenticated' })
   // Do NOT log audit events for audit log fetches
-  const limit = Math.min(Number(req.query.limit || 100), AUDIT_LIMIT)
+  const limit = Math.min(Number(req.query.limit || 100), API.AUDIT_LIMIT)
   const memoryEntries = auditLog.slice(-limit)
   const sessionEntries = Array.isArray(session.audit) ? session.audit.slice(-limit) : []
   const combined = [...memoryEntries, ...sessionEntries]
