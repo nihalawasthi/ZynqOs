@@ -150,7 +150,7 @@ async function refreshGoogleAccessToken(refreshToken: string): Promise<{ accessT
       grant_type: 'refresh_token'
     })
     
-    const res = await fetch(OAUTH_URLS.GOOGLE_TOKEN, {
+    const res = await fetch('https://oauth2.googleapis.com/token', {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body,
@@ -482,6 +482,102 @@ function isRateLimited(req: VercelRequest): boolean {
 }
 
 // ========== PROXY ==========
+
+// Rewrite URLs in HTML content to route through proxy
+function rewriteUrlsInHtml(html: string, baseUrl: string): string {
+  try {
+    // Parse base URL safely
+    let baseUrlObj: URL
+    try {
+      baseUrlObj = new URL(baseUrl)
+    } catch {
+      return html
+    }
+
+    // Rewrite img src - both quoted and unquoted
+    html = html.replace(/(<img[^>]+src\s*=\s*)["']?([^"'\s>]+)["']?/gi, (match, prefix, url) => {
+      const absoluteUrl = resolveUrl(url, baseUrl)
+      if (absoluteUrl && !absoluteUrl.startsWith('data:')) {
+        return `${prefix}"${encodeProxyUrl(absoluteUrl)}"`
+      }
+      return match
+    })
+
+    // Rewrite href for links (but not javascript: links)
+    html = html.replace(/(<(?:a|link)[^>]+href\s*=\s*)["']?([^"'\s>]+)["']?/gi, (match, prefix, url) => {
+      if (!url.includes('javascript:')) {
+        const absoluteUrl = resolveUrl(url, baseUrl)
+        if (absoluteUrl && !absoluteUrl.startsWith('data:') && absoluteUrl.startsWith('http')) {
+          return `${prefix}"${encodeProxyUrl(absoluteUrl)}"`
+        }
+      }
+      return match
+    })
+
+    // Rewrite srcset for responsive images
+    html = html.replace(/srcset\s*=\s*"([^"]+)"/gi, (match, srcset) => {
+      const rewritten = srcset.split(',').map(item => {
+        const parts = item.trim().split(/\s+/)
+        const url = parts[0]
+        const size = parts.slice(1).join(' ')
+        const absoluteUrl = resolveUrl(url, baseUrl)
+        return absoluteUrl ? `${encodeProxyUrl(absoluteUrl)}${size ? ' ' + size : ''}` : item
+      }).join(', ')
+      return `srcset="${rewritten}"`
+    })
+
+    // Rewrite background-image in inline styles
+    html = html.replace(/background-image\s*:\s*url\(["']?([^"')]+)["']?\)/gi, (match, url) => {
+      const absoluteUrl = resolveUrl(url, baseUrl)
+      if (absoluteUrl && !absoluteUrl.startsWith('data:')) {
+        return `background-image: url("${encodeProxyUrl(absoluteUrl)}")`
+      }
+      return match
+    })
+
+    // Rewrite picture source srcset
+    html = html.replace(/(<source[^>]+srcset\s*=\s*)["']?([^"'\s>]+)["']?/gi, (match, prefix, url) => {
+      const absoluteUrl = resolveUrl(url, baseUrl)
+      if (absoluteUrl && !absoluteUrl.startsWith('data:')) {
+        return `${prefix}"${encodeProxyUrl(absoluteUrl)}"`
+      }
+      return match
+    })
+
+    return html
+  } catch (e) {
+    console.error('URL rewriting error:', e)
+    return html
+  }
+}
+
+function resolveUrl(url: string, baseUrl: string): string {
+  try {
+    // Skip empty or special URLs
+    if (!url || url.startsWith('#') || url.startsWith('javascript:') || url.startsWith('data:')) {
+      return ''
+    }
+
+    // Already absolute
+    if (url.startsWith('http://') || url.startsWith('https://')) {
+      return url
+    }
+    // Protocol-relative
+    if (url.startsWith('//')) {
+      const baseUrlObj = new URL(baseUrl)
+      return `${baseUrlObj.protocol}${url}`
+    }
+    // Relative to base
+    return new URL(url, baseUrl).href
+  } catch {
+    return ''
+  }
+}
+
+function encodeProxyUrl(url: string): string {
+  return `/api?route=proxy&url=${encodeURIComponent(url)}`
+}
+
 async function proxy(req: VercelRequest, res: VercelResponse) {
   // Disable proxy in production - security risk
   if (process.env.NODE_ENV === 'production') {
@@ -505,23 +601,72 @@ async function proxy(req: VercelRequest, res: VercelResponse) {
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type')
     return res.status(200).end()
   }
+  
   const { url } = req.query
   if (!url || typeof url !== 'string') return res.status(400).json({ error: 'Missing url' })
+  
   try {
     const targetUrl = new URL(url)
     if (!['http:', 'https:'].includes(targetUrl.protocol)) return res.status(400).json({ error: 'Invalid protocol' })
-    const response = await fetch(url, { 
-      headers: { 'User-Agent': 'Mozilla/5.0', Accept: '*/*' },
-      signal: AbortSignal.timeout(15000)
-    })
-    if (!response.ok) return res.status(response.status).json({ error: `Upstream ${response.status}` })
-    const contentType = response.headers.get('content-type') || 'application/octet-stream'
-    const data = await response.arrayBuffer()
-    if (isAllowedOrigin) {
-      res.setHeader('Access-Control-Allow-Origin', origin)
+    
+    // Real browser headers to avoid bot detection - optimized for images
+    const browserHeaders: Record<string, string> = {
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+      'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
+      'Accept-Language': 'en-US,en;q=0.9',
+      'Accept-Encoding': 'gzip, deflate, br',
+      'Sec-Fetch-Dest': 'document',
+      'Sec-Fetch-Mode': 'navigate',
+      'Sec-Fetch-Site': 'none',
+      'Sec-Fetch-User': '?1',
+      'Cache-Control': 'max-age=0',
+      'Upgrade-Insecure-Requests': '1',
+      'DNT': '1',
+      'Connection': 'keep-alive'
     }
-    res.setHeader('Content-Type', contentType)
-    return res.status(200).send(Buffer.from(data))
+    
+    // Add referer for authenticity
+    if (targetUrl.hostname && !targetUrl.hostname.includes('localhost')) {
+      browserHeaders['Referer'] = `${targetUrl.protocol}//${targetUrl.hostname}/`
+    }
+    
+    const fetchOpts: RequestInit = {
+      headers: browserHeaders,
+      signal: AbortSignal.timeout(30000), // 30 seconds timeout for slow sites
+      redirect: 'follow'
+    }
+    
+    const response = await fetch(url, fetchOpts)
+    if (!response.ok) return res.status(response.status).json({ error: `Upstream ${response.status}` })
+    
+    const contentType = response.headers.get('content-type') || 'application/octet-stream'
+    let contentLength = response.headers.get('content-length')
+    
+    // Handle different content types
+    if (contentType.includes('text/html') || contentType.includes('application/xhtml')) {
+      let data = await response.text()
+      data = rewriteUrlsInHtml(data, url)
+      
+      if (isAllowedOrigin) {
+        res.setHeader('Access-Control-Allow-Origin', origin)
+      }
+      res.setHeader('Content-Type', contentType)
+      res.setHeader('Cache-Control', 'public, max-age=3600')
+      return res.status(200).send(data)
+    } else {
+      // For images, CSS, JS - stream directly without rewriting
+      const data = await response.arrayBuffer()
+      
+      if (isAllowedOrigin) {
+        res.setHeader('Access-Control-Allow-Origin', origin)
+      }
+      res.setHeader('Content-Type', contentType)
+      res.setHeader('Cache-Control', 'public, max-age=86400') // Cache images for 24h
+      if (contentLength) {
+        res.setHeader('Content-Length', contentLength)
+      }
+      return res.status(200).send(Buffer.from(data))
+    }
   } catch (e: any) {
     return res.status(500).json({ error: e.message || 'Proxy failed' })
   }
@@ -996,7 +1141,7 @@ async function githubAppCallback(req: VercelRequest, res: VercelResponse) {
     // Validate CSRF state token if present
     if (state && typeof state === 'string') {
       const stored = installStateMap.get(state)
-      if (!stored || Date.now() - stored.createdAt > STATE_TTL_MS) {
+      if (!stored || Date.now() - stored.createdAt > API.STATE_TTL_MS) {
         recordAudit(req, res, { route: 'auth', action: 'github_app_callback', event: 'auth.github_app_callback', status: 'error', provider: 'github-app', message: 'Invalid or expired state token' })
         return res.status(403).json({ error: 'Invalid or expired state' })
       }
@@ -1445,7 +1590,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
     if (route === 'auth' && isRateLimited(req)) {
       recordAudit(req, res, { route: 'auth', action: typeof action === 'string' ? action : undefined, event: 'auth.rate_limit', status: 'error', message: 'Rate limit exceeded' })
-      res.setHeader('Retry-After', Math.ceil(RATE_LIMIT_WINDOW_MS / 1000).toString())
+      res.setHeader('Retry-After', Math.ceil(ENV.RATE_LIMIT_WINDOW_MS / 1000).toString())
       return res.status(429).json({ error: 'Too many requests' })
     }
 

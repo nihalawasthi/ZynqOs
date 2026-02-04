@@ -11,34 +11,121 @@ export default function PhantomSurf() {
   const [tor, setTor] = useState(false)
   const [iframeError, setIframeError] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
+  const [history, setHistory] = useState<string[]>([])
+  const [historyIndex, setHistoryIndex] = useState(-1)
+  const [error, setError] = useState<string | null>(null)
+  const [progress, setProgress] = useState(0)
   const iframeRef = useRef(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const lastRequestTimeRef = useRef<number>(0)
+  const REQUEST_THROTTLE_MS = 1000 // 1 second between requests to avoid rate limiting
+
+  const navigateToUrl = (newUrl: string) => {
+    // Throttle requests to avoid rate limiting
+    const now = Date.now()
+    if (now - lastRequestTimeRef.current < REQUEST_THROTTLE_MS) {
+      setError(`Please wait ${Math.ceil((REQUEST_THROTTLE_MS - (now - lastRequestTimeRef.current)) / 1000)}s before next request`)
+      return
+    }
+    lastRequestTimeRef.current = now
+    setError(null)
+
+    const proxiedUrl = `/api?route=proxy&url=${encodeURIComponent(newUrl)}`
+    setIsLoading(true)
+    setProgress(10) // Start progress at 10%
+    
+    // Simulate progress
+    const progressInterval = setInterval(() => {
+      setProgress(prev => {
+        if (prev >= 90) {
+          clearInterval(progressInterval)
+          return 90
+        }
+        return prev + Math.random() * 30
+      })
+    }, 300)
+    
+    setUrl(proxiedUrl)
+    setInput(newUrl)
+    setShowBrowser(true)
+    
+    // Add to history
+    setHistory(prev => {
+      const newHistory = prev.slice(0, historyIndex + 1)
+      newHistory.push(newUrl)
+      return newHistory
+    })
+    setHistoryIndex(prev => prev + 1)
+  }
+
+  const goBack = () => {
+    if (historyIndex > 0) {
+      const newIndex = historyIndex - 1
+      setHistoryIndex(newIndex)
+      const prevUrl = history[newIndex]
+      const proxiedUrl = `/api?route=proxy&url=${encodeURIComponent(prevUrl)}`
+      setUrl(proxiedUrl)
+      setInput(prevUrl)
+      setIsLoading(true)
+    }
+  }
+
+  const goForward = () => {
+    if (historyIndex < history.length - 1) {
+      const newIndex = historyIndex + 1
+      setHistoryIndex(newIndex)
+      const nextUrl = history[newIndex]
+      const proxiedUrl = `/api?route=proxy&url=${encodeURIComponent(nextUrl)}`
+      setUrl(proxiedUrl)
+      setInput(nextUrl)
+      setIsLoading(true)
+    }
+  }
+
+  const refresh = () => {
+    if (url) {
+      setIsLoading(true)
+      // Force reload by triggering onLoad
+      if (iframeRef.current) {
+        (iframeRef.current as any).src = url
+      }
+    }
+  }
+
+  const goHome = () => {
+    setShowBrowser(false)
+    setHistory([])
+    setHistoryIndex(-1)
+    setUrl('')
+    setInput('')
+    setIframeError(false)
+  }
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault()
     if (!input.trim()) return
 
     let finalUrl = ''
-    if (input.startsWith('http://') || input.startsWith('https://')) {
-      finalUrl = input
+    const trimmed = input.trim()
+    // If input looks like a URL (has . and no spaces, or starts with //)
+    if ((trimmed.includes('.') && !trimmed.includes(' ')) || trimmed.startsWith('//')) {
+      if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
+        finalUrl = trimmed
+      } else if (trimmed.startsWith('//')) {
+        finalUrl = 'https:' + trimmed
+      } else {
+        finalUrl = 'https://' + trimmed
+      }
     } else {
-      finalUrl = `https://google.com/search?q=${encodeURIComponent(input)}`
+      // It's a search query
+      finalUrl = `https://google.com/search?q=${encodeURIComponent(trimmed)}`
     }
     
-    // Use our proxy endpoint to bypass CORS
-    const proxiedUrl = `/api?route=proxy&url=${encodeURIComponent(finalUrl)}`
-    setIsLoading(true)
-    setUrl(proxiedUrl)
-    setShowBrowser(true)
+    navigateToUrl(finalUrl)
   }
 
   const handleQuickLink = (urlLink: string) => {
-    // Use our proxy endpoint to bypass CORS
-    const proxiedUrl = `/api?route=proxy&url=${encodeURIComponent(urlLink)}`
-    setIsLoading(true)
-    setUrl(proxiedUrl)
-    setInput(urlLink)
-    setShowBrowser(true)
+    navigateToUrl(urlLink)
   }
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -50,6 +137,10 @@ export default function PhantomSurf() {
         const blob = new Blob([html], { type: 'text/html' })
         setUrl(URL.createObjectURL(blob))
         setShowBrowser(true)
+        // Add to history
+        const blobUrl = URL.createObjectURL(blob)
+        setHistory([blobUrl])
+        setHistoryIndex(0)
       }
       reader.readAsText(file)
     }
@@ -107,8 +198,7 @@ export default function PhantomSurf() {
   };
 
   const handleBack = () => {
-    setShowBrowser(false)
-    setInput('')
+    goBack()
   }
 
   if (showBrowser) {
@@ -124,18 +214,56 @@ export default function PhantomSurf() {
           gap: 8
         }}>
           <button
-            onClick={handleBack}
+            onClick={goBack}
+            disabled={historyIndex <= 0}
+            className='flex items-center justify-center hover:bg-gray-800 rounded-full p-4'
             style={{
-              padding: '6px 12px',
-              borderRadius: 6,
-              border: '1px solid #444',
-              background: '#222',
-              color: '#aaa',
-              cursor: 'pointer',
-              fontSize: 14
+              color: historyIndex <= 0 ? '#555' : '#aaa',
+              cursor: historyIndex <= 0 ? 'not-allowed' : 'pointer',
+              fontSize: 14,
+              opacity: historyIndex <= 0 ? 0.5 : 1,
             }}
           >
-            ← Back
+            <svg fill="currentColor" height="18px" width="18px" version="1.1" id="Capa_1" xmlns="http://www.w3.org/2000/svg" xmlnsXlink="http://www.w3.org/1999/xlink" viewBox="0 0 219.151 219.151" xmlSpace="preserve"><g id="SVGRepo_bgCarrier" strokeWidth="0"></g><g id="SVGRepo_tracerCarrier" strokeLinecap="round" strokeLinejoin="round"></g><g id="SVGRepo_iconCarrier"> <g> <path d="M109.576,219.151c60.419,0,109.573-49.156,109.573-109.576C219.149,49.156,169.995,0,109.576,0S0.002,49.156,0.002,109.575 C0.002,169.995,49.157,219.151,109.576,219.151z M109.576,15c52.148,0,94.573,42.426,94.574,94.575 c0,52.149-42.425,94.575-94.574,94.576c-52.148-0.001-94.573-42.427-94.573-94.577C15.003,57.427,57.428,15,109.576,15z"></path> <path d="M94.861,156.507c2.929,2.928,7.678,2.927,10.606,0c2.93-2.93,2.93-7.678-0.001-10.608l-28.82-28.819l83.457-0.008 c4.142-0.001,7.499-3.358,7.499-7.502c-0.001-4.142-3.358-7.498-7.5-7.498l-83.46,0.008l28.827-28.825 c2.929-2.929,2.929-7.679,0-10.607c-1.465-1.464-3.384-2.197-5.304-2.197c-1.919,0-3.838,0.733-5.303,2.196l-41.629,41.628 c-1.407,1.406-2.197,3.313-2.197,5.303c0.001,1.99,0.791,3.896,2.198,5.305L94.861,156.507z"></path> </g> </g></svg>
+          </button>
+          <button
+            onClick={goForward}
+            disabled={historyIndex >= history.length - 1}
+            className='flex items-center justify-center hover:bg-gray-800 rounded-full p-4'
+            style={{
+              color: historyIndex >= history.length - 1 ? '#555' : '#aaa',
+              cursor: historyIndex >= history.length - 1 ? 'not-allowed' : 'pointer',
+              fontSize: 14,
+              opacity: historyIndex >= history.length - 1 ? 0.5 : 1,
+            }}
+          >
+            <svg fill="currentColor" height="18px" width="18px" version="1.1" id="Capa_1" xmlns="http://www.w3.org/2000/svg" xmlnsXlink="http://www.w3.org/1999/xlink" viewBox="0 0 219.151 219.151" xmlSpace="preserve" transform="matrix(-1, 0, 0, 1, 0, 0)"><g id="SVGRepo_bgCarrier" strokeWidth="0"></g><g id="SVGRepo_tracerCarrier" strokeLinecap="round" strokeLinejoin="round"></g><g id="SVGRepo_iconCarrier"> <g> <path d="M109.576,219.151c60.419,0,109.573-49.156,109.573-109.576C219.149,49.156,169.995,0,109.576,0S0.002,49.156,0.002,109.575 C0.002,169.995,49.157,219.151,109.576,219.151z M109.576,15c52.148,0,94.573,42.426,94.574,94.575 c0,52.149-42.425,94.575-94.574,94.576c-52.148-0.001-94.573-42.427-94.573-94.577C15.003,57.427,57.428,15,109.576,15z"></path> <path d="M94.861,156.507c2.929,2.928,7.678,2.927,10.606,0c2.93-2.93,2.93-7.678-0.001-10.608l-28.82-28.819l83.457-0.008 c4.142-0.001,7.499-3.358,7.499-7.502c-0.001-4.142-3.358-7.498-7.5-7.498l-83.46,0.008l28.827-28.825 c2.929-2.929,2.929-7.679,0-10.607c-1.465-1.464-3.384-2.197-5.304-2.197c-1.919,0-3.838,0.733-5.303,2.196l-41.629,41.628 c-1.407,1.406-2.197,3.313-2.197,5.303c0.001,1.99,0.791,3.896,2.198,5.305L94.861,156.507z"></path> </g> </g></svg>
+          </button>
+          <button
+            onClick={refresh}
+            className='flex items-center justify-center hover:bg-gray-800 rounded-full p-4'
+            style={{
+              color: '#aaa',
+              cursor: 'pointer',
+              fontSize: 14,
+              opacity: 1,
+            }}
+            title="Refresh page"
+          >
+            <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" height="18px" width="18px" transform="matrix(-1, 0, 0, 1, 0, 0)"><g id="SVGRepo_bgCarrier" stroke-width="0"></g><g id="SVGRepo_tracerCarrier" stroke-linecap="round" stroke-linejoin="round"></g><g id="SVGRepo_iconCarrier"> <path d="M3 3V8M3 8H8M3 8L6 5.29168C7.59227 3.86656 9.69494 3 12 3C16.9706 3 21 7.02944 21 12C21 16.9706 16.9706 21 12 21C7.71683 21 4.13247 18.008 3.22302 14" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path> </g></svg>
+          </button>
+          <button
+            onClick={goHome}
+            className='flex items-center justify-center hover:bg-gray-800 rounded-full p-4'
+            style={{
+              color: '#aaa',
+              cursor: 'pointer',
+              fontSize: 14,
+              opacity: 1,
+            }}
+            title="Go to home"
+          >
+            <svg fill="currentColor" height="18px" width="18px" version="1.1" id="Capa_1" xmlns="http://www.w3.org/2000/svg" xmlnsXlink="http://www.w3.org/1999/xlink" viewBox="0 0 254.182 254.182" xmlSpace="preserve"><g id="SVGRepo_bgCarrier" strokeWidth="0"></g><g id="SVGRepo_tracerCarrier" strokeLinecap="round" strokeLinejoin="round"></g><g id="SVGRepo_iconCarrier"> <g> <path d="M211.655,137.102c-4.143,0-7.5,3.358-7.5,7.5v77.064h-41.373v-77.064c0-4.142-3.357-7.5-7.5-7.5H98.903 c-4.143,0-7.5,3.358-7.5,7.5v77.064H50.026v-77.064c0-4.142-3.357-7.5-7.5-7.5c-4.143,0-7.5,3.358-7.5,7.5v84.564 c0,4.142,3.357,7.5,7.5,7.5h56.377h56.379h56.373c4.143,0,7.5-3.358,7.5-7.5v-84.564 C219.155,140.46,215.797,137.102,211.655,137.102z M106.403,221.666v-69.564h41.379v69.564H106.403z"></path> <path d="M251.985,139.298L132.389,19.712c-2.928-2.929-7.677-2.928-10.607,0L2.197,139.298c-2.929,2.929-2.929,7.678,0,10.606 c2.93,2.929,7.678,2.929,10.607,0L127.086,35.622l114.293,114.283c1.464,1.464,3.384,2.196,5.303,2.196 c1.919,0,3.839-0.732,5.304-2.197C254.914,146.976,254.914,142.227,251.985,139.298z"></path> </g> </g></svg>
           </button>
           <form onSubmit={handleSearch} style={{ flex: 1, display: 'flex', gap: 6 }}>
             <input
@@ -200,7 +328,54 @@ export default function PhantomSurf() {
 
         {/* Browser Content */}
         <div style={{ flex: 1, overflow: 'hidden', position: 'relative' }}>
-          {isLoading && (
+          {/* Progress Bar */}
+          {isLoading && progress > 0 && progress < 100 && (
+            <div style={{
+              position: 'absolute',
+              top: 0,
+              left: 0,
+              right: 0,
+              height: 3,
+              background: '#333',
+              zIndex: 999,
+              overflow: 'hidden'
+            }}>
+              <div style={{
+                height: '100%',
+                background: 'linear-gradient(90deg, #667eea 0%, #764ba2 100%)',
+                width: `${progress}%`,
+                transition: 'width 0.3s ease',
+                boxShadow: '0 0 10px rgba(102, 126, 234, 0.6)'
+              }} />
+            </div>
+          )}
+          {error && (
+            <div style={{
+              padding: '12px 16px',
+              background: '#3a2a2a',
+              borderBottom: '1px solid #8b5a5a',
+              color: '#ff9999',
+              fontSize: 13,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between'
+            }}>
+              <span>⚠️ {error}</span>
+              <button
+                onClick={() => setError(null)}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  color: '#ff9999',
+                  cursor: 'pointer',
+                  fontSize: 16
+                }}
+              >
+                ✕
+              </button>
+            </div>
+          )}
+          {isLoading && progress < 100 && (
             <div style={{
               position: 'absolute',
               top: 0,
@@ -210,21 +385,24 @@ export default function PhantomSurf() {
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              background: 'rgba(0, 0, 0, 0.6)',
-              zIndex: 1000,
-              backdropFilter: 'blur(4px)'
+              background: 'rgba(0, 0, 0, 0.3)',
+              zIndex: 900,
+              backdropFilter: 'blur(2px)',
+              pointerEvents: 'none'
             }}>
               <div style={{ textAlign: 'center' }}>
                 <div style={{
-                  width: 50,
-                  height: 50,
-                  margin: '0 auto 16px',
-                  border: '4px solid rgba(255,255,255,0.2)',
-                  borderTop: '4px solid #667eea',
+                  width: 40,
+                  height: 40,
+                  margin: '0 auto 12px',
+                  border: '3px solid rgba(255,255,255,0.2)',
+                  borderTop: '3px solid #667eea',
                   borderRadius: '50%',
                   animation: 'spin 1s linear infinite'
                 }} />
-                <p style={{ color: '#aaa', margin: 0, fontSize: 14 }}>Loading...</p>
+                <p style={{ color: '#aaa', margin: 0, fontSize: 12 }}>
+                  {Math.round(progress)}%
+                </p>
               </div>
             </div>
           )}
@@ -284,8 +462,14 @@ export default function PhantomSurf() {
               title="PhantomSurf Browser"
               style={{ width: '100%', height: '100%', border: 'none', background: '#fff' }}
               onError={() => setIframeError(true)}
-              onLoad={() => setIsLoading(false)}
+              onLoad={() => {
+                setIsLoading(false)
+                setProgress(100)
+                setTimeout(() => setProgress(0), 300)
+              }}
               onLoadStart={() => setIsLoading(true)}
+              sandbox="allow-same-origin allow-scripts allow-forms allow-popups allow-presentation"
+              allow="accelerometer; camera; geolocation; gyroscope; magnetometer; microphone; payment; usb"
             />
           )}
         </div>
