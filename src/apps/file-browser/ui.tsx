@@ -3,6 +3,7 @@ import { toast } from '../../hooks/use-toast'
 import { readFile, readdir, removeFile, writeFile } from '../../vfs/fs'
 import { getFileTypeDescription, isEditable, tryDecodeText } from '../../vfs/fileTypes'
 import { uploadFile, uploadFiles } from '../../utils/fileUpload'
+import { githubSync } from '../../storage/githubSync'
 
 type FileNode = {
   name: string
@@ -294,7 +295,7 @@ function EditorPane(
     const lower = path?.toLowerCase() || ''
     const isPdf = lower.endsWith('.pdf')
     const isImage = lower.endsWith('.png') || lower.endsWith('.jpg') || lower.endsWith('.jpeg') || lower.endsWith('.gif') || lower.endsWith('.webp') || lower.endsWith('.svg')
-    
+
     if (isImage) {
       const blob = new Blob([binaryData instanceof Uint8Array ? new Uint8Array(binaryData) : binaryData])
       const url = URL.createObjectURL(blob)
@@ -311,7 +312,7 @@ function EditorPane(
       const url = URL.createObjectURL(blob)
       return (
         <div className="flex flex-1 overflow-hidden bg-slate-100 dark:bg-[#0a0a0a]">
-          <iframe 
+          <iframe
             src={url}
             className="w-full h-full border-none"
             title={`PDF: ${path}`}
@@ -367,6 +368,7 @@ export default function Workspace() {
   const [binaryData, setBinaryData] = useState<Uint8Array | null>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const newEntryInputRef = useRef<HTMLInputElement>(null)
+  const [isSyncing, setIsSyncing] = useState(false)
 
   const hasUnsavedChanges = useMemo(
     () => !!selectedPath && fileContent !== loadedContent,
@@ -388,7 +390,7 @@ export default function Workspace() {
 
   useEffect(() => {
     refreshFiles().catch(console.error)
-    
+
     // Auto-refresh when sync status changes (especially after pull/push)
     const handleSyncStatusChange = (e: Event) => {
       const detail = (e as CustomEvent).detail
@@ -397,15 +399,15 @@ export default function Workspace() {
         refreshFiles().catch(console.error)
       }
     }
-    
+
     // Auto-refresh when VFS changes (file write/delete operations)
     const handleVfsChange = () => {
       refreshFiles().catch(console.error)
     }
-    
+
     window.addEventListener('microos:sync-status-changed', handleSyncStatusChange)
     window.addEventListener('microos:vfs-changed', handleVfsChange)
-    
+
     return () => {
       window.removeEventListener('microos:sync-status-changed', handleSyncStatusChange)
       window.removeEventListener('microos:vfs-changed', handleVfsChange)
@@ -573,15 +575,15 @@ export default function Workspace() {
       if (files && files.length > 0) {
         try {
           showStatus(`Uploading ${files.length} file(s)...`)
-          
+
           // Use the tracked currentDirectory
           const targetDir = currentDirectory || '/home'
-          
+
           // Use the centralized batch upload function
           await uploadFiles(files, targetDir, (current, total, fileName) => {
             showStatus(`Uploading ${current}/${total}: ${fileName}`)
           })
-          
+
           await refreshFiles()
           showStatus(`✓ Uploaded ${files.length} file(s) to ${targetDir}`)
         } catch (error) {
@@ -664,6 +666,67 @@ export default function Workspace() {
     } catch (error) {
       showStatus(`Download failed: ${error}`)
       console.error('Download error:', error)
+    }
+  }
+
+  const handlePush = async () => {
+    try {
+      setIsSyncing(true)
+      if (selectedPath) {
+        // Push only the currently opened file
+        const content = await readFile(selectedPath)
+        if (content !== undefined) {
+          await githubSync.syncFileToGitHub(selectedPath, content)
+          toast({ title: 'Success', description: `${selectedPath.split('/').pop()} pushed to GitHub`, variant: 'success' })
+          showStatus(`Pushed ${selectedPath} to GitHub`)
+        }
+      } else {
+        // Push all files
+        await githubSync.syncToGitHub()
+        toast({ title: 'Success', description: 'All files pushed to GitHub', variant: 'success' })
+        showStatus('Pushed to GitHub')
+      }
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : 'Unknown error'
+      toast({ title: 'Push failed', description: errorMsg, variant: 'destructive' })
+      showStatus(`Push failed: ${errorMsg}`)
+    } finally {
+      setIsSyncing(false)
+    }
+  }
+
+  const handlePull = async () => {
+    try {
+      setIsSyncing(true)
+      if (selectedPath) {
+        // Pull all files and reload the currently opened file
+        await githubSync.pullFileFromGitHub(selectedPath)
+        const fileName = selectedPath.split('/').pop()
+        const content = await readFile(selectedPath)
+        if (content !== undefined) {
+          if (typeof content === 'string') {
+            setFileContent(content)
+            setLoadedContent(content)
+          } else if (content instanceof Uint8Array || Array.isArray(content)) {
+            setBinaryData(content instanceof Uint8Array ? content : new Uint8Array(content))
+          }
+        }
+        toast({ title: 'Success', description: `${fileName} pulled from GitHub`, variant: 'success' })
+        showStatus(`Pulled ${selectedPath} from GitHub`)
+      } else {
+        // Pull all files
+        await githubSync.pullFromGitHub()
+        toast({ title: 'Success', description: 'All files pulled from GitHub', variant: 'success' })
+        showStatus('Pulled from GitHub')
+      }
+      // Refresh the file list
+      await refreshFiles()
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : 'Unknown error'
+      toast({ title: 'Pull failed', description: errorMsg, variant: 'destructive' })
+      showStatus(`Pull failed: ${errorMsg}`)
+    } finally {
+      setIsSyncing(false)
     }
   }
 
@@ -997,6 +1060,29 @@ export default function Workspace() {
                     <i className="fa-solid fa-xmark text-[12px]"></i>
                   </button>
                 </div>
+
+                <button
+                  onClick={handlePush}
+                  disabled={isSyncing}
+                  className={`flex items-center gap-2 px-3 py-1.5 rounded font-medium transition-colors ${isSyncing
+                      ? 'bg-slate-200 dark:bg-[#1a2635] text-slate-500 dark:text-[#6b8db5] cursor-not-allowed'
+                      : 'bg-blue-600 hover:bg-blue-700 text-white'
+                    }`}
+                  title="Push files to GitHub"
+                >
+                  <i className={`${isSyncing ? 'fas fa-spinner fa-spin' : 'fas fa-cloud-upload-alt'}`}></i>
+                </button>
+                <button
+                  onClick={handlePull}
+                  disabled={isSyncing}
+                  className={`flex items-center gap-2 px-3 py-1.5 rounded font-medium transition-colors ${isSyncing
+                      ? 'bg-slate-200 dark:bg-[#1a2635] text-slate-500 dark:text-[#6b8db5] cursor-not-allowed'
+                      : 'bg-slate-700 hover:bg-slate-600 text-white'
+                    }`}
+                  title="Pull files from GitHub"
+                >
+                  <i className={`${isSyncing ? 'fas fa-spinner fa-spin' : 'fas fa-cloud-download-alt'}`}></i>
+                </button>
                 <button
                   onClick={downloadFile}
                   className="p-1.5 text-slate-600 dark:text-[#92adc9] hover:text-blue-500 dark:hover:text-blue-400 transition-colors"

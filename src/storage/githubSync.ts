@@ -562,6 +562,26 @@ class GitHubSyncService {
   getConfig(): SyncConfig | null {
     return this.config ? { ...this.config } : null
   }
+
+  /**
+   * Sync a single file to GitHub
+   * Tracks the file change and triggers sync immediately
+   */
+  async syncFileToGitHub(path: string, content: string | Uint8Array | ArrayBuffer): Promise<void> {
+    await this.trackChange(path, content)
+    await this.syncToGitHub()
+  }
+
+  /**
+   * Pull all files from GitHub
+   * Note: GitHub sync pulls entire directory as individual requests per file
+   * If you need to reload a specific file after pull, use readFile from VFS
+   */
+  async pullFileFromGitHub(path: string): Promise<void> {
+    // Pull entire repository (that's how the sync works)
+    await this.pullFromGitHub()
+    // Caller should re-read the specific file from VFS after pull
+  }
 }
 
 // Singleton instance
