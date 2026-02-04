@@ -68,6 +68,7 @@ export default function StartMenu() {
     const [installedPackages, setInstalledPackages] = useState<InstalledPackage[]>([])
     const searchInputRef = useRef<HTMLInputElement>(null)
     const fileInputRef = useRef<HTMLInputElement>(null)
+    const menuRef = useRef<HTMLDivElement>(null)
 
     useEffect(() => {
         if (open) {
@@ -76,6 +77,20 @@ export default function StartMenu() {
             setSearchQuery('')
             setImportStatus('')
             setContextMenu(null)
+        }
+    }, [open])
+
+    // Close menu on click outside
+    useEffect(() => {
+        const handleClickOutside = (event: MouseEvent) => {
+            if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
+                setOpen(false)
+            }
+        }
+
+        if (open) {
+            document.addEventListener('mousedown', handleClickOutside)
+            return () => document.removeEventListener('mousedown', handleClickOutside)
         }
     }, [open])
 
@@ -230,24 +245,7 @@ export default function StartMenu() {
         }
     }
 
-    const handleExportFiles = async () => {
-        try {
-            const allFiles = await readdir('/home')
-            if (allFiles.length === 0) {
-                setImportStatus('No files to export')
-                setTimeout(() => setImportStatus(''), 2000)
-                return
-            }
 
-            // Show file picker or export dialog
-            (window as any).ZynqOS_openWindow?.('Export Files',
-                <ExportFilesDialog />,
-                'export-files')
-            setOpen(false)
-        } catch (error) {
-            setImportStatus(`Export error: ${error}`)
-        }
-    }
 
     const pinnedApps: App[] = [
         {
@@ -439,7 +437,7 @@ export default function StartMenu() {
                         />
 
                         {/* Main Menu */}
-                        <div className="w-[420px] bg-black backdrop-blur-xl border border-[#333] rounded-xl shadow-2xl overflow-hidden">
+                        <div ref={menuRef} className="w-[420px] bg-black backdrop-blur-xl border border-[#333] rounded-xl shadow-2xl overflow-hidden">
                             {/* Search bar */}
                             <div className="px-5 py-4">
                                 <div className="relative">
@@ -682,31 +680,21 @@ export default function StartMenu() {
                                         <span>Import</span>
                                     </button>
 
+                                    {/* New Window Button */}
                                     <button
-                                        onClick={handleExportFiles}
+                                        onClick={() => {
+                                            window.open(window.location.href, '_blank', 'width=1200,height=800,menubar=no,toolbar=no,location=no')
+                                            setOpen(false)
+                                        }}
                                         className="w-[50%] flex items-center gap-2 px-2 py-2 rounded-lg hover:bg-[#2a2a2a] transition text-sm text-[#e0e0e0] hover:text-white group"
+                                        title="Open new window for multi-window support"
                                     >
                                         <span className="w-6 h-6 rounded-lg flex items-center justify-center transition">
-                                            <i className="fa-solid fa-file-export"></i>
+                                            <i className="fas fa-window-restore text-xs"></i>
                                         </span>
-                                        <span>Export</span>
+                                        <span>New</span>
                                     </button>
                                 </div>
-
-                                {/* New Window Button */}
-                                <button
-                                    onClick={() => {
-                                        window.open(window.location.href, '_blank', 'width=1200,height=800,menubar=no,toolbar=no,location=no')
-                                        setOpen(false)
-                                    }}
-                                    className="w-full flex items-center gap-2 px-2 py-2 rounded-lg hover:bg-[#2a2a2a] transition text-sm text-[#e0e0e0] hover:text-white group"
-                                    title="Open new window for multi-window support"
-                                >
-                                    <span className="w-6 h-6 rounded-lg bg-[#2a3a4a] flex items-center justify-center text-[#4a9eff] group-hover:bg-[#2a4a5a] transition">
-                                        <i className="fas fa-window-restore text-xs"></i>
-                                    </span>
-                                    <span>New Window</span>
-                                </button>
                             </div>
 
                             {/* Signin/Signup */}
@@ -849,132 +837,4 @@ export default function StartMenu() {
     )
 }
 
-// Export Files Dialog Component
-function ExportFilesDialog() {
-    const [files, setFiles] = useState<string[]>([])
-    const [selectedFiles, setSelectedFiles] = useState<Set<string>>(new Set())
-    const [loading, setLoading] = useState(true)
-    const [exporting, setExporting] = useState(false)
 
-    useEffect(() => {
-        loadFiles()
-    }, [])
-
-    async function loadFiles() {
-        setLoading(true)
-        try {
-            const allFiles = await readdir('/home')
-            setFiles(allFiles.filter(f => !f.endsWith('/')))
-        } catch (error) {
-            console.error('Failed to load files:', error)
-        }
-        setLoading(false)
-    }
-
-    function toggleFile(file: string) {
-        const newSelected = new Set(selectedFiles)
-        if (newSelected.has(file)) {
-            newSelected.delete(file)
-        } else {
-            newSelected.add(file)
-        }
-        setSelectedFiles(newSelected)
-    }
-
-    function selectAll() {
-        if (selectedFiles.size === files.length) {
-            setSelectedFiles(new Set())
-        } else {
-            setSelectedFiles(new Set(files))
-        }
-    }
-
-    async function exportSelected() {
-        if (selectedFiles.size === 0) return
-
-        setExporting(true)
-
-        for (const filePath of selectedFiles) {
-            try {
-                const content = await readFile(filePath)
-                if (content !== undefined) {
-                    let blob: Blob
-                    if (content instanceof Uint8Array) {
-                        // Create a new ArrayBuffer copy to avoid SharedArrayBuffer issues
-                        const buffer = new ArrayBuffer(content.length)
-                        new Uint8Array(buffer).set(content)
-                        blob = new Blob([buffer])
-                    } else {
-                        blob = new Blob([content], { type: 'text/plain' })
-                    }
-
-                    const fileName = filePath.split('/').pop() || 'file'
-                    const url = URL.createObjectURL(blob)
-                    const a = document.createElement('a')
-                    a.href = url
-                    a.download = fileName
-                    document.body.appendChild(a)
-                    a.click()
-                    document.body.removeChild(a)
-                    URL.revokeObjectURL(url)
-                }
-            } catch (error) {
-                console.error(`Failed to export ${filePath}:`, error)
-            }
-        }
-
-        setExporting(false)
-    }
-
-    return (
-        <div className="p-4 bg-[#1a1a1a] text-[#e0e0e0] min-h-[300px]">
-            <div className="flex items-center justify-between mb-4">
-                <h2 className="text-lg font-semibold">Export Files</h2>
-                <button
-                    onClick={selectAll}
-                    className="text-xs px-3 py-1 rounded bg-[#2a2a2a] hover:bg-[#333] text-[#808080] hover:text-[#e0e0e0] transition"
-                >
-                    {selectedFiles.size === files.length ? 'Deselect All' : 'Select All'}
-                </button>
-            </div>
-
-            {loading ? (
-                <div className="text-center py-8 text-[#666]">Loading files...</div>
-            ) : files.length === 0 ? (
-                <div className="text-center py-8 text-[#666]">
-                    <i className="fas fa-folder-open text-3xl mb-2 opacity-50"></i>
-                    <p>No files found in /home</p>
-                </div>
-            ) : (
-                <>
-                    <div className="max-h-[200px] overflow-y-auto space-y-1 mb-4">
-                        {files.map((file) => (
-                            <button
-                                key={file}
-                                onClick={() => toggleFile(file)}
-                                className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg transition text-sm text-left ${selectedFiles.has(file)
-                                    ? 'bg-[#2a4a3a] text-[#4ade80]'
-                                    : 'hover:bg-[#2a2a2a] text-[#e0e0e0]'
-                                    }`}
-                            >
-                                <i className={`fas ${selectedFiles.has(file) ? 'fa-check-square' : 'fa-square'} text-xs`}></i>
-                                <span className="truncate">{file}</span>
-                            </button>
-                        ))}
-                    </div>
-
-                    <button
-                        onClick={exportSelected}
-                        disabled={selectedFiles.size === 0 || exporting}
-                        className={`w-full py-2 rounded-lg font-medium transition ${selectedFiles.size === 0 || exporting
-                            ? 'bg-[#2a2a2a] text-[#666] cursor-not-allowed'
-                            : 'bg-[#4a9eff] hover:bg-[#3a8eef] text-white'
-                            }`}
-                    >
-                        {exporting ? 'Exporting...' : `Export ${selectedFiles.size} file(s)`}
-                    </button>
-                </>
-            )}
-        </div>
-    )
-}

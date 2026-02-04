@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState, useRef, useCallback } from 'react'
 import { toast } from '../../hooks/use-toast'
 import { readFile, readdir, removeFile, writeFile } from '../../vfs/fs'
 import { getFileTypeDescription, isEditable, tryDecodeText } from '../../vfs/fileTypes'
-import { uploadFile } from '../../utils/fileUpload'
+import { uploadFile, uploadFiles } from '../../utils/fileUpload'
 
 type FileNode = {
   name: string
@@ -134,6 +134,7 @@ function FileRow({
   onDelete,
   isExpanded,
   onToggle,
+  onDirectorySelect,
 }: {
   node: FileNode
   depth: number
@@ -142,6 +143,7 @@ function FileRow({
   onDelete: (path: string) => void
   isExpanded: (path: string) => boolean
   onToggle: (path: string) => void
+  onDirectorySelect: (path: string) => void
 }) {
   const padding = depth * 12
   const iconClass = node.isDir
@@ -154,6 +156,7 @@ function FileRow({
   const handleClick = () => {
     if (node.isDir) {
       onToggle(node.path)
+      onDirectorySelect(node.path)
     } else {
       onSelect(node.path)
     }
@@ -192,6 +195,7 @@ function FileRow({
               onDelete={onDelete}
               isExpanded={isExpanded}
               onToggle={onToggle}
+              onDirectorySelect={onDirectorySelect}
             />
           ))}
         </div>
@@ -207,6 +211,7 @@ function Explorer({
   onDelete,
   expanded,
   setExpanded,
+  onDirectorySelect,
 }: {
   tree: FileNode[]
   selected: string | null
@@ -214,6 +219,7 @@ function Explorer({
   onDelete: (path: string) => void
   expanded: Set<string>
   setExpanded: React.Dispatch<React.SetStateAction<Set<string>>>
+  onDirectorySelect: (path: string) => void
 }) {
   const isExpanded = (path: string) => expanded.has(path)
   const onToggle = (path: string) => {
@@ -238,6 +244,7 @@ function Explorer({
           onDelete={onDelete}
           isExpanded={isExpanded}
           onToggle={onToggle}
+          onDirectorySelect={onDirectorySelect}
         />
       ))}
     </div>
@@ -303,8 +310,12 @@ function EditorPane(
       const blob = new Blob([arr.buffer], { type: 'application/pdf' })
       const url = URL.createObjectURL(blob)
       return (
-        <div className="flex flex-1 overflow-hidden bg-white dark:bg-[#161f29]">
-          <embed src={url} type="application/pdf" className="w-full h-full" />
+        <div className="flex flex-1 overflow-hidden bg-slate-100 dark:bg-[#0a0a0a]">
+          <iframe 
+            src={url}
+            className="w-full h-full border-none"
+            title={`PDF: ${path}`}
+          />
         </div>
       )
     }
@@ -335,6 +346,7 @@ function EditorPane(
 export default function Workspace() {
   const [paths, setPaths] = useState<string[]>([])
   const [selectedPath, setSelectedPath] = useState<string | null>(null)
+  const [currentDirectory, setCurrentDirectory] = useState<string>('/home')
   const [fileContent, setFileContent] = useState('')
   const [loadedContent, setLoadedContent] = useState('')
   const [readOnly, setReadOnly] = useState(false)
@@ -561,12 +573,17 @@ export default function Workspace() {
       if (files && files.length > 0) {
         try {
           showStatus(`Uploading ${files.length} file(s)...`)
-          for (const file of Array.from(files)) {
-            const path = normalizePath(`/home/${file.name}`)
-            await uploadFile(file, path)
-          }
+          
+          // Use the tracked currentDirectory
+          const targetDir = currentDirectory || '/home'
+          
+          // Use the centralized batch upload function
+          await uploadFiles(files, targetDir, (current, total, fileName) => {
+            showStatus(`Uploading ${current}/${total}: ${fileName}`)
+          })
+          
           await refreshFiles()
-          showStatus(`✓ Uploaded ${files.length} file(s)`)
+          showStatus(`✓ Uploaded ${files.length} file(s) to ${targetDir}`)
         } catch (error) {
           showStatus(`✗ Upload failed: ${error}`)
           console.error('Upload error:', error)
@@ -611,6 +628,43 @@ export default function Workspace() {
 
   const toggleSidebar = () => {
     setSidebarCollapsed(!sidebarCollapsed)
+  }
+
+  const downloadFile = async () => {
+    if (!selectedPath) return
+    try {
+      const content = await readFile(selectedPath)
+      if (content === undefined) {
+        showStatus('File not found')
+        return
+      }
+
+      let blob: Blob
+      if (typeof content === 'string') {
+        blob = new Blob([content], { type: 'text/plain' })
+      } else if (content instanceof Uint8Array) {
+        blob = new Blob([content as any])
+      } else if (Array.isArray(content)) {
+        blob = new Blob([new Uint8Array(content)])
+      } else {
+        showStatus('Unable to download file')
+        return
+      }
+
+      const fileName = selectedPath.split('/').pop() || 'file'
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = fileName
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(url)
+      showStatus(`Downloaded ${fileName}`)
+    } catch (error) {
+      showStatus(`Download failed: ${error}`)
+      console.error('Download error:', error)
+    }
   }
 
   // Keyboard shortcut handler
@@ -694,7 +748,7 @@ export default function Workspace() {
             title="Toggle sidebar"
           >
             <i className={`fa-solid ${sidebarCollapsed ? 'fa-bars' : 'fa-folder-open'} text-[16px]`}></i>
-            {!sidebarCollapsed && <span className="truncate max-w-[200px]">{currentDir}</span>}
+            {!sidebarCollapsed && <span className="truncate max-w-[200px]">{currentDirectory}</span>}
           </button>
         </div>
         <div className="flex flex-1 justify-center max-w-xl px-4">
@@ -897,6 +951,7 @@ export default function Workspace() {
               onDelete={deleteFile}
               expanded={expanded}
               setExpanded={setExpanded}
+              onDirectorySelect={setCurrentDirectory}
             />
             <div className="p-3 border-t border-slate-200 dark:border-[#233648] bg-slate-100 dark:bg-[#111a22]">
               <div className="relative">
@@ -934,11 +989,20 @@ export default function Workspace() {
               ))}
             </div>
             {selectedPath && (
-              <div className="flex items-center gap-2 text-sm font-medium text-slate-800 dark:text-white bg-slate-200 dark:bg-[#233648] px-3 py-1 rounded-full">
-                <i className="fa-regular fa-file-lines text-[15px] text-blue-500"></i>
-                <span className="truncate max-w-[280px]">{selectedPath}</span>
-                <button className="ml-1 hover:text-red-400 flex items-center" onClick={() => setSelectedPath(null)}>
-                  <i className="fa-solid fa-xmark text-[12px]"></i>
+              <div className="flex items-center gap-2 ml-auto">
+                <div className="flex items-center gap-2 text-sm font-medium text-slate-800 dark:text-white bg-slate-200 dark:bg-[#233648] px-3 py-1 rounded-full">
+                  <i className="fa-regular fa-file-lines text-[15px] text-blue-500"></i>
+                  <span className="truncate max-w-[280px]">{selectedPath}</span>
+                  <button className="ml-1 hover:text-red-400 flex items-center" onClick={() => setSelectedPath(null)}>
+                    <i className="fa-solid fa-xmark text-[12px]"></i>
+                  </button>
+                </div>
+                <button
+                  onClick={downloadFile}
+                  className="p-1.5 text-slate-600 dark:text-[#92adc9] hover:text-blue-500 dark:hover:text-blue-400 transition-colors"
+                  title="Download file"
+                >
+                  <i className="fa-solid fa-download text-[14px]"></i>
                 </button>
               </div>
             )}

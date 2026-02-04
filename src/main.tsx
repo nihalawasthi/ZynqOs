@@ -13,6 +13,22 @@ import { toast } from './hooks/use-toast'
 import { Buffer } from 'buffer'
 ;(window as any).Buffer = Buffer
 
+// Check if this is a popup window with OAuth parameters
+// If so, exit early and let bootstrapAuthRedirect handle it
+const url = new URL(window.location.href)
+const isOAuthPopup = window.opener && (url.searchParams.get('code') || url.searchParams.has('state'))
+if (isOAuthPopup) {
+  console.log('[Main] OAuth popup detected, skipping full app initialization')
+  // Minimal loading overlay for popup
+  const root = document.getElementById('root')
+  if (root) {
+    root.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100vh;font-family:system-ui;color:#666">Processing authentication...</div>'
+  }
+  // Let the script modules load and handle the OAuth callback
+} else {
+  // Normal app initialization
+}
+
 // Import apps to register them globally
 import './apps/terminal/ui'
 import './apps/text-editor/ui'
@@ -213,4 +229,7 @@ function Root() {
   )
 }
 
-createRoot(document.getElementById('root') as HTMLElement).render(<Root />)
+// Only render the full app if NOT in an OAuth popup
+if (!isOAuthPopup) {
+  createRoot(document.getElementById('root') as HTMLElement).render(<Root />)
+}

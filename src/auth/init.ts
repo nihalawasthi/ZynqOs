@@ -53,23 +53,32 @@ function attachGlobals() {
   window.addEventListener('message', async (event: MessageEvent) => {
     const data: any = (event && (event as any).data) || {}
     if (data && data.type === 'zynqos-auth-complete') {
+      console.log('[Auth] Received auth-complete message from popup, initializing...', data)
       try {
         clearStatusCache()
         const statusRes = await fetch('/api?route=auth&action=status', { credentials: 'include' })
         const statusJson = await statusRes.json()
+        console.log('[Auth] Auth status after popup:', statusJson)
         if (statusJson.connected || statusJson.authenticated) {
           // Map provider label
           const prov = data.provider === 'google' ? ('google-drive' as const) : ('github' as const)
           const root = { provider: prov, id: 'server-session' }
           await setRemoteRoot(root)
-          if (statusJson.connected) startSync().catch(console.error)
+          console.log('[Auth] Remote root set to', root)
+          if (statusJson.connected) {
+            console.log('[Auth] Starting sync...')
+            startSync().catch(console.error)
+          }
           window.dispatchEvent(new CustomEvent('zynqos:storage-connected', { detail: { provider: data.provider } }))
+          console.log('[Auth] Storage connected event dispatched')
+        } else {
+          console.warn('[Auth] Auth failed - not connected or authenticated', statusJson)
         }
       } catch (e) {
         console.error('[Auth] Failed to finalize after popup auth', e)
       }
     }
-  })
+  }, false)
 }
 
 export async function bootstrapAuthRedirect() {
@@ -109,8 +118,12 @@ export async function bootstrapAuthRedirect() {
         
         // If this is a popup, close it immediately and let parent handle initialization
         if (window.opener) {
-          try { window.opener?.postMessage({ type: 'zynqos-auth-complete', provider: 'github-app' }, '*') } catch {}
-          window.close()
+          console.log('[Auth] GitHub App popup - sending auth-complete to parent and closing')
+          try { window.opener?.postMessage({ type: 'zynqos-auth-complete', provider: 'github-app' }, '*') } catch (e) { console.error('[Auth] postMessage failed:', e) }
+          setTimeout(() => {
+            console.log('[Auth] Closing GitHub App popup window')
+            window.close()
+          }, 100)
           return
         }
         
@@ -190,8 +203,12 @@ export async function bootstrapAuthRedirect() {
       
       // If this is a popup, close it immediately and let parent handle initialization
       if (window.opener) {
-        try { window.opener?.postMessage({ type: 'zynqos-auth-complete', provider: 'google' }, '*') } catch {}
-        window.close()
+        console.log('[Auth] Google popup - sending auth-complete to parent and closing')
+        try { window.opener?.postMessage({ type: 'zynqos-auth-complete', provider: 'google' }, '*') } catch (e) { console.error('[Auth] postMessage failed:', e) }
+        setTimeout(() => {
+          console.log('[Auth] Closing Google popup window')
+          window.close()
+        }, 100)
         return
       }
       
@@ -228,8 +245,12 @@ export async function bootstrapAuthRedirect() {
       
       // If this is a popup, close it immediately and let parent handle initialization
       if (window.opener) {
-        try { window.opener?.postMessage({ type: 'zynqos-auth-complete', provider: 'github' }, '*') } catch {}
-        window.close()
+        console.log('[Auth] GitHub popup - sending auth-complete to parent and closing')
+        try { window.opener?.postMessage({ type: 'zynqos-auth-complete', provider: 'github' }, '*') } catch (e) { console.error('[Auth] postMessage failed:', e) }
+        setTimeout(() => {
+          console.log('[Auth] Closing GitHub popup window')
+          window.close()
+        }, 100)
         return
       }
       
