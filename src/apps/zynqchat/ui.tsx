@@ -25,6 +25,7 @@ export default function ZynqChatUI() {
     const [currentUser, setCurrentUser] = useState('You')
     const [customHandle, setCustomHandle] = useState(() => localStorage.getItem('zynqchat_handle') || '')
     const [realtimeStatus, setRealtimeStatus] = useState<'connecting' | 'open' | 'error'>('connecting')
+    const [reconnectToken, setReconnectToken] = useState(0)
     const messagesEndRef = useRef<HTMLDivElement>(null)
     const saveTimerRef = useRef<number | null>(null)
     const typingTimerRef = useRef<number | null>(null)
@@ -32,6 +33,7 @@ export default function ZynqChatUI() {
     const attachmentInputRef = useRef<HTMLInputElement>(null)
     const chatsRef = useRef(chats)
     const messagesByChatRef = useRef(messagesByChat)
+    const reconnectTimerRef = useRef<number | null>(null)
 
     const MAX_ATTACHMENT_BYTES = 8 * 1024 * 1024
 
@@ -175,8 +177,25 @@ export default function ZynqChatUI() {
             }
         })
 
-        return () => unsubscribe()
-    }, [resolvedHandle])
+        return () => {
+            unsubscribe()
+            if (reconnectTimerRef.current) {
+                window.clearTimeout(reconnectTimerRef.current)
+                reconnectTimerRef.current = null
+            }
+        }
+    }, [resolvedHandle, reconnectToken])
+
+    useEffect(() => {
+        if (realtimeStatus !== 'error') return
+        if (reconnectTimerRef.current) return
+
+        reconnectTimerRef.current = window.setTimeout(() => {
+            reconnectTimerRef.current = null
+            setRealtimeStatus('connecting')
+            setReconnectToken(prev => prev + 1)
+        }, 3000)
+    }, [realtimeStatus])
 
     useEffect(() => {
         if (realtimeStatus !== 'error') return
@@ -432,6 +451,13 @@ export default function ZynqChatUI() {
 
     function sanitizeFileName(name: string): string {
         return name.replace(/[^a-zA-Z0-9._-]/g, '_')
+    }
+
+    function formatMessageTime(message: Message): string {
+        if (message.createdAt) {
+            return new Date(message.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+        }
+        return message.timestamp || ''
     }
 
     function bytesToBase64(bytes: Uint8Array): string {
@@ -705,8 +731,13 @@ export default function ZynqChatUI() {
                     </div>
                     <div className="flex-1 min-w-0">
                         <div className="text-sm font-semibold truncate">{activeChat ? (activeChat.kind === 'dm' ? `@${activeChat.name}` : activeChat.name) : 'Select a chat'}</div>
-                        <div className="text-xs text-slate-500">
-                            {activeChat?.kind === 'dm' ? `Status: ${activeChat.presence || 'offline'}` : `${activeChat?.members || 0} members`}
+                        <div className="text-xs text-slate-500 flex items-center gap-2">
+                            <span>
+                                {activeChat?.kind === 'dm' ? `Status: ${activeChat.presence || 'offline'}` : `${activeChat?.members || 0} members`}
+                            </span>
+                            <span className={`text-[10px] px-2 py-0.5 rounded-full border ${realtimeStatus === 'open' ? 'border-emerald-500/30 text-emerald-300' : realtimeStatus === 'connecting' ? 'border-amber-500/30 text-amber-300' : 'border-rose-500/30 text-rose-300'}`}>
+                                {realtimeStatus === 'open' ? 'Realtime' : realtimeStatus === 'connecting' ? 'Reconnecting' : 'Offline'}
+                            </span>
                         </div>
                     </div>
                     <div className="flex items-center gap-2 text-slate-400">
@@ -749,6 +780,7 @@ export default function ZynqChatUI() {
                         const attachmentItems = message.attachments || []
                         const isDeleted = Boolean(message.deletedAt)
                         const linkPreviews = message.linkPreviews || []
+                        const timeLabel = formatMessageTime(message)
                         return (
                             <div key={message.id} className={`flex ${isMine ? 'justify-end' : 'justify-start'}`}>
                                 <div className={`max-w-[70%] rounded-2xl px-4 py-3 text-sm border group ${isMine ? 'bg-cyan-600/20 border-cyan-500/30' : 'bg-[#131a24] border-[#1f242c]'}`}>
@@ -815,7 +847,7 @@ export default function ZynqChatUI() {
                                         </div>
                                     ) : null}
                                     <div className="text-[10px] text-slate-500 mt-2 flex items-center gap-2">
-                                        <span>{message.timestamp}</span>
+                                        <span>{timeLabel}</span>
                                         {message.editedAt ? <span>edited</span> : null}
                                         {message.deletedAt ? <span>deleted</span> : null}
                                         {message.pinned ? <span>pinned</span> : null}
