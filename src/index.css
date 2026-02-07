@@ -1119,6 +1119,40 @@ body {
   display: none
 }
 
+/* Global scrollbar styling */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #404040 transparent;
+}
+
+*::-webkit-scrollbar {
+  background-color: transparent;
+  width: 6px;
+  height: 6px;
+}
+
+*::-webkit-scrollbar-track {
+  background-color: transparent;
+}
+
+*::-webkit-scrollbar-track:hover {
+  background-color: transparent;
+}
+
+*::-webkit-scrollbar-thumb {
+  background-color: #404040;
+  border: 2px solid transparent;
+  border-radius: 4px;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background-color: #404040;
+}
+
+*::-webkit-scrollbar-button {
+  display: none;
+}
+
 
 #settings:hover .svg-icon {
   animation: spin 2s linear infinite;
