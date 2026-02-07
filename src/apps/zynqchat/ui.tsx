@@ -1,9 +1,9 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
-import { type Attachment, type Chat, type Message, loadZynqChatStore, saveZynqChatStore } from './storage'
-import { connectChatEvents, fetchChatHistory, sendChatMessage, sendPresenceUpdate, sendTypingSignal, updateChatMessage, uploadChatAttachment } from './chatApi'
-import { writeFile } from '../../vfs/fs'
-import { downloadFile } from '../../utils/fileUpload'
-import { getStorageStatus } from '../../auth/storage'
+import { type Attachment, type Chat, type Message, loadZynqChatStore, saveZynqChatStore } from './storage.js'
+import { connectChatEvents, fetchChatHistory, sendChatMessage, sendPresenceUpdate, sendTypingSignal, updateChatMessage, uploadChatAttachment } from './chatApi.js'
+import { writeFile } from '../../vfs/fs.js'
+import { downloadFile } from '../../utils/fileUpload.js'
+import { getStorageStatus } from '../../auth/storage.js'
 
 const initialChats: Chat[] = []
 const initialMessages: Record<string, Message[]> = {}
@@ -24,11 +24,14 @@ export default function ZynqChatUI() {
     const [editingMessageId, setEditingMessageId] = useState<string | null>(null)
     const [currentUser, setCurrentUser] = useState('You')
     const [customHandle, setCustomHandle] = useState(() => localStorage.getItem('zynqchat_handle') || '')
+    const [realtimeStatus, setRealtimeStatus] = useState<'connecting' | 'open' | 'error'>('connecting')
     const messagesEndRef = useRef<HTMLDivElement>(null)
     const saveTimerRef = useRef<number | null>(null)
     const typingTimerRef = useRef<number | null>(null)
     const activeChatIdRef = useRef(activeChatId)
     const attachmentInputRef = useRef<HTMLInputElement>(null)
+    const chatsRef = useRef(chats)
+    const messagesByChatRef = useRef(messagesByChat)
 
     const MAX_ATTACHMENT_BYTES = 8 * 1024 * 1024
 
@@ -49,6 +52,14 @@ export default function ZynqChatUI() {
     useEffect(() => {
         activeChatIdRef.current = activeChatId
     }, [activeChatId])
+
+    useEffect(() => {
+        chatsRef.current = chats
+    }, [chats])
+
+    useEffect(() => {
+        messagesByChatRef.current = messagesByChat
+    }, [messagesByChat])
 
     useEffect(() => {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -158,10 +169,77 @@ export default function ZynqChatUI() {
             }
         }, () => {
             setServerError('Realtime connection failed')
+            setRealtimeStatus('error')
+        }, (status) => {
+            if (status === 'open') {
+                setServerError(null)
+                setRealtimeStatus('open')
+            } else if (status === 'error') {
+                setRealtimeStatus('error')
+            }
         })
 
         return () => unsubscribe()
     }, [resolvedHandle])
+
+    useEffect(() => {
+        if (realtimeStatus !== 'error') return
+        let cancelled = false
+
+        const poll = async () => {
+            const currentChats = chatsRef.current
+            const currentMessages = messagesByChatRef.current
+
+            try {
+                const results = await Promise.all(currentChats.map(async (chat) => {
+                    const existing = currentMessages[chat.id] || []
+                    const lastCreatedAt = existing.length ? existing[existing.length - 1].createdAt : 0
+                    const incoming = await fetchChatHistory(chat.id, lastCreatedAt || undefined)
+                    return { chatId: chat.id, incoming }
+                }))
+
+                if (cancelled) return
+
+                let hasUpdates = false
+
+                setMessagesByChat(prev => {
+                    const next = { ...prev }
+                    for (const result of results) {
+                        if (!result.incoming.length) continue
+                        const existing = next[result.chatId] || []
+                        const existingIds = new Set(existing.map(msg => msg.id))
+                        const merged = [...existing, ...result.incoming.filter(msg => !existingIds.has(msg.id))]
+                        if (merged.length !== existing.length) {
+                            next[result.chatId] = merged
+                            hasUpdates = true
+                        }
+                    }
+                    return next
+                })
+
+                if (hasUpdates) {
+                    setChats(prev => prev.map(chat => {
+                        const update = results.find(result => result.chatId === chat.id)
+                        if (!update || update.incoming.length === 0) return chat
+                        const lastMessage = update.incoming[update.incoming.length - 1].body
+                        const unreadCount = chat.id === activeChatIdRef.current
+                            ? 0
+                            : (chat.unreadCount || 0) + update.incoming.length
+                        return { ...chat, lastMessage, unreadCount }
+                    }))
+                }
+            } catch {
+                // ignore polling errors
+            }
+        }
+
+        poll()
+        const interval = window.setInterval(poll, 8000)
+        return () => {
+            cancelled = true
+            window.clearInterval(interval)
+        }
+    }, [realtimeStatus])
 
     useEffect(() => {
         if (loading) return

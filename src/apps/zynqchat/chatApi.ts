@@ -1,4 +1,4 @@
-import type { Attachment, Message } from './storage'
+import type { Attachment, Message } from './storage.js'
 
 type ChatEvent =
   | { type: 'message'; chatId: string; message: Message }
@@ -22,8 +22,16 @@ type UploadPayload = {
   base64: string
 }
 
-export function connectChatEvents(onEvent: (event: ChatEvent) => void, onError?: (err: Event) => void): () => void {
-  const source = new EventSource('/api?route=chat&action=events')
+export function connectChatEvents(
+  onEvent: (event: ChatEvent) => void,
+  onError?: (err: Event) => void,
+  onStatus?: (status: 'open' | 'error' | 'closed') => void
+): () => void {
+  const source = new EventSource('/api?route=chat&action=events', { withCredentials: true })
+
+  source.onopen = () => {
+    onStatus?.('open')
+  }
 
   source.onmessage = (ev) => {
     if (!ev.data) return
@@ -36,11 +44,13 @@ export function connectChatEvents(onEvent: (event: ChatEvent) => void, onError?:
   }
 
   source.onerror = (err) => {
+    onStatus?.('error')
     onError?.(err)
   }
 
   return () => {
     source.close()
+    onStatus?.('closed')
   }
 }
 

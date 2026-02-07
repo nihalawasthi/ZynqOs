@@ -4,7 +4,8 @@
  * Logs are saved as YYYY-MM-DD.json for easy cross-device access
  */
 
-import { fetchGitHubFile, uploadGitHubFile, listGitHubFiles } from './githubApi'
+import { fetchGitHubFile, uploadGitHubFile, listGitHubFiles } from './githubApi.js'
+import { base64ToString } from './encoding.js'
 
 export type AuditEntry = {
   id: string
@@ -165,11 +166,7 @@ class AuditLogSyncService {
 
         if (result?.content) {
           try {
-            // Content is already decoded by fetchGitHubFile as Uint8Array
-            const text = typeof result.content === 'string' 
-              ? result.content 
-              : new TextDecoder().decode(result.content);
-            const entries = JSON.parse(text)
+            const entries = this.parseJsonContent(result.content)
             if (Array.isArray(entries)) {
               allLogs[date] = entries
             }
@@ -228,8 +225,14 @@ class AuditLogSyncService {
 
     const existingFile = await fetchGitHubFile(owner, repo, path)
     if (existingFile?.content && existingFile?.sha) {
-      const decoded = atob(existingFile.content)
-      existingEntries = JSON.parse(decoded)
+      try {
+        const parsed = this.parseJsonContent(existingFile.content)
+        if (Array.isArray(parsed)) {
+          existingEntries = parsed
+        }
+      } catch (error) {
+        console.warn(`[AuditSync] Failed to parse existing log ${path}, overwriting.`, error)
+      }
       sha = existingFile.sha
     }
 
@@ -369,6 +372,20 @@ class AuditLogSyncService {
       pendingCount: this.pendingEntries.length,
       lastSyncTime: this.config.lastSyncTime,
       autoSync: this.config.autoSync
+    }
+  }
+
+  private parseJsonContent(content: string | Uint8Array): unknown {
+    if (content instanceof Uint8Array) {
+      const text = new TextDecoder().decode(content)
+      return JSON.parse(text)
+    }
+
+    try {
+      return JSON.parse(content)
+    } catch {
+      const decoded = base64ToString(content)
+      return JSON.parse(decoded)
     }
   }
 }
