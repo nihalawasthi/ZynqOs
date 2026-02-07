@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { type Attachment, type Chat, type Message, loadZynqChatStore, saveZynqChatStore } from './storage.js'
 import { connectChatEvents, fetchChatHistory, sendChatMessage, sendPresenceUpdate, sendTypingSignal, updateChatMessage, uploadChatAttachment } from './chatApi.js'
-import { writeFile } from '../../vfs/fs.js'
+import { readFile, writeFile } from '../../vfs/fs.js'
 import { downloadFile } from '../../utils/fileUpload.js'
 import { getStorageStatus } from '../../auth/storage.js'
 
@@ -26,6 +26,7 @@ export default function ZynqChatUI() {
     const [customHandle, setCustomHandle] = useState(() => localStorage.getItem('zynqchat_handle') || '')
     const [realtimeStatus, setRealtimeStatus] = useState<'connecting' | 'open' | 'error'>('connecting')
     const [reconnectToken, setReconnectToken] = useState(0)
+    const [attachmentPreviews, setAttachmentPreviews] = useState<Record<string, string>>({})
     const messagesEndRef = useRef<HTMLDivElement>(null)
     const saveTimerRef = useRef<number | null>(null)
     const typingTimerRef = useRef<number | null>(null)
@@ -33,6 +34,7 @@ export default function ZynqChatUI() {
     const attachmentInputRef = useRef<HTMLInputElement>(null)
     const chatsRef = useRef(chats)
     const messagesByChatRef = useRef(messagesByChat)
+    const attachmentPreviewRef = useRef<Record<string, string>>({})
     const reconnectTimerRef = useRef<number | null>(null)
 
     const MAX_ATTACHMENT_BYTES = 8 * 1024 * 1024
@@ -64,8 +66,81 @@ export default function ZynqChatUI() {
     }, [messagesByChat])
 
     useEffect(() => {
+        attachmentPreviewRef.current = attachmentPreviews
+    }, [attachmentPreviews])
+
+    useEffect(() => {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
     }, [activeChatId, activeMessages.length])
+
+    useEffect(() => {
+        let cancelled = false
+
+        const buildPreviews = async () => {
+            const pending: Array<{ id: string; mimeType: string; vfsPath: string }> = []
+
+            for (const message of activeMessages) {
+                for (const att of message.attachments || []) {
+                    if (!att.mimeType?.startsWith('image/')) continue
+                    if (att.downloadUrl) continue
+                    if (!att.vfsPath) continue
+                    if (attachmentPreviewRef.current[att.id]) continue
+                    pending.push({ id: att.id, mimeType: att.mimeType, vfsPath: att.vfsPath })
+                }
+            }
+
+            if (!pending.length) return
+
+            const next: Record<string, string> = {}
+            for (const item of pending) {
+                try {
+                    const data = await readFile(item.vfsPath)
+                    if (cancelled || !data) continue
+
+                    let bytes: Uint8Array | null = null
+                    if (data instanceof Uint8Array) {
+                        bytes = data
+                    } else if (typeof data === 'string') {
+                        try {
+                            const decoded = atob(data)
+                            bytes = new Uint8Array(decoded.length)
+                            for (let i = 0; i < decoded.length; i += 1) {
+                                bytes[i] = decoded.charCodeAt(i)
+                            }
+                        } catch {
+                            bytes = null
+                        }
+                    }
+
+                    if (!bytes) continue
+                    const blob = new Blob([new Uint8Array(bytes)], { type: item.mimeType })
+                    const url = URL.createObjectURL(blob)
+                    next[item.id] = url
+                } catch {
+                    // ignore preview errors
+                }
+            }
+
+            if (!cancelled && Object.keys(next).length) {
+                setAttachmentPreviews(prev => ({ ...prev, ...next }))
+            }
+        }
+
+        buildPreviews()
+
+        return () => {
+            cancelled = true
+        }
+    }, [activeMessages])
+
+    useEffect(() => {
+        return () => {
+            const urls = Object.values(attachmentPreviewRef.current)
+            for (const url of urls) {
+                URL.revokeObjectURL(url)
+            }
+        }
+    }, [])
 
     useEffect(() => {
         let cancelled = false
@@ -778,6 +853,8 @@ export default function ZynqChatUI() {
                         const replyMessage = message.replyToId ? activeMessages.find(msg => msg.id === message.replyToId) : null
                         const reactionEntries = Object.entries(message.reactions || {})
                         const attachmentItems = message.attachments || []
+                        const imageAttachments = attachmentItems.filter(att => att.mimeType?.startsWith('image/'))
+                        const fileAttachments = attachmentItems.filter(att => !att.mimeType?.startsWith('image/'))
                         const isDeleted = Boolean(message.deletedAt)
                         const linkPreviews = message.linkPreviews || []
                         const timeLabel = formatMessageTime(message)
@@ -797,18 +874,53 @@ export default function ZynqChatUI() {
                                         {isDeleted ? 'Message deleted' : message.body}
                                     </div>
                                     {!isDeleted && attachmentItems.length ? (
-                                        <div className="mt-2 flex flex-wrap gap-2">
-                                            {attachmentItems.map(att => (
-                                                <button
-                                                    key={att.id}
-                                                    className="flex items-center gap-2 px-2 py-1 rounded border border-[#263040] text-xs text-slate-300 hover:border-cyan-500/50"
-                                                    onClick={() => downloadAttachment(att)}
-                                                >
-                                                    <i className={att.mimeType.startsWith('image/') ? 'fa fa-image' : 'fa fa-paperclip'}></i>
-                                                    <span className="truncate max-w-[160px]">{att.name}</span>
-                                                    <span className="text-[10px] text-slate-500">{formatBytes(att.size)}</span>
-                                                </button>
-                                            ))}
+                                        <div className="mt-2 space-y-2">
+                                            {imageAttachments.length ? (
+                                                <div className="grid grid-cols-2 gap-2">
+                                                    {imageAttachments.map(att => {
+                                                        const preview = att.downloadUrl || attachmentPreviews[att.id]
+                                                        return (
+                                                            <button
+                                                                key={att.id}
+                                                                className="group relative overflow-hidden rounded-lg border border-[#263040] hover:border-cyan-500/50"
+                                                                onClick={() => downloadAttachment(att)}
+                                                                title={att.name}
+                                                            >
+                                                                {preview ? (
+                                                                    <img
+                                                                        src={preview}
+                                                                        alt={att.name}
+                                                                        className="h-32 w-full object-cover"
+                                                                        loading="lazy"
+                                                                    />
+                                                                ) : (
+                                                                    <div className="h-32 w-full flex items-center justify-center text-xs text-slate-400">
+                                                                        Loading image...
+                                                                    </div>
+                                                                )}
+                                                                <div className="absolute inset-x-0 bottom-0 bg-black/50 text-[10px] text-slate-200 px-2 py-1 opacity-0 group-hover:opacity-100 transition">
+                                                                    {att.name}
+                                                                </div>
+                                                            </button>
+                                                        )
+                                                    })}
+                                                </div>
+                                            ) : null}
+                                            {fileAttachments.length ? (
+                                                <div className="flex flex-wrap gap-2">
+                                                    {fileAttachments.map(att => (
+                                                        <button
+                                                            key={att.id}
+                                                            className="flex items-center gap-2 px-2 py-1 rounded border border-[#263040] text-xs text-slate-300 hover:border-cyan-500/50"
+                                                            onClick={() => downloadAttachment(att)}
+                                                        >
+                                                            <i className="fa fa-paperclip"></i>
+                                                            <span className="truncate max-w-[160px]">{att.name}</span>
+                                                            <span className="text-[10px] text-slate-500">{formatBytes(att.size)}</span>
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                            ) : null}
                                         </div>
                                     ) : null}
                                     {!isDeleted && linkPreviews.length ? (
@@ -915,46 +1027,41 @@ export default function ZynqChatUI() {
                             ))}
                         </div>
                     )}
-                    <div className="flex items-center gap-3 mb-2 text-slate-400">
-                        <button
-                            className="p-2 rounded hover:bg-[#141b24]"
-                            title="Attach"
-                            onClick={() => attachmentInputRef.current?.click()}
-                            disabled={!activeChat}
-                        >
-                            <i className="fa fa-paperclip"></i>
+                    <div className="zynqchat-message-box">
+                        <label className="zynqchat-file-upload" title="Attach">
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 337 337" aria-hidden="true">
+                                <circle strokeWidth="20" stroke="#6c6c6c" fill="none" r="158.5" cy="168.5" cx="168.5"></circle>
+                                <path strokeLinecap="round" strokeWidth="25" stroke="#6c6c6c" d="M167.759 79V259"></path>
+                                <path strokeLinecap="round" strokeWidth="25" stroke="#6c6c6c" d="M79 167.138H259"></path>
+                            </svg>
+                            <span className="zynqchat-tooltip">Add an image</span>
                             <input
                                 ref={attachmentInputRef}
                                 type="file"
                                 multiple
-                                className="hidden"
+                                className="zynqchat-file-input"
                                 onChange={handleAttachmentChange}
+                                disabled={!activeChat}
                             />
-                        </button>
-                        <button className="p-2 rounded hover:bg-[#141b24]" title="Emoji">
-                            <i className="fa fa-face-smile"></i>
-                        </button>
-                        <button className="p-2 rounded hover:bg-[#141b24]" title="Mention">
-                            <i className="fa fa-at"></i>
-                        </button>
-                        <div className="ml-auto text-xs text-slate-500">Shift+Enter for newline</div>
-                    </div>
-                    <div className="flex items-end gap-3">
+                        </label>
                         <textarea
                             value={draft}
                             onChange={(e) => handleDraftChange(e.target.value)}
                             onKeyDown={handleDraftKeyDown}
-                            placeholder="Write a message..."
-                            rows={2}
+                            placeholder="Message..."
+                            rows={1}
                             disabled={!activeChat}
-                            className="flex-1 resize-none bg-[#0b0f15] border border-[#1f242c] rounded-lg p-3 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-cyan-500/50"
+                            className="zynqchat-message-input"
                         />
                         <button
                             onClick={handleSend}
                             disabled={!activeChat || (!draft.trim() && pendingAttachments.length === 0)}
-                            className="h-10 px-4 rounded-lg bg-cyan-600/80 hover:bg-cyan-600 text-sm font-semibold disabled:opacity-40"
+                            className="zynqchat-send-button"
                         >
-                            Send
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 664 663" aria-hidden="true">
+                                <path fill="none" d="M646.293 331.888L17.7538 17.6187L155.245 331.888M646.293 331.888L17.753 646.157L155.245 331.888M646.293 331.888L318.735 330.228L155.245 331.888"></path>
+                                <path strokeLinejoin="round" strokeLinecap="round" strokeWidth="33.67" stroke="#6c6c6c" d="M646.293 331.888L17.7538 17.6187L155.245 331.888M646.293 331.888L17.753 646.157L155.245 331.888M646.293 331.888L318.735 330.228L155.245 331.888"></path>
+                            </svg>
                         </button>
                     </div>
                 </div>

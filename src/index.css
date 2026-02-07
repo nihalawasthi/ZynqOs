@@ -96,6 +96,127 @@ body,
     stroke-dashoffset: 0;
   }
 }
+
+/* ZynqChat message box (Uiverse-inspired) */
+.zynqchat-message-box {
+  height: 44px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background-color: #10141b;
+  padding: 0 14px;
+  border-radius: 12px;
+  border: 1px solid #2a313a;
+}
+
+.zynqchat-message-box:focus-within {
+  border-color: #6e6e6e;
+}
+
+.zynqchat-file-upload {
+  height: 100%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  cursor: pointer;
+}
+
+.zynqchat-file-input {
+  display: none;
+}
+
+.zynqchat-file-upload svg {
+  height: 18px;
+}
+
+.zynqchat-file-upload svg path,
+.zynqchat-file-upload svg circle {
+  transition: all 0.3s;
+}
+
+.zynqchat-file-upload:hover svg path {
+  stroke: #ffffff;
+}
+
+.zynqchat-file-upload:hover svg circle {
+  stroke: #ffffff;
+  fill: #3c3c3c;
+}
+
+.zynqchat-file-upload:hover .zynqchat-tooltip {
+  display: block;
+  opacity: 1;
+}
+
+.zynqchat-tooltip {
+  position: absolute;
+  top: -40px;
+  display: none;
+  opacity: 0;
+  color: #ffffff;
+  font-size: 10px;
+  white-space: nowrap;
+  background-color: #000000;
+  padding: 6px 10px;
+  border: 1px solid #3c3c3c;
+  border-radius: 5px;
+  box-shadow: 0 5px 10px rgba(0, 0, 0, 0.6);
+  transition: all 0.3s;
+}
+
+.zynqchat-message-input {
+  flex: 1;
+  height: 100%;
+  background-color: transparent;
+  outline: none;
+  border: none;
+  padding: 10px 0 10px 6px;
+  color: #ffffff;
+  font-size: 14px;
+  resize: none;
+}
+
+.zynqchat-message-input::placeholder {
+  color: #8b94a1;
+}
+
+.zynqchat-message-input:focus + .zynqchat-send-button svg path,
+.zynqchat-message-input:not(:placeholder-shown) + .zynqchat-send-button svg path {
+  fill: #3c3c3c;
+  stroke: #ffffff;
+}
+
+.zynqchat-send-button {
+  height: 100%;
+  background-color: transparent;
+  outline: none;
+  border: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.3s;
+}
+
+.zynqchat-send-button svg {
+  height: 18px;
+  transition: all 0.3s;
+}
+
+.zynqchat-send-button svg path {
+  transition: all 0.3s;
+}
+
+.zynqchat-send-button:hover svg path {
+  fill: #3c3c3c;
+  stroke: #ffffff;
+}
+
+.zynqchat-send-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
 /* From Uiverse.io by Admin12121 */ 
 @keyframes stageBackground {
   0%, 10%, 90%, 100% {
