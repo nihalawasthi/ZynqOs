@@ -27,6 +27,7 @@ export default function ZynqChatUI() {
     const [realtimeStatus, setRealtimeStatus] = useState<'connecting' | 'open' | 'error'>('connecting')
     const [reconnectToken, setReconnectToken] = useState(0)
     const [attachmentPreviews, setAttachmentPreviews] = useState<Record<string, string>>({})
+    const [openActionMessageId, setOpenActionMessageId] = useState<string | null>(null)
     const messagesEndRef = useRef<HTMLDivElement>(null)
     const saveTimerRef = useRef<number | null>(null)
     const typingTimerRef = useRef<number | null>(null)
@@ -74,18 +75,23 @@ export default function ZynqChatUI() {
     }, [activeChatId, activeMessages.length])
 
     useEffect(() => {
+        const handleClick = () => setOpenActionMessageId(null)
+        window.addEventListener('click', handleClick)
+        return () => window.removeEventListener('click', handleClick)
+    }, [])
+
+    useEffect(() => {
         let cancelled = false
 
         const buildPreviews = async () => {
-            const pending: Array<{ id: string; mimeType: string; vfsPath: string }> = []
+            const pending: Array<{ id: string; mimeType: string; vfsPath?: string; downloadUrl?: string }> = []
 
             for (const message of activeMessages) {
                 for (const att of message.attachments || []) {
                     if (!att.mimeType?.startsWith('image/')) continue
-                    if (att.downloadUrl) continue
-                    if (!att.vfsPath) continue
+                    if (!att.vfsPath && !att.downloadUrl) continue
                     if (attachmentPreviewRef.current[att.id]) continue
-                    pending.push({ id: att.id, mimeType: att.mimeType, vfsPath: att.vfsPath })
+                    pending.push({ id: att.id, mimeType: att.mimeType, vfsPath: att.vfsPath, downloadUrl: att.downloadUrl })
                 }
             }
 
@@ -94,6 +100,15 @@ export default function ZynqChatUI() {
             const next: Record<string, string> = {}
             for (const item of pending) {
                 try {
+                    if (item.downloadUrl) {
+                        const res = await fetch(item.downloadUrl, { credentials: 'include' })
+                        if (!res.ok) continue
+                        const blob = await res.blob()
+                        next[item.id] = URL.createObjectURL(blob)
+                        continue
+                    }
+
+                    if (!item.vfsPath) continue
                     const data = await readFile(item.vfsPath)
                     if (cancelled || !data) continue
 
@@ -114,8 +129,7 @@ export default function ZynqChatUI() {
 
                     if (!bytes) continue
                     const blob = new Blob([new Uint8Array(bytes)], { type: item.mimeType })
-                    const url = URL.createObjectURL(blob)
-                    next[item.id] = url
+                    next[item.id] = URL.createObjectURL(blob)
                 } catch {
                     // ignore preview errors
                 }
@@ -861,9 +875,51 @@ export default function ZynqChatUI() {
                         return (
                             <div key={message.id} className={`flex ${isMine ? 'justify-end' : 'justify-start'}`}>
                                 <div className={`max-w-[70%] rounded-2xl px-4 py-3 text-sm border group ${isMine ? 'bg-cyan-600/20 border-cyan-500/30' : 'bg-[#131a24] border-[#1f242c]'}`}>
-                                    {!isMine && (
-                                        <div className="text-xs text-slate-400 mb-1">{message.author}</div>
-                                    )}
+                                    <div className="flex items-center gap-2 mb-1">
+                                        {!isMine ? (
+                                            <div className="text-xs text-slate-400">{message.author}</div>
+                                        ) : (
+                                            <div className="text-xs text-transparent select-none">.</div>
+                                        )}
+                                        <div className="ml-auto relative">
+                                            <button
+                                                className="px-2 py-1 rounded hover:bg-[#141b24] text-slate-400 hover:text-slate-200"
+                                                onClick={(event) => {
+                                                    event.stopPropagation()
+                                                    setOpenActionMessageId(prev => (prev === message.id ? null : message.id))
+                                                }}
+                                                title="Message actions"
+                                            >
+                                                <i className="fa-solid fa-caret-down"></i>
+                                            </button>
+                                            {openActionMessageId === message.id ? (
+                                                <div
+                                                    className="absolute right-0 mt-2 w-45 rounded-lg border border-[#263040] bg-[#0e1218] shadow-lg text-xs text-slate-200 z-10"
+                                                    onClick={(event) => event.stopPropagation()}
+                                                >
+                                                    <div className="flex gap-0 overflow-x">
+                                                        <button className="w-full text-left px-1 py-2 hover:bg-[#141b24]" onClick={() => handleReaction(message.id, '👍')}>👍</button>
+                                                        <button className="w-full text-left px-1 py-2 hover:bg-[#141b24]" onClick={() => handleReaction(message.id, '😂')}>😂</button>
+                                                        <button className="w-full text-left px-1 py-2 hover:bg-[#141b24]" onClick={() => handleReaction(message.id, '😝')}>😝</button>
+                                                        <button className="w-full text-left px-1 py-2 hover:bg-[#141b24]" onClick={() => handleReaction(message.id, '😭')}>😭</button>
+                                                        <button className="w-full text-left px-1 py-2 hover:bg-[#141b24]" onClick={() => handleReaction(message.id, '💓')}>💓</button>
+                                                        <button className="w-full text-left px-1 py-2 hover:bg-[#141b24]" onClick={() => handleReaction(message.id, '🥹')}>🥹</button>
+                                                        <button className="w-full text-left px-1 py-2 hover:bg-[#141b24]" onClick={() => handleReaction(message.id, '😨')}>😨</button>
+                                                    </div>
+                                                    <div className="border-b border-[#1f242c]" />
+                                                    <button className="w-full text-left px-3 py-2 hover:bg-[#141b24]" onClick={() => handleReply(message.id)}>Reply</button>
+                                                    <button className="w-full text-left px-3 py-2 hover:bg-[#141b24]" onClick={() => handleQuote(message.id)}>Quote</button>
+                                                    {isMine ? (
+                                                        <button className="w-full text-left px-3 py-2 hover:bg-[#141b24]" onClick={() => handleEdit(message.id, message.body)}>Edit</button>
+                                                    ) : null}
+                                                    {isMine ? (
+                                                        <button className="w-full text-left px-3 py-2 hover:bg-[#141b24]" onClick={() => handleDelete(message.id)}>Delete</button>
+                                                    ) : null}
+                                                    <button className="w-full text-left px-3 py-2 hover:bg-[#141b24]" onClick={() => handleTogglePin(message.id)}>{message.pinned ? 'Unpin' : 'Pin'}</button>
+                                                </div>
+                                            ) : null}
+                                        </div>
+                                    </div>
                                     {replyMessage && (
                                         <div className="text-[11px] text-slate-400 border-l-2 border-cyan-500/40 pl-2 mb-2">
                                             <span className="uppercase text-[10px] text-slate-500">Replying to {replyMessage.author}</span>
@@ -878,7 +934,7 @@ export default function ZynqChatUI() {
                                             {imageAttachments.length ? (
                                                 <div className="grid grid-cols-2 gap-2">
                                                     {imageAttachments.map(att => {
-                                                        const preview = att.downloadUrl || attachmentPreviews[att.id]
+                                                        const preview = attachmentPreviews[att.id]
                                                         return (
                                                             <button
                                                                 key={att.id}
@@ -965,24 +1021,6 @@ export default function ZynqChatUI() {
                                         {message.pinned ? <span>pinned</span> : null}
                                         {isMine && message.status ? <span className="uppercase">{message.status}</span> : null}
                                     </div>
-                                    {!isDeleted && (
-                                        <div className="mt-2 flex items-center gap-2 text-[11px] text-slate-500 opacity-0 group-hover:opacity-100 transition">
-                                            <button className="hover:text-slate-200" onClick={() => handleReply(message.id)}>Reply</button>
-                                            <button className="hover:text-slate-200" onClick={() => handleQuote(message.id)}>Quote</button>
-                                            {isMine ? (
-                                                <button className="hover:text-slate-200" onClick={() => handleEdit(message.id, message.body)}>Edit</button>
-                                            ) : null}
-                                            {isMine ? (
-                                                <button className="hover:text-slate-200" onClick={() => handleDelete(message.id)}>Delete</button>
-                                            ) : null}
-                                            <button className="hover:text-slate-200" onClick={() => handleTogglePin(message.id)}>{message.pinned ? 'Unpin' : 'Pin'}</button>
-                                            <div className="ml-auto flex items-center gap-1">
-                                                <button className="hover:text-slate-200" onClick={() => handleReaction(message.id, '+1')}>+1</button>
-                                                <button className="hover:text-slate-200" onClick={() => handleReaction(message.id, 'lol')}>lol</button>
-                                                <button className="hover:text-slate-200" onClick={() => handleReaction(message.id, 'wow')}>wow</button>
-                                            </div>
-                                        </div>
-                                    )}
                                 </div>
                             </div>
                         )
