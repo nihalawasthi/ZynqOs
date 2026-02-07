@@ -2,6 +2,16 @@ import type { VercelRequest, VercelResponse } from '@vercel/node'
 import crypto from 'crypto'
 import cookie from 'cookie'
 import fs from 'fs'
+import {
+  initChatDatabase,
+  insertChatMessage,
+  insertAttachment,
+  listChatMessages,
+  updateChatMessage as updateChatMessageDb,
+  getAttachment,
+  getLinkPreview,
+  upsertLinkPreview
+} from './lib/chatDb.ts'
 
 // ===== Configuration Constants =====
 const ENV = {
@@ -135,6 +145,28 @@ function logGitHubDebug(label: string, payload: any) {
   }
 }
 
+async function fetchWithTimeout(url: string, init: RequestInit, timeoutMs: number): Promise<Response> {
+  let timeoutId: NodeJS.Timeout | null = null
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    timeoutId = setTimeout(() => reject(new Error('Timeout')), timeoutMs)
+  })
+
+  try {
+    if (process.platform === 'win32') {
+      return await Promise.race([fetch(url, init), timeoutPromise])
+    }
+
+    const controller = new AbortController()
+    const response = await Promise.race([
+      fetch(url, { ...init, signal: controller.signal }),
+      timeoutPromise
+    ])
+    return response as Response
+  } finally {
+    if (timeoutId) clearTimeout(timeoutId)
+  }
+}
+
 // ===== Session token refresh helpers =====
 async function refreshGoogleAccessToken(refreshToken: string): Promise<{ accessToken: string; expiresIn: number } | null> {
   try {
@@ -150,12 +182,11 @@ async function refreshGoogleAccessToken(refreshToken: string): Promise<{ accessT
       grant_type: 'refresh_token'
     })
     
-    const res = await fetch('https://oauth2.googleapis.com/token', {
+    const res = await fetchWithTimeout('https://oauth2.googleapis.com/token', {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body,
-      signal: AbortSignal.timeout(10000)
-    })
+      body
+    }, 10000)
     
     const json = await res.json()
     
@@ -269,14 +300,13 @@ async function createInstallationAccessToken(installationId: number): Promise<{ 
 
   const jwt = createGitHubAppJWT()
   const url = `https://api.github.com/app/installations/${installationId}/access_tokens`
-  const res = await fetch(url, {
+  const res = await fetchWithTimeout(url, {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${jwt}`,
       Accept: 'application/vnd.github+json'
-    },
-    signal: AbortSignal.timeout(10000)
-  })
+    }
+  }, 10000)
   const json = await res.json()
   if (!res.ok) throw new Error(json.message || 'Failed to create access token')
   
@@ -481,11 +511,472 @@ function isRateLimited(req: VercelRequest): boolean {
   return limited
 }
 
+// ========== CHAT (IN-MEMORY REALTIME) ==========
+type ChatAttachment = {
+  id: string
+  name: string
+  mimeType: string
+  size: number
+  vfsPath: string
+  downloadUrl?: string
+}
+
+type ChatMessage = {
+  id: string
+  chatId: string
+  author: string
+  body: string
+  timestamp: string
+  createdAt: number
+  replyToId?: string
+  editedAt?: string
+  deletedAt?: string
+  pinned?: boolean
+  reactions?: Record<string, string[]>
+  attachments?: ChatAttachment[]
+  linkPreviews?: Array<{ url: string; title?: string; description?: string; image?: string }>
+}
+
+type ChatEvent =
+  | { type: 'message'; chatId: string; message: ChatMessage }
+  | { type: 'message-update'; chatId: string; message: ChatMessage }
+  | { type: 'typing'; chatId: string; userId: string; isTyping: boolean }
+  | { type: 'presence'; userId: string; presence: 'online' | 'away' | 'offline' }
+
+const chatPresence = new Map<string, { presence: 'online' | 'away' | 'offline'; updatedAt: number }>()
+const chatClients = new Map<VercelResponse, NodeJS.Timeout>()
+let chatDbReady = false
+
+async function ensureChatDb() {
+  if (!chatDbReady) {
+    await initChatDatabase()
+    chatDbReady = true
+  }
+}
+
+function parseJsonBody(req: VercelRequest): any {
+  if (typeof req.body === 'string') {
+    try {
+      return JSON.parse(req.body)
+    } catch {
+      return null
+    }
+  }
+  return req.body
+}
+
+function writeSse(res: VercelResponse, event: ChatEvent) {
+  res.write(`data: ${JSON.stringify(event)}\n\n`)
+}
+
+function publishChatEvent(event: ChatEvent) {
+  for (const [res] of chatClients) {
+    writeSse(res, event)
+  }
+}
+
+function extractUrls(text: string): string[] {
+  const matches = text.match(/https?:\/\/[^\s)]+/gi) || []
+  return Array.from(new Set(matches)).slice(0, 3)
+}
+
+function stripTags(html: string): string {
+  return html.replace(/<[^>]*>/g, '').trim()
+}
+
+async function fetchLinkPreview(url: string): Promise<{ url: string; title?: string; description?: string; image?: string }> {
+  const cached = await getLinkPreview(url)
+  if (cached) return cached
+
+  try {
+    const res = await fetchWithTimeout(url, { method: 'GET', headers: { 'User-Agent': 'ZynqChatPreview/1.0' } }, 5000)
+    const text = await res.text()
+    const titleMatch = text.match(/<title[^>]*>([^<]+)<\/title>/i)
+    const ogTitleMatch = text.match(/<meta[^>]+property=["']og:title["'][^>]+content=["']([^"']+)["']/i)
+    const descMatch = text.match(/<meta[^>]+name=["']description["'][^>]+content=["']([^"']+)["']/i)
+    const ogDescMatch = text.match(/<meta[^>]+property=["']og:description["'][^>]+content=["']([^"']+)["']/i)
+    const ogImageMatch = text.match(/<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)["']/i)
+
+    const preview = {
+      url,
+      title: stripTags((ogTitleMatch?.[1] || titleMatch?.[1] || '').slice(0, 140)),
+      description: stripTags((ogDescMatch?.[1] || descMatch?.[1] || '').slice(0, 200)),
+      image: ogImageMatch?.[1]
+    }
+
+    await upsertLinkPreview(preview)
+    return preview
+  } catch {
+    return { url }
+  }
+}
+
+async function chatSend(req: VercelRequest, res: VercelResponse) {
+  const session = getSessionFromCookie(req)
+  if (!session) return res.status(401).json({ error: 'Not authenticated' })
+
+  await ensureChatDb()
+
+  const body = parseJsonBody(req) || {}
+  const chatId = typeof body.chatId === 'string' ? body.chatId.trim() : ''
+  const text = typeof body.body === 'string' ? body.body.trim() : ''
+  const author = typeof body.author === 'string' && body.author.trim()
+    ? body.author.trim()
+    : (session.userName || session.userId || 'unknown')
+
+  if (!chatId || !text) return res.status(400).json({ error: 'Missing chatId or body' })
+
+  const urls = extractUrls(text)
+  const linkPreviews = urls.length ? await Promise.all(urls.map(fetchLinkPreview)) : []
+
+  const message: ChatMessage = {
+    id: crypto.randomUUID(),
+    chatId,
+    author,
+    body: text,
+    timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+    createdAt: Date.now(),
+    replyToId: typeof body.replyToId === 'string' ? body.replyToId : undefined,
+    attachments: Array.isArray(body.attachments)
+      ? body.attachments.map((att: any) => ({
+          id: att.id,
+          name: att.name,
+          mimeType: att.mimeType,
+          size: att.size,
+          vfsPath: att.vfsPath || att.downloadUrl,
+          downloadUrl: att.downloadUrl || att.vfsPath
+        }))
+      : undefined,
+    linkPreviews: linkPreviews.length ? linkPreviews : undefined
+  }
+
+  await insertChatMessage({
+    id: message.id,
+    chatId: message.chatId,
+    author: message.author,
+    createdAt: message.createdAt,
+    timestamp: message.timestamp,
+    payload: {
+      body: message.body,
+      replyToId: message.replyToId,
+      attachments: message.attachments?.map(att => ({
+        id: att.id,
+        name: att.name,
+        mimeType: att.mimeType,
+        size: att.size,
+        downloadUrl: (att as any).downloadUrl || att.vfsPath
+      })),
+      linkPreviews: message.linkPreviews
+    }
+  })
+
+  publishChatEvent({ type: 'message', chatId, message })
+
+  return res.status(200).json({ message })
+}
+
+async function chatUpdate(req: VercelRequest, res: VercelResponse) {
+  const session = getSessionFromCookie(req)
+  if (!session) return res.status(401).json({ error: 'Not authenticated' })
+
+  await ensureChatDb()
+
+  const body = parseJsonBody(req) || {}
+  const chatId = typeof body.chatId === 'string' ? body.chatId.trim() : ''
+  const message = body.message as ChatMessage | undefined
+  if (!chatId || !message?.id) return res.status(400).json({ error: 'Missing chatId or message' })
+
+  const urls = extractUrls(message.body || '')
+  const linkPreviews = urls.length ? await Promise.all(urls.map(fetchLinkPreview)) : []
+
+  const updated: ChatMessage = {
+    ...message,
+    attachments: Array.isArray(message.attachments)
+      ? message.attachments.map((att: any) => ({
+          id: att.id,
+          name: att.name,
+          mimeType: att.mimeType,
+          size: att.size,
+          vfsPath: att.vfsPath || att.downloadUrl,
+          downloadUrl: att.downloadUrl || att.vfsPath
+        }))
+      : message.attachments,
+    linkPreviews: linkPreviews.length ? linkPreviews : message.linkPreviews
+  }
+
+  await updateChatMessageDb({
+    id: updated.id,
+    chatId: updated.chatId,
+    author: updated.author,
+    createdAt: updated.createdAt,
+    timestamp: updated.timestamp,
+    payload: {
+      body: updated.body,
+      replyToId: updated.replyToId,
+      editedAt: updated.editedAt,
+      deletedAt: updated.deletedAt,
+      pinned: updated.pinned,
+      reactions: updated.reactions,
+      attachments: updated.attachments?.map(att => ({
+        id: att.id,
+        name: att.name,
+        mimeType: att.mimeType,
+        size: att.size,
+        downloadUrl: (att as any).downloadUrl || att.vfsPath
+      })),
+      linkPreviews: updated.linkPreviews
+    }
+  })
+
+  publishChatEvent({ type: 'message-update', chatId, message: updated })
+
+  return res.status(200).json({ message: updated })
+}
+
+async function chatHistory(req: VercelRequest, res: VercelResponse) {
+  const session = getSessionFromCookie(req)
+  if (!session) return res.status(401).json({ error: 'Not authenticated' })
+
+  await ensureChatDb()
+
+  const chatId = typeof req.query.chatId === 'string' ? req.query.chatId : ''
+  if (!chatId) return res.status(400).json({ error: 'Missing chatId' })
+
+  const since = typeof req.query.since === 'string' ? Number(req.query.since) : 0
+  const records = await listChatMessages(chatId, since || undefined)
+  const messages = records.map(record => ({
+    id: record.id,
+    chatId: record.chatId,
+    author: record.author,
+    createdAt: record.createdAt,
+    timestamp: record.timestamp,
+    body: record.payload.body,
+    replyToId: record.payload.replyToId,
+    editedAt: record.payload.editedAt,
+    deletedAt: record.payload.deletedAt,
+    pinned: record.payload.pinned,
+    reactions: record.payload.reactions,
+    attachments: record.payload.attachments?.map(att => ({
+      id: att.id,
+      name: att.name,
+      mimeType: att.mimeType,
+      size: att.size,
+      vfsPath: att.downloadUrl,
+      downloadUrl: att.downloadUrl,
+      serverId: att.id
+    })),
+    linkPreviews: record.payload.linkPreviews
+  }))
+
+  return res.status(200).json({ messages })
+}
+
+function chatTyping(req: VercelRequest, res: VercelResponse) {
+  const session = getSessionFromCookie(req)
+  if (!session) return res.status(401).json({ error: 'Not authenticated' })
+
+  const body = parseJsonBody(req) || {}
+  const chatId = typeof body.chatId === 'string' ? body.chatId.trim() : ''
+  const userId = typeof body.userId === 'string' ? body.userId.trim() : ''
+  const isTyping = Boolean(body.isTyping)
+  if (!chatId || !userId) return res.status(400).json({ error: 'Missing chatId or userId' })
+
+  publishChatEvent({ type: 'typing', chatId, userId, isTyping })
+  return res.status(200).json({ success: true })
+}
+
+function chatPresenceUpdate(req: VercelRequest, res: VercelResponse) {
+  const session = getSessionFromCookie(req)
+  if (!session) return res.status(401).json({ error: 'Not authenticated' })
+
+  const body = parseJsonBody(req) || {}
+  const userId = typeof body.userId === 'string' ? body.userId.trim() : ''
+  const presence = body.presence as 'online' | 'away' | 'offline'
+  if (!userId || !presence) return res.status(400).json({ error: 'Missing userId or presence' })
+
+  chatPresence.set(userId, { presence, updatedAt: Date.now() })
+  publishChatEvent({ type: 'presence', userId, presence })
+  return res.status(200).json({ success: true })
+}
+
+async function chatUploadAttachment(req: VercelRequest, res: VercelResponse) {
+  const session = getSessionFromCookie(req)
+  if (!session) return res.status(401).json({ error: 'Not authenticated' })
+
+  await ensureChatDb()
+
+  const body = parseJsonBody(req) || {}
+  const chatId = typeof body.chatId === 'string' ? body.chatId.trim() : ''
+  const name = typeof body.name === 'string' ? body.name : 'attachment'
+  const mimeType = typeof body.mimeType === 'string' ? body.mimeType : 'application/octet-stream'
+  const size = typeof body.size === 'number' ? body.size : 0
+  const base64 = typeof body.base64 === 'string' ? body.base64 : ''
+  if (!chatId || !base64) return res.status(400).json({ error: 'Missing chatId or data' })
+
+  const bytes = Buffer.from(base64, 'base64')
+  const record = await insertAttachment({ chatId, name, mimeType, size: size || bytes.length, bytes })
+  const downloadUrl = `/api?route=chat&action=attachment&id=${record.id}`
+
+  return res.status(200).json({
+    attachment: {
+      id: record.id,
+      name: record.name,
+      mimeType: record.mimeType,
+      size: record.size,
+      vfsPath: downloadUrl,
+      downloadUrl,
+      serverId: record.id
+    }
+  })
+}
+
+async function chatDownloadAttachment(req: VercelRequest, res: VercelResponse) {
+  const session = getSessionFromCookie(req)
+  if (!session) return res.status(401).json({ error: 'Not authenticated' })
+
+  await ensureChatDb()
+
+  const attachmentId = typeof req.query.id === 'string' ? req.query.id : ''
+  if (!attachmentId) return res.status(400).json({ error: 'Missing attachment id' })
+
+  const result = await getAttachment(attachmentId)
+  if (!result) return res.status(404).json({ error: 'Attachment not found' })
+
+  res.setHeader('Content-Type', result.record.mimeType)
+  res.setHeader('Content-Disposition', `attachment; filename="${result.record.name}"`)
+  res.status(200).send(result.bytes)
+}
+
+async function chatPreview(req: VercelRequest, res: VercelResponse) {
+  const session = getSessionFromCookie(req)
+  if (!session) return res.status(401).json({ error: 'Not authenticated' })
+
+  await ensureChatDb()
+
+  const url = typeof req.query.url === 'string' ? req.query.url : ''
+  if (!url) return res.status(400).json({ error: 'Missing url' })
+
+  const preview = await fetchLinkPreview(url)
+  return res.status(200).json({ preview })
+}
+
+function chatEvents(req: VercelRequest, res: VercelResponse) {
+  const session = getSessionFromCookie(req)
+  if (!session) return res.status(401).json({ error: 'Not authenticated' })
+
+  res.setHeader('Content-Type', 'text/event-stream')
+  res.setHeader('Cache-Control', 'no-cache, no-transform')
+  res.setHeader('Connection', 'keep-alive')
+  res.flushHeaders?.()
+
+  for (const [userId, entry] of chatPresence.entries()) {
+    writeSse(res, { type: 'presence', userId, presence: entry.presence })
+  }
+
+  const pingTimer = setInterval(() => {
+    res.write(': ping\n\n')
+  }, 25000)
+
+  chatClients.set(res, pingTimer)
+
+  req.on('close', () => {
+    const timer = chatClients.get(res)
+    if (timer) clearInterval(timer)
+    chatClients.delete(res)
+  })
+}
+
 // ========== PROXY ==========
+
+function stripSecurityMeta(html: string): string {
+  return html
+    .replace(/<meta[^>]+http-equiv=["']?Content-Security-Policy["']?[^>]*>/gi, '')
+    .replace(/<meta[^>]+http-equiv=["']?X-Frame-Options["']?[^>]*>/gi, '')
+    .replace(/<meta[^>]+content=["'][^"']*frame-ancestors[^"']*["'][^>]*>/gi, '')
+}
+
+function injectProxyScript(html: string): string {
+  if (html.includes('data-zynqos-proxy')) return html
+
+  const script = `<script data-zynqos-proxy>
+(function(){
+  function getTargetBase(){
+    try {
+      var current = new URL(window.location.href);
+      var param = current.searchParams.get('url');
+      if (param) return param;
+    } catch (e) {}
+    return window.location.href;
+  }
+  function proxify(u){
+    try {
+      if (!u) return u;
+      if (u.startsWith('blob:') || u.startsWith('data:')) return u;
+      if (u.startsWith('/api?route=proxy&url=')) return u;
+      var abs = new URL(u, getTargetBase());
+      if (abs.protocol === 'http:' || abs.protocol === 'https:') {
+        return '/api?route=proxy&url=' + encodeURIComponent(abs.toString());
+      }
+    } catch (e) {}
+    return u;
+  }
+  var assign = window.location.assign.bind(window.location);
+  var replace = window.location.replace.bind(window.location);
+  window.location.assign = function(u){ return assign(proxify(u)); };
+  window.location.replace = function(u){ return replace(proxify(u)); };
+  var origOpen = window.open;
+  window.open = function(u){ return origOpen ? origOpen(proxify(u)) : null; };
+  var origPush = history.pushState;
+  var origReplace = history.replaceState;
+  history.pushState = function(state, title, url){ return origPush.call(this, state, title, proxify(url)); };
+  history.replaceState = function(state, title, url){ return origReplace.call(this, state, title, proxify(url)); };
+  document.addEventListener('submit', function(e){
+    var form = e.target;
+    if (!form || !form.action) return;
+    try {
+      var method = (form.method || 'GET').toUpperCase();
+      if (method === 'GET') {
+        e.preventDefault();
+        var formData = new FormData(form);
+        var params = new URLSearchParams();
+        formData.forEach(function(value, key){
+          if (typeof value === 'string') params.append(key, value);
+        });
+        var target = form.action + (form.action.indexOf('?') === -1 ? '?' : '&') + params.toString();
+        window.location.assign(proxify(target));
+      } else {
+        form.action = proxify(form.action);
+      }
+    } catch (_) {}
+  }, true);
+  document.addEventListener('click', function(e){
+    var link = e.target && e.target.closest ? e.target.closest('a[href]') : null;
+    if (link && link.href) { link.href = proxify(link.href); }
+  }, true);
+})();
+</script>`
+
+  if (html.includes('</head>')) return html.replace('</head>', `${script}</head>`)
+  if (html.includes('</body>')) return html.replace('</body>', `${script}</body>`)
+  return script + html
+}
+
+function rewriteUrlsInCss(css: string, baseUrl: string): string {
+  return css.replace(/url\(\s*(['"]?)([^'"\)]+)\1\s*\)/gi, (match, quote, url) => {
+    const absoluteUrl = resolveUrl(url, baseUrl)
+    if (absoluteUrl && !absoluteUrl.startsWith('data:')) {
+      return `url("${encodeProxyUrl(absoluteUrl)}")`
+    }
+    return match
+  })
+}
 
 // Rewrite URLs in HTML content to route through proxy
 function rewriteUrlsInHtml(html: string, baseUrl: string): string {
   try {
+    html = stripSecurityMeta(html)
+    html = injectProxyScript(html)
+
     // Parse base URL safely
     let baseUrlObj: URL
     try {
@@ -496,6 +987,33 @@ function rewriteUrlsInHtml(html: string, baseUrl: string): string {
 
     // Rewrite img src - both quoted and unquoted
     html = html.replace(/(<img[^>]+src\s*=\s*)["']?([^"'\s>]+)["']?/gi, (match, prefix, url) => {
+      const absoluteUrl = resolveUrl(url, baseUrl)
+      if (absoluteUrl && !absoluteUrl.startsWith('data:')) {
+        return `${prefix}"${encodeProxyUrl(absoluteUrl)}"`
+      }
+      return match
+    })
+
+    // Rewrite script src
+    html = html.replace(/(<script[^>]+src\s*=\s*)["']?([^"'\s>]+)["']?/gi, (match, prefix, url) => {
+      const absoluteUrl = resolveUrl(url, baseUrl)
+      if (absoluteUrl && !absoluteUrl.startsWith('data:')) {
+        return `${prefix}"${encodeProxyUrl(absoluteUrl)}"`
+      }
+      return match
+    })
+
+    // Rewrite iframe/frame src
+    html = html.replace(/(<(?:iframe|frame)[^>]+src\s*=\s*)["']?([^"'\s>]+)["']?/gi, (match, prefix, url) => {
+      const absoluteUrl = resolveUrl(url, baseUrl)
+      if (absoluteUrl && !absoluteUrl.startsWith('data:')) {
+        return `${prefix}"${encodeProxyUrl(absoluteUrl)}"`
+      }
+      return match
+    })
+
+    // Rewrite media src (video, audio, source)
+    html = html.replace(/(<(?:video|audio|source)[^>]+src\s*=\s*)["']?([^"'\s>]+)["']?/gi, (match, prefix, url) => {
       const absoluteUrl = resolveUrl(url, baseUrl)
       if (absoluteUrl && !absoluteUrl.startsWith('data:')) {
         return `${prefix}"${encodeProxyUrl(absoluteUrl)}"`
@@ -540,6 +1058,26 @@ function rewriteUrlsInHtml(html: string, baseUrl: string): string {
       const absoluteUrl = resolveUrl(url, baseUrl)
       if (absoluteUrl && !absoluteUrl.startsWith('data:')) {
         return `${prefix}"${encodeProxyUrl(absoluteUrl)}"`
+      }
+      return match
+    })
+
+    // Rewrite form action
+    html = html.replace(/(<form[^>]+action\s*=\s*)["']?([^"'\s>]+)["']?/gi, (match, prefix, url) => {
+      if (!url.includes('javascript:')) {
+        const absoluteUrl = resolveUrl(url, baseUrl)
+        if (absoluteUrl && !absoluteUrl.startsWith('data:')) {
+          return `${prefix}"${encodeProxyUrl(absoluteUrl)}"`
+        }
+      }
+      return match
+    })
+
+    // Rewrite meta refresh URLs
+    html = html.replace(/(<meta[^>]+http-equiv=["']?refresh["']?[^>]*content=["'][^"']*url=)([^"'>\s]+)([^"']*["'][^>]*>)/gi, (match, prefix, url, suffix) => {
+      const absoluteUrl = resolveUrl(url, baseUrl)
+      if (absoluteUrl && !absoluteUrl.startsWith('data:')) {
+        return `${prefix}${encodeProxyUrl(absoluteUrl)}${suffix}`
       }
       return match
     })
@@ -632,11 +1170,10 @@ async function proxy(req: VercelRequest, res: VercelResponse) {
     
     const fetchOpts: RequestInit = {
       headers: browserHeaders,
-      signal: AbortSignal.timeout(30000), // 30 seconds timeout for slow sites
       redirect: 'follow'
     }
     
-    const response = await fetch(url, fetchOpts)
+    const response = await fetchWithTimeout(url, fetchOpts, 30000)
     if (!response.ok) return res.status(response.status).json({ error: `Upstream ${response.status}` })
     
     const contentType = response.headers.get('content-type') || 'application/octet-stream'
@@ -652,6 +1189,16 @@ async function proxy(req: VercelRequest, res: VercelResponse) {
       }
       res.setHeader('Content-Type', contentType)
       res.setHeader('Cache-Control', 'public, max-age=3600')
+      return res.status(200).send(data)
+    } else if (contentType.includes('text/css')) {
+      let data = await response.text()
+      data = rewriteUrlsInCss(data, url)
+
+      if (isAllowedOrigin) {
+        res.setHeader('Access-Control-Allow-Origin', origin)
+      }
+      res.setHeader('Content-Type', contentType)
+      res.setHeader('Cache-Control', 'public, max-age=86400')
       return res.status(200).send(data)
     } else {
       // For images, CSS, JS - stream directly without rewriting
@@ -706,12 +1253,11 @@ async function authExchangeGoogle(req: VercelRequest, res: VercelResponse) {
     
     let tokenRes: Response
     try {
-      tokenRes = await fetch('https://oauth2.googleapis.com/token', { 
+      tokenRes = await fetchWithTimeout('https://oauth2.googleapis.com/token', { 
         method: 'POST', 
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, 
-        body,
-        signal: AbortSignal.timeout(10000) // 10s timeout
-      })
+        body
+      }, 10000)
     } catch (fetchError: any) {
       console.error('authExchangeGoogle: Fetch failed', fetchError)
       return res.status(500).json({ error: 'Failed to contact Google: ' + (fetchError.message || 'Network error') })
@@ -874,12 +1420,11 @@ async function authExchangeGitHub(req: VercelRequest, res: VercelResponse) {
     
     let tokenRes: Response
     try {
-      tokenRes = await fetch('https://github.com/login/oauth/access_token', { 
+      tokenRes = await fetchWithTimeout('https://github.com/login/oauth/access_token', { 
         method: 'POST', 
         headers: { 'Content-Type': 'application/json', Accept: 'application/json' }, 
-        body: JSON.stringify({ client_id: clientId, client_secret: clientSecret, code, redirect_uri: redirectUri }),
-        signal: AbortSignal.timeout(10000) // 10s timeout
-      })
+        body: JSON.stringify({ client_id: clientId, client_secret: clientSecret, code, redirect_uri: redirectUri })
+      }, 10000)
     } catch (fetchError: any) {
       console.error('authExchangeGitHub: Fetch failed', fetchError)
       logAPIEvent('github.oauth.token_exchange', { error: fetchError.message }, 500)
@@ -1598,6 +2143,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (route === 'proxy') return proxy(req, res)
     // Back-compat: /api?route=status
     if (route === 'status') return authStatus(req, res)
+    if (route === 'chat') {
+      switch (action) {
+        case 'send': return chatSend(req, res)
+        case 'update': return chatUpdate(req, res)
+        case 'history': return chatHistory(req, res)
+        case 'typing': return chatTyping(req, res)
+        case 'presence': return chatPresenceUpdate(req, res)
+        case 'events': return chatEvents(req, res)
+        case 'upload': return chatUploadAttachment(req, res)
+        case 'attachment': return chatDownloadAttachment(req, res)
+        case 'preview': return chatPreview(req, res)
+        default: return res.status(400).json({ error: 'Invalid chat action' })
+      }
+    }
     if (route === 'auth') {
       switch (action) {
         case 'exchange_google': return authExchangeGoogle(req, res)

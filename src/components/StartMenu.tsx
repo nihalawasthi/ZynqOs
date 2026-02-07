@@ -247,6 +247,18 @@ export default function StartMenu() {
 
 
 
+    const openZynqChat = () => {
+        const open = () => (window as any).ZynqOS_openWindow?.('ZynqChat', window.__ZYNQCHAT_UI__ ?? <div>Loading ZynqChat...</div>, 'zynqchat')
+        if (window.__ZYNQCHAT_UI__) {
+            open()
+            return
+        }
+        import('../apps/zynqchat/ui').then(open).catch((err) => {
+            console.error('Failed to load ZynqChat UI:', err)
+            open()
+        })
+    }
+
     const pinnedApps: App[] = [
         {
             id: 'file-browser',
@@ -289,6 +301,13 @@ export default function StartMenu() {
             icon: <i className="fas fa-globe"></i>,
             description: 'Secure browser with VPN/Tor and HTML viewer',
             openFn: () => (window as any).ZynqOS_openWindow?.('PhantomSurf', window.__PHANTOMSURF_UI__ ?? <div>Loading PhantomSurf...</div>, 'phantomsurf'),
+        },
+        {
+            id: 'zynqchat',
+            name: 'ZynqChat',
+            icon: <i className="fa-solid fa-comments"></i>,
+            description: 'Private, repo-backed chat',
+            openFn: openZynqChat,
         },
     ]
 
@@ -778,6 +797,7 @@ export default function StartMenu() {
                                 'store': window.__STORE_UI__ ?? <div>Loading Store...</div>,
                                 'mapp-importer': window.__MAPP_IMPORTER_UI__ ?? <div>Loading...</div>,
                                 'phantomsurf': window.__PHANTOMSURF_UI__ ?? <div>Loading PhantomSurf...</div>,
+                                'zynqchat': window.__ZYNQCHAT_UI__ ?? <div>Loading ZynqChat...</div>,
                             }
 
                             const appTitleMap: Record<string, string> = {
@@ -789,6 +809,22 @@ export default function StartMenu() {
                                 'store': 'App Store',
                                 'mapp-importer': 'Import Package',
                                 'phantomsurf': 'PhantomSurf',
+                                'zynqchat': 'ZynqChat',
+                            }
+
+                            if (contextMenu.app.id === 'zynqchat' && !window.__ZYNQCHAT_UI__) {
+                                import('../apps/zynqchat/ui').then(() => {
+                                    const title = appTitleMap[contextMenu.app.id] || contextMenu.app.name
+                                    const ui = window.__ZYNQCHAT_UI__ ?? <div>Loading ZynqChat...</div>
+                                    ; (window as any).ZynqOS_openWindow?.(
+                                        title,
+                                        ui,
+                                        `${contextMenu.app.id}-${Date.now()}`
+                                    )
+                                }).catch((err) => console.error('Failed to load ZynqChat UI:', err))
+                                setContextMenu(null)
+                                setOpen(false)
+                                return
                             }
 
                             const ui = appUIMap[contextMenu.app.id]

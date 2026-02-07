@@ -4,6 +4,8 @@
     "module": "ESNext",
     "jsx": "react-jsx",
     "moduleResolution": "node",
+    "allowImportingTsExtensions": true,
+    "noEmit": true,
     "esModuleInterop": true,
     "forceConsistentCasingInFileNames": true,
     "strict": false,

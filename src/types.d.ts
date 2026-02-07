@@ -12,6 +12,7 @@ declare global {
     __PYTHON_UI__?: any;
     __PHANTOMSURF_UI__?: any;
     __SETTINGS_UI__?: any;
+    __ZYNQCHAT_UI__?: any;
     ZynqOS_startGoogleAuth?: () => void;
     ZynqOS_startGitHubAuth?: () => void;
     ZynqOS_openConsent?: () => void;

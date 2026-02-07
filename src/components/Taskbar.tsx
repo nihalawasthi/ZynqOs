@@ -30,7 +30,8 @@ export default function Taskbar() {
     { appType: 'python', title: 'Python', icon: 'fab fa-python' },
     { appType: 'calculator', title: 'Calculator', icon: 'fas fa-calculator' },
     { appType: 'settings', title: 'Settings', icon: 'fas fa-cog' },
-    { appType: 'mapp-importer', title: 'Import Package', icon: 'fas fa-download' }
+    { appType: 'mapp-importer', title: 'Import Package', icon: 'fas fa-download' },
+    { appType: 'zynqchat', title: 'ZynqChat', icon: 'fa-solid fa-comments' }
   ]
 
   const getIconForAppType = (appType: string): string => {

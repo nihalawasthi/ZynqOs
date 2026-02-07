@@ -1,5 +1,6 @@
-import React, { useRef, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import clsx from "clsx";
+import { readFile, readdir } from '../../vfs/fs'
 
 export default function PhantomSurf() {
   const [showBrowser, setShowBrowser] = useState(false)
@@ -15,10 +16,149 @@ export default function PhantomSurf() {
   const [historyIndex, setHistoryIndex] = useState(-1)
   const [error, setError] = useState<string | null>(null)
   const [progress, setProgress] = useState(0)
+  const [showVfsOpen, setShowVfsOpen] = useState(false)
+  const [vfsPath, setVfsPath] = useState('/home/index.html')
+  const [vfsError, setVfsError] = useState<string | null>(null)
+  const [vfsFiles, setVfsFiles] = useState<string[]>([])
+  const [vfsLoading, setVfsLoading] = useState(false)
   const iframeRef = useRef(null)
-  const fileInputRef = useRef<HTMLInputElement>(null)
   const lastRequestTimeRef = useRef<number>(0)
+  const progressIntervalRef = useRef<number | null>(null)
   const REQUEST_THROTTLE_MS = 1000 // 1 second between requests to avoid rate limiting
+
+  const quickLinks = [
+    { label: 'Gmail', url: 'https://mail.google.com' },
+    { label: 'Images', url: 'https://images.google.com' },
+    { label: 'GitHub', url: 'https://github.com' },
+    { label: 'YouTube', url: 'https://www.youtube.com' },
+  ]
+
+  type UrlBuildResult = { url: string; type: 'url' | 'search' }
+  type Suggestion = { id: string; label: string; url: string; value: string; kind: 'primary' | 'history' | 'quick' }
+
+  const isProbablyUrl = (value: string): boolean => {
+    const trimmed = value.trim()
+    const lower = trimmed.toLowerCase()
+    if (!trimmed || /\s/.test(trimmed)) return false
+    if (lower.startsWith('http://') || lower.startsWith('https://') || lower.startsWith('//')) return true
+    if (lower.startsWith('file:') || lower.startsWith('data:') || lower.startsWith('javascript:')) return true
+    if (/^(localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1\])(:\d+)?(\/|$)/i.test(trimmed)) return true
+    if (/^(\d{1,3}\.){3}\d{1,3}(:\d+)?(\/|$)/.test(trimmed)) return true
+    if (/^[a-z0-9.-]+:\d+/.test(lower)) return true
+    return trimmed.includes('.')
+  }
+
+  const buildUrlFromInput = (value: string): UrlBuildResult | null => {
+    const trimmed = value.trim()
+    if (!trimmed) return null
+
+    if (isProbablyUrl(trimmed)) {
+      if (trimmed.startsWith('http://') || trimmed.startsWith('https://') || trimmed.startsWith('file:')) {
+        return { url: trimmed, type: 'url' }
+      }
+      if (trimmed.startsWith('//')) {
+        return { url: 'https:' + trimmed, type: 'url' }
+      }
+      return { url: 'https://' + trimmed, type: 'url' }
+    }
+
+    return { url: `https://google.com/search?q=${encodeURIComponent(trimmed)}`, type: 'search' }
+  }
+
+  const getSuggestions = (value: string): Suggestion[] => {
+    const trimmed = value.trim()
+    if (!trimmed) return []
+
+    const lower = trimmed.toLowerCase()
+    const suggestions: Suggestion[] = []
+    const seen = new Set<string>()
+
+    const primary = buildUrlFromInput(trimmed)
+    if (primary) {
+      const label = primary.type === 'search' ? `Search "${trimmed}"` : `Go to ${primary.url}`
+      suggestions.push({ id: 'primary', label, url: primary.url, value: trimmed, kind: 'primary' })
+      seen.add(primary.url)
+    }
+
+    const historyMatches = history
+      .slice()
+      .reverse()
+      .filter(item => item.toLowerCase().includes(lower))
+      .filter(item => !seen.has(item))
+      .slice(0, 4)
+
+    historyMatches.forEach((item, index) => {
+      suggestions.push({ id: `history-${index}`, label: item, url: item, value: item, kind: 'history' })
+      seen.add(item)
+    })
+
+    const quickMatches = quickLinks
+      .filter(link => link.label.toLowerCase().includes(lower) || link.url.toLowerCase().includes(lower))
+      .filter(link => !seen.has(link.url))
+      .slice(0, 3)
+
+    quickMatches.forEach((link, index) => {
+      suggestions.push({ id: `quick-${index}`, label: link.label, url: link.url, value: link.url, kind: 'quick' })
+    })
+
+    return suggestions
+  }
+
+  const clearProgressInterval = () => {
+    if (progressIntervalRef.current !== null) {
+      window.clearInterval(progressIntervalRef.current)
+      progressIntervalRef.current = null
+    }
+  }
+
+  const startProgress = () => {
+    clearProgressInterval()
+    setProgress(10)
+    progressIntervalRef.current = window.setInterval(() => {
+      setProgress(prev => {
+        if (prev >= 90) {
+          clearProgressInterval()
+          return 90
+        }
+        return prev + Math.random() * 30
+      })
+    }, 300)
+  }
+
+  const isProxyUrl = (value: string) => {
+    try {
+      const parsed = new URL(value)
+      return parsed.pathname === '/api' && parsed.searchParams.get('route') === 'proxy' && !!parsed.searchParams.get('url')
+    } catch {
+      return value.includes('/api?route=proxy&url=')
+    }
+  }
+
+  useEffect(() => {
+    if (!showBrowser) return
+
+    const intervalId = window.setInterval(() => {
+      const iframe = iframeRef.current as HTMLIFrameElement | null
+      if (!iframe || !iframe.src) return
+
+      const currentSrc = iframe.src
+      if (currentSrc.startsWith('blob:') || currentSrc.startsWith('data:')) return
+      if (isProxyUrl(currentSrc)) return
+
+      setIsLoading(true)
+      setIframeError(false)
+      startProgress()
+      setInput(currentSrc)
+      setUrl(buildIframeUrl(currentSrc))
+    }, 1000)
+
+    return () => window.clearInterval(intervalId)
+  }, [showBrowser])
+
+  const buildIframeUrl = (target: string) => {
+    if (target.startsWith('blob:') || target.startsWith('data:')) return target
+    return `/api?route=proxy&url=${encodeURIComponent(target)}`
+  }
 
   const navigateToUrl = (newUrl: string) => {
     // Throttle requests to avoid rate limiting
@@ -30,20 +170,10 @@ export default function PhantomSurf() {
     lastRequestTimeRef.current = now
     setError(null)
 
-    const proxiedUrl = `/api?route=proxy&url=${encodeURIComponent(newUrl)}`
+    const proxiedUrl = buildIframeUrl(newUrl)
     setIsLoading(true)
-    setProgress(10) // Start progress at 10%
-    
-    // Simulate progress
-    const progressInterval = setInterval(() => {
-      setProgress(prev => {
-        if (prev >= 90) {
-          clearInterval(progressInterval)
-          return 90
-        }
-        return prev + Math.random() * 30
-      })
-    }, 300)
+    setIframeError(false)
+    startProgress()
     
     setUrl(proxiedUrl)
     setInput(newUrl)
@@ -63,10 +193,12 @@ export default function PhantomSurf() {
       const newIndex = historyIndex - 1
       setHistoryIndex(newIndex)
       const prevUrl = history[newIndex]
-      const proxiedUrl = `/api?route=proxy&url=${encodeURIComponent(prevUrl)}`
+      const proxiedUrl = buildIframeUrl(prevUrl)
       setUrl(proxiedUrl)
       setInput(prevUrl)
       setIsLoading(true)
+      setIframeError(false)
+      startProgress()
     }
   }
 
@@ -75,16 +207,20 @@ export default function PhantomSurf() {
       const newIndex = historyIndex + 1
       setHistoryIndex(newIndex)
       const nextUrl = history[newIndex]
-      const proxiedUrl = `/api?route=proxy&url=${encodeURIComponent(nextUrl)}`
+      const proxiedUrl = buildIframeUrl(nextUrl)
       setUrl(proxiedUrl)
       setInput(nextUrl)
       setIsLoading(true)
+      setIframeError(false)
+      startProgress()
     }
   }
 
   const refresh = () => {
     if (url) {
       setIsLoading(true)
+      setIframeError(false)
+      startProgress()
       // Force reload by triggering onLoad
       if (iframeRef.current) {
         (iframeRef.current as any).src = url
@@ -105,46 +241,178 @@ export default function PhantomSurf() {
     e.preventDefault()
     if (!input.trim()) return
 
-    let finalUrl = ''
-    const trimmed = input.trim()
-    // If input looks like a URL (has . and no spaces, or starts with //)
-    if ((trimmed.includes('.') && !trimmed.includes(' ')) || trimmed.startsWith('//')) {
-      if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
-        finalUrl = trimmed
-      } else if (trimmed.startsWith('//')) {
-        finalUrl = 'https:' + trimmed
-      } else {
-        finalUrl = 'https://' + trimmed
-      }
-    } else {
-      // It's a search query
-      finalUrl = `https://google.com/search?q=${encodeURIComponent(trimmed)}`
-    }
-    
-    navigateToUrl(finalUrl)
+    const result = buildUrlFromInput(input)
+    if (!result) return
+    navigateToUrl(result.url)
   }
 
   const handleQuickLink = (urlLink: string) => {
     navigateToUrl(urlLink)
   }
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (file) {
-      const reader = new FileReader()
-      reader.onload = (ev) => {
-        const html = ev.target.result as string
-        const blob = new Blob([html], { type: 'text/html' })
-        setUrl(URL.createObjectURL(blob))
-        setShowBrowser(true)
-        // Add to history
-        const blobUrl = URL.createObjectURL(blob)
-        setHistory([blobUrl])
-        setHistoryIndex(0)
+  const openVfsDialog = () => {
+    setVfsError(null)
+    setShowVfsOpen(true)
+  }
+
+  const normalizeVfsPath = (path: string) => {
+    const trimmed = path.trim()
+    if (!trimmed) return ''
+    if (trimmed.startsWith('~/')) return `/home/${trimmed.slice(2)}`
+    if (trimmed.startsWith('/')) return trimmed
+    return `/home/${trimmed}`
+  }
+
+  useEffect(() => {
+    const loadVfsListing = async () => {
+      if (!showVfsOpen) return
+      setVfsLoading(true)
+      try {
+        const files = await readdir('/home')
+        const htmlFiles = files
+          .filter((path) => path.toLowerCase().endsWith('.html') || path.toLowerCase().endsWith('.htm'))
+          .sort((a, b) => a.localeCompare(b))
+        setVfsFiles(htmlFiles)
+      } catch (err: any) {
+        setVfsFiles([])
+        setVfsError(err?.message || 'Failed to read /home from VFS')
+      } finally {
+        setVfsLoading(false)
       }
-      reader.readAsText(file)
+    }
+
+    loadVfsListing()
+  }, [showVfsOpen])
+
+  const loadVfsHtml = async () => {
+    const path = normalizeVfsPath(vfsPath)
+    if (!path) {
+      setVfsError('Enter a VFS path like /home/index.html')
+      return
+    }
+
+    try {
+      const data = await readFile(path)
+      if (!data) {
+        setVfsError(`File not found in VFS: ${path}`)
+        return
+      }
+
+      const html = typeof data === 'string' ? data : new TextDecoder('utf-8').decode(data)
+      const blob = new Blob([html], { type: 'text/html' })
+      const blobUrl = URL.createObjectURL(blob)
+
+      setUrl(blobUrl)
+      setShowBrowser(true)
+      setInput(path)
+      setHistory([blobUrl])
+      setHistoryIndex(0)
+      setIframeError(false)
+      setShowVfsOpen(false)
+      setVfsError(null)
+    } catch (err: any) {
+      setVfsError(err?.message || 'Failed to read VFS file')
     }
   }
+
+  const vfsModal = showVfsOpen ? (
+    <div style={{
+      position: 'absolute',
+      inset: 0,
+      background: 'rgba(0,0,0,0.55)',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      zIndex: 1200
+    }}>
+      <div style={{
+        width: 420,
+        background: '#121212',
+        border: '1px solid #333',
+        borderRadius: 12,
+        padding: 16,
+        boxShadow: '0 20px 40px rgba(0,0,0,0.45)'
+      }}>
+        <div style={{ color: '#fff', fontSize: 16, marginBottom: 8 }}>Open HTML from VFS</div>
+        <div style={{ color: '#777', fontSize: 12, marginBottom: 10 }}>Example: /home/index.html</div>
+        <input
+          value={vfsPath}
+          onChange={(e) => setVfsPath(e.target.value)}
+          placeholder="/home/index.html"
+          style={{
+            width: '100%',
+            padding: '8px 10px',
+            borderRadius: 8,
+            border: '1px solid #333',
+            background: '#1b1b1b',
+            color: '#fff',
+            outline: 'none'
+          }}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') loadVfsHtml()
+          }}
+        />
+        {vfsError && (
+          <div style={{ color: '#ff8a8a', fontSize: 12, marginTop: 8 }}>{vfsError}</div>
+        )}
+        <div style={{ marginTop: 12, maxHeight: 160, overflowY: 'auto', borderTop: '1px solid #222', paddingTop: 10 }}>
+          {vfsLoading ? (
+            <div style={{ color: '#777', fontSize: 12 }}>Loading VFS files...</div>
+          ) : vfsFiles.length > 0 ? (
+            vfsFiles.map((path) => (
+              <button
+                key={path}
+                onClick={() => setVfsPath(path)}
+                style={{
+                  display: 'block',
+                  width: '100%',
+                  textAlign: 'left',
+                  padding: '6px 8px',
+                  borderRadius: 6,
+                  border: '1px solid transparent',
+                  background: 'transparent',
+                  color: '#cfcfcf',
+                  cursor: 'pointer'
+                }}
+              >
+                {path}
+              </button>
+            ))
+          ) : (
+            <div style={{ color: '#777', fontSize: 12 }}>No HTML files found in /home</div>
+          )}
+        </div>
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 14 }}>
+          <button
+            onClick={() => setShowVfsOpen(false)}
+            style={{
+              padding: '6px 12px',
+              borderRadius: 6,
+              border: '1px solid #333',
+              background: '#1f1f1f',
+              color: '#aaa',
+              cursor: 'pointer'
+            }}
+          >
+            Cancel
+          </button>
+          <button
+            onClick={loadVfsHtml}
+            style={{
+              padding: '6px 12px',
+              borderRadius: 6,
+              border: 'none',
+              background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+              color: '#fff',
+              cursor: 'pointer'
+            }}
+          >
+            Open
+          </button>
+        </div>
+      </div>
+    </div>
+  ) : null
 
   interface ToggleButtonProps {
     label: string;
@@ -202,6 +470,8 @@ export default function PhantomSurf() {
   }
 
   if (showBrowser) {
+    const suggestions = getSuggestions(input)
+
     return (
       <div style={{ height: '100%', display: 'flex', flexDirection: 'column', background: '#1a1a1a' }}>
         {/* Browser Navigation Bar */}
@@ -266,21 +536,66 @@ export default function PhantomSurf() {
             <svg fill="currentColor" height="18px" width="18px" version="1.1" id="Capa_1" xmlns="http://www.w3.org/2000/svg" xmlnsXlink="http://www.w3.org/1999/xlink" viewBox="0 0 254.182 254.182" xmlSpace="preserve"><g id="SVGRepo_bgCarrier" strokeWidth="0"></g><g id="SVGRepo_tracerCarrier" strokeLinecap="round" strokeLinejoin="round"></g><g id="SVGRepo_iconCarrier"> <g> <path d="M211.655,137.102c-4.143,0-7.5,3.358-7.5,7.5v77.064h-41.373v-77.064c0-4.142-3.357-7.5-7.5-7.5H98.903 c-4.143,0-7.5,3.358-7.5,7.5v77.064H50.026v-77.064c0-4.142-3.357-7.5-7.5-7.5c-4.143,0-7.5,3.358-7.5,7.5v84.564 c0,4.142,3.357,7.5,7.5,7.5h56.377h56.379h56.373c4.143,0,7.5-3.358,7.5-7.5v-84.564 C219.155,140.46,215.797,137.102,211.655,137.102z M106.403,221.666v-69.564h41.379v69.564H106.403z"></path> <path d="M251.985,139.298L132.389,19.712c-2.928-2.929-7.677-2.928-10.607,0L2.197,139.298c-2.929,2.929-2.929,7.678,0,10.606 c2.93,2.929,7.678,2.929,10.607,0L127.086,35.622l114.293,114.283c1.464,1.464,3.384,2.196,5.303,2.196 c1.919,0,3.839-0.732,5.304-2.197C254.914,146.976,254.914,142.227,251.985,139.298z"></path> </g> </g></svg>
           </button>
           <form onSubmit={handleSearch} style={{ flex: 1, display: 'flex', gap: 6 }}>
-            <input
-              type="text"
-              value={input}
-              onChange={e => setInput(e.target.value)}
-              placeholder="Enter URL or search..."
-              style={{
-                flex: 1,
-                padding: '8px 16px',
-                borderRadius: 20,
-                border: '1px solid #444',
-                background: '#222',
-                color: '#fff',
-                outline: 'none'
-              }}
-            />
+            <div style={{ position: 'relative', flex: 1 }}>
+              <input
+                type="text"
+                value={input}
+                onChange={e => setInput(e.target.value)}
+                placeholder="Enter URL or search..."
+                style={{
+                  width: '100%',
+                  padding: '8px 16px',
+                  borderRadius: 20,
+                  border: '1px solid #444',
+                  background: '#222',
+                  color: '#fff',
+                  outline: 'none'
+                }}
+              />
+              {/* {suggestions.length > 0 && (
+                <div style={{
+                  position: 'absolute',
+                  top: 'calc(100% + 8px)',
+                  left: 0,
+                  right: 0,
+                  background: '#111',
+                  border: '1px solid #333',
+                  borderRadius: 10,
+                  padding: 6,
+                  zIndex: 1000,
+                  boxShadow: '0 10px 30px rgba(0,0,0,0.4)'
+                }}>
+                  {suggestions.map(item => (
+                    <button
+                      key={item.id}
+                      type="button"
+                      onClick={() => {
+                        setInput(item.value)
+                        navigateToUrl(item.url)
+                      }}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 8,
+                        width: '100%',
+                        textAlign: 'left',
+                        padding: '8px 10px',
+                        borderRadius: 8,
+                        border: 'none',
+                        background: 'transparent',
+                        color: '#ddd',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      <span style={{ fontSize: 12, color: '#777' }}>
+                        {item.kind === 'history' ? 'History' : item.kind === 'quick' ? 'Quick' : 'Go'}
+                      </span>
+                      <span style={{ fontSize: 13 }}>{item.label}</span>
+                    </button>
+                  ))}
+                </div>
+              )} */}
+            </div>
             <button
               type="submit"
               style={{
@@ -303,7 +618,7 @@ export default function PhantomSurf() {
               <ToggleButton label="TOR" active={tor} onToggle={() => setTor(!tor)} />
             </div>
             <button
-              onClick={() => fileInputRef.current?.click()}
+              onClick={openVfsDialog}
               style={{
                 padding: '6px 12px',
                 borderRadius: 6,
@@ -316,13 +631,6 @@ export default function PhantomSurf() {
             >
               📁 HTML
             </button>
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept=".html,.htm"
-              onChange={handleFileChange}
-              style={{ display: 'none' }}
-            />
           </div>
         </div>
 
@@ -461,18 +769,29 @@ export default function PhantomSurf() {
               src={url}
               title="PhantomSurf Browser"
               style={{ width: '100%', height: '100%', border: 'none', background: '#fff' }}
-              onError={() => setIframeError(true)}
+              onError={() => {
+                clearProgressInterval()
+                setIsLoading(false)
+                setProgress(0)
+                setIframeError(true)
+              }}
               onLoad={() => {
+                clearProgressInterval()
+                setIframeError(false)
                 setIsLoading(false)
                 setProgress(100)
                 setTimeout(() => setProgress(0), 300)
               }}
-              onLoadStart={() => setIsLoading(true)}
+              onLoadStart={() => {
+                setIsLoading(true)
+                setIframeError(false)
+              }}
               sandbox="allow-same-origin allow-scripts allow-forms allow-popups allow-presentation"
               allow="accelerometer; camera; geolocation; gyroscope; magnetometer; microphone; payment; usb"
             />
           )}
         </div>
+        {vfsModal}
       </div>
     )
   }
@@ -538,20 +857,65 @@ export default function PhantomSurf() {
                 gap: 12,
                 marginBottom: 24
               }}>
-              <input type="text" placeholder="Surf Like A Phantom"
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                onKeyPress={(e) => e.key === 'Enter' && handleSearch(e as any)}
-                style={{
-                  flex: 1,
-                  padding: '12px 20px',
-                  background: 'transparent',
-                  border: 'none',
-                  color: '#fff',
-                  outline: 'none',
-                  fontSize: 14
-                }}
-              />
+              <div style={{ position: 'relative', flex: 1 }}>
+                <input type="text" placeholder="Surf Like A Phantom"
+                  value={input}
+                  onChange={(e) => setInput(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && handleSearch(e as any)}
+                  style={{
+                    width: '100%',
+                    padding: '12px 20px',
+                    background: 'transparent',
+                    border: 'none',
+                    color: '#fff',
+                    outline: 'none',
+                    fontSize: 14
+                  }}
+                />
+                {getSuggestions(input).length > 0 && (
+                  <div style={{
+                    position: 'absolute',
+                    top: 'calc(100% + 8px)',
+                    left: 0,
+                    right: 0,
+                    background: '#111',
+                    border: '1px solid #333',
+                    borderRadius: 10,
+                    padding: 6,
+                    zIndex: 10,
+                    boxShadow: '0 10px 30px rgba(0,0,0,0.4)'
+                  }}>
+                    {getSuggestions(input).map(item => (
+                      <button
+                        key={item.id}
+                        type="button"
+                        onClick={() => {
+                          setInput(item.value)
+                          navigateToUrl(item.url)
+                        }}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 8,
+                          width: '100%',
+                          textAlign: 'left',
+                          padding: '8px 10px',
+                          borderRadius: 8,
+                          border: 'none',
+                          background: 'transparent',
+                          color: '#ddd',
+                          cursor: 'pointer'
+                        }}
+                      >
+                        <span style={{ fontSize: 12, color: '#777' }}>
+                          {item.kind === 'history' ? 'History' : item.kind === 'quick' ? 'Quick' : 'Go'}
+                        </span>
+                        <span style={{ fontSize: 13 }}>{item.label}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
               <div style={{
                 width: 36,
                 height: 36,
@@ -565,32 +929,24 @@ export default function PhantomSurf() {
             </div>
 
             <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', justifyContent: 'center', marginTop: 20 }}>
-              <QuickButton
-                icon={<i className="fa-solid fa-envelope" />}
-                label="Gmail"
-                onClick={() => handleQuickLink('https://mail.google.com')}
-              />
-              <QuickButton
-                icon={<i className="fa-solid fa-image" />}
-                label="Images"
-                onClick={() => handleQuickLink('https://images.google.com')}
-              />
+              {quickLinks.map(link => (
+                <QuickButton
+                  key={link.url}
+                  icon={link.label === 'Gmail' ? <i className="fa-solid fa-envelope" /> : link.label === 'Images' ? <i className="fa-solid fa-image" /> : link.label === 'GitHub' ? <i className="fa-brands fa-github" /> : <i className="fa-brands fa-youtube" />}
+                  label={link.label}
+                  onClick={() => handleQuickLink(link.url)}
+                />
+              ))}
               <QuickButton
                 icon={<i className="fa-solid fa-file" />}
                 label="Load HTML"
-                onClick={() => fileInputRef.current?.click()}
-              />
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept=".html,.htm"
-                onChange={handleFileChange}
-                style={{ display: 'none' }}
+                onClick={openVfsDialog}
               />
             </div>
           </div>
         </div>
 
+        {vfsModal}
       </div>
 
       {/* Footer */}

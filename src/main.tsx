@@ -40,6 +40,7 @@ import './apps/wednesday/ui'
 import './apps/python/ui'
 import './apps/phantomsurf/ui'
 import './apps/settings/ui'
+import './apps/zynqchat/ui'
 
 // Auth helpers and redirect bootstrap
 import { bootstrapAuthRedirect } from './auth/init'
