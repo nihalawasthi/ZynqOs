@@ -1,10 +1,9 @@
 {
   "compilerOptions": {
     "target": "ES2022",
-    "module": "ESNext",
+    "module": "NodeNext",
     "jsx": "react-jsx",
-    "moduleResolution": "node",
-    "allowImportingTsExtensions": true,
+    "moduleResolution": "NodeNext",
     "noEmit": true,
     "esModuleInterop": true,
     "forceConsistentCasingInFileNames": true,

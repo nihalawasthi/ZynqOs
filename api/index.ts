@@ -11,7 +11,7 @@ import {
   getAttachment,
   getLinkPreview,
   upsertLinkPreview
-} from './lib/chatDb.ts'
+} from './lib/chatDb.js'
 
 // ===== Configuration Constants =====
 const ENV = {
