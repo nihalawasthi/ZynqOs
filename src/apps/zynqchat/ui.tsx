@@ -346,10 +346,14 @@ export default function ZynqChatUI() {
                 attachments: pendingAttachments.length ? pendingAttachments : undefined
             })
 
-            setMessagesByChat(prev => ({
-                ...prev,
-                [activeChatId]: [...(prev[activeChatId] || []), sent]
-            }))
+            const existing = messagesByChatRef.current[activeChatId] || []
+            const alreadyAdded = existing.some(msg => msg.id === sent.id)
+            if (!alreadyAdded) {
+                setMessagesByChat(prev => ({
+                    ...prev,
+                    [activeChatId]: [...(prev[activeChatId] || []), sent]
+                }))
+            }
 
             setChats(prev => prev.map(chat => (
                 chat.id === activeChatId ? { ...chat, lastMessage: sent.body, unreadCount: 0 } : chat
