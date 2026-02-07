@@ -426,7 +426,10 @@ export default function StartMenu() {
                         onClick={() => setOpen(false)}
                     />
 
-                    <div className="flex fixed bottom-20 left-1/2 -translate-x-1/2 min-w-[calc(60%-48px)] max-w-[980px] gap-1 z-50">
+                    <div
+                        ref={menuRef}
+                        className="flex fixed bottom-20 left-1/2 -translate-x-1/2 min-w-[calc(60%-48px)] max-w-[980px] gap-1 z-50"
+                    >
                         {/* Hidden file input for imports */}
                         <input
                             ref={fileInputRef}
@@ -437,7 +440,7 @@ export default function StartMenu() {
                         />
 
                         {/* Main Menu */}
-                        <div ref={menuRef} className="w-[420px] bg-black backdrop-blur-xl border border-[#333] rounded-xl shadow-2xl overflow-hidden">
+                        <div className="w-[420px] bg-black backdrop-blur-xl border border-[#333] rounded-xl shadow-2xl overflow-hidden">
                             {/* Search bar */}
                             <div className="px-5 py-4">
                                 <div className="relative">
