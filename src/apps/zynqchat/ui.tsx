@@ -144,11 +144,7 @@ export default function ZynqChatUI() {
             }
 
             if (event.type === 'message') {
-                setMessagesByChat(prev => {
-                    const existing = prev[event.chatId] || []
-                    if (existing.some(msg => msg.id === event.message.id)) return prev
-                    return { ...prev, [event.chatId]: [...existing, event.message] }
-                })
+                appendMessage(event.chatId, event.message)
                 setChats(prev => prev.map(chat => {
                     if (chat.id !== event.chatId) return chat
                     const unreadCount = chat.id === activeChatIdRef.current ? 0 : (chat.unreadCount || 0) + 1
@@ -346,14 +342,7 @@ export default function ZynqChatUI() {
                 attachments: pendingAttachments.length ? pendingAttachments : undefined
             })
 
-            const existing = messagesByChatRef.current[activeChatId] || []
-            const alreadyAdded = existing.some(msg => msg.id === sent.id)
-            if (!alreadyAdded) {
-                setMessagesByChat(prev => ({
-                    ...prev,
-                    [activeChatId]: [...(prev[activeChatId] || []), sent]
-                }))
-            }
+            appendMessage(activeChatId, sent)
 
             setChats(prev => prev.map(chat => (
                 chat.id === activeChatId ? { ...chat, lastMessage: sent.body, unreadCount: 0 } : chat
@@ -536,6 +525,14 @@ export default function ZynqChatUI() {
             const next = [...existing]
             next[index] = updater(existing[index])
             return { ...prev, [chatId]: next }
+        })
+    }
+
+    function appendMessage(chatId: string, message: Message) {
+        setMessagesByChat(prev => {
+            const existing = prev[chatId] || []
+            if (existing.some(msg => msg.id === message.id)) return prev
+            return { ...prev, [chatId]: [...existing, message] }
         })
     }
 
