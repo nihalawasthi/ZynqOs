@@ -968,6 +968,7 @@ export default function ZynqChatUI() {
                         const imageAttachments = attachmentItems.filter(att => att.mimeType?.startsWith('image/'))
                         const fileAttachments = attachmentItems.filter(att => !att.mimeType?.startsWith('image/'))
                         const isDeleted = Boolean(message.deletedAt)
+                        const isAttachmentOnly = !isDeleted && attachmentItems.length > 0 && (message.body || '').trim() === '(attachment)'
                         const linkPreviews = message.linkPreviews || []
                         const timeLabel = formatMessageTime(message)
                         const deliveryLabel = isDeleted
@@ -975,7 +976,7 @@ export default function ZynqChatUI() {
                             : (isMine ? (message.status || 'sent') : (message.status || ''))
                         return (
                             <div key={message.id} className={`flex ${isMine ? 'justify-end' : 'justify-start'}`}>
-                                <div className={`max-w-[70%] rounded-2xl px-4 py-3 text-sm border group ${isMine ? 'bg-cyan-600/20 border-cyan-500/30' : 'bg-[#131a24] border-[#1f242c]'}`}>
+                                <div className={`max-w-[70%] rounded-2xl text-sm border group ${isMine ? 'bg-cyan-600/20 border-cyan-500/30' : 'bg-[#131a24] border-[#1f242c]'} ${isAttachmentOnly ? 'px-2 py-2 w-fit' : 'px-4 py-3'}`}>
                                     <div className="flex items-center gap-2 mb-1">
                                         {!isMine ? (
                                             <div className="text-xs text-slate-400">{formatHandle(message.author)}</div>
@@ -1027,13 +1028,19 @@ export default function ZynqChatUI() {
                                             <div className="truncate">{replyMessage.body || 'Message deleted'}</div>
                                         </div>
                                     )}
-                                    <div className={`whitespace-pre-wrap break-words ${isDeleted ? 'text-slate-500 italic' : 'text-slate-100'}`}>
-                                        {isDeleted ? 'Message deleted' : message.body}
-                                    </div>
+                                    {isDeleted ? (
+                                        <div className="whitespace-pre-wrap break-words text-slate-500 italic">
+                                            Message deleted
+                                        </div>
+                                    ) : (!isAttachmentOnly && message.body ? (
+                                        <div className="whitespace-pre-wrap break-words text-slate-100">
+                                            {message.body}
+                                        </div>
+                                    ) : null)}
                                     {!isDeleted && attachmentItems.length ? (
-                                        <div className="mt-2 space-y-2">
+                                        <div className={`${isAttachmentOnly ? 'mt-1' : 'mt-2'} space-y-2`}>
                                             {imageAttachments.length ? (
-                                                <div className="grid grid-cols-2 gap-2">
+                                                <div className={`${isAttachmentOnly ? 'inline-grid grid-cols-1' : 'grid grid-cols-2'} gap-2`}>
                                                     {imageAttachments.map(att => {
                                                         const preview = attachmentPreviews[att.id]
                                                         return (
@@ -1047,11 +1054,11 @@ export default function ZynqChatUI() {
                                                                     <img
                                                                         src={preview}
                                                                         alt={att.name}
-                                                                        className="h-32 w-full object-cover"
+                                                                        className={`${isAttachmentOnly ? 'h-32 w-auto max-w-[260px]' : 'h-32 w-full'} object-cover`}
                                                                         loading="lazy"
                                                                     />
                                                                 ) : (
-                                                                    <div className="h-32 w-full flex items-center justify-center text-xs text-slate-400">
+                                                                    <div className={`${isAttachmentOnly ? 'h-32 w-56' : 'h-32 w-full'} flex items-center justify-center text-xs text-slate-400`}>
                                                                         Loading image...
                                                                     </div>
                                                                 )}
