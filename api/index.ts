@@ -10,7 +10,8 @@ import {
   updateChatMessage as updateChatMessageDb,
   getAttachment,
   getLinkPreview,
-  upsertLinkPreview
+  upsertLinkPreview,
+  deleteOldChatMessages
 } from './lib/chatDb.js'
 
 // ===== Configuration Constants =====
@@ -531,6 +532,7 @@ type ChatMessage = {
   replyToId?: string
   editedAt?: string
   deletedAt?: string
+  status?: 'sent' | 'seen'
   pinned?: boolean
   reactions?: Record<string, string[]>
   attachments?: ChatAttachment[]
@@ -637,6 +639,7 @@ async function chatSend(req: VercelRequest, res: VercelResponse) {
     timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
     createdAt: Date.now(),
     replyToId: typeof body.replyToId === 'string' ? body.replyToId : undefined,
+    status: 'sent',
     attachments: Array.isArray(body.attachments)
       ? body.attachments.map((att: any) => ({
           id: att.id,
@@ -659,6 +662,7 @@ async function chatSend(req: VercelRequest, res: VercelResponse) {
     payload: {
       body: message.body,
       replyToId: message.replyToId,
+      status: message.status,
       attachments: message.attachments?.map(att => ({
         id: att.id,
         name: att.name,
@@ -715,6 +719,7 @@ async function chatUpdate(req: VercelRequest, res: VercelResponse) {
       replyToId: updated.replyToId,
       editedAt: updated.editedAt,
       deletedAt: updated.deletedAt,
+      status: updated.status,
       pinned: updated.pinned,
       reactions: updated.reactions,
       attachments: updated.attachments?.map(att => ({
@@ -739,12 +744,17 @@ async function chatHistory(req: VercelRequest, res: VercelResponse) {
 
   await ensureChatDb()
 
+  const cutoff = Date.now() - 24 * 60 * 60 * 1000
+  await deleteOldChatMessages(cutoff)
+
   const chatId = typeof req.query.chatId === 'string' ? req.query.chatId : ''
   if (!chatId) return res.status(400).json({ error: 'Missing chatId' })
 
   const since = typeof req.query.since === 'string' ? Number(req.query.since) : 0
   const records = await listChatMessages(chatId, since || undefined)
-  const messages = records.map(record => ({
+  const messages = records
+    .filter(record => record.createdAt >= cutoff)
+    .map(record => ({
     id: record.id,
     chatId: record.chatId,
     author: record.author,
@@ -754,6 +764,7 @@ async function chatHistory(req: VercelRequest, res: VercelResponse) {
     replyToId: record.payload.replyToId,
     editedAt: record.payload.editedAt,
     deletedAt: record.payload.deletedAt,
+    status: record.payload.status,
     pinned: record.payload.pinned,
     reactions: record.payload.reactions,
     attachments: record.payload.attachments?.map(att => ({
@@ -783,6 +794,60 @@ function chatTyping(req: VercelRequest, res: VercelResponse) {
 
   publishChatEvent({ type: 'typing', chatId, userId, isTyping })
   return res.status(200).json({ success: true })
+}
+
+async function chatSeen(req: VercelRequest, res: VercelResponse) {
+  const session = getSessionFromCookie(req)
+  if (!session) return res.status(401).json({ error: 'Not authenticated' })
+
+  await ensureChatDb()
+
+  const body = parseJsonBody(req) || {}
+  const chatId = typeof body.chatId === 'string' ? body.chatId.trim() : ''
+  const userId = typeof body.userId === 'string' ? body.userId.trim() : ''
+  const seenAt = typeof body.seenAt === 'number' ? body.seenAt : Date.now()
+  if (!chatId || !userId) return res.status(400).json({ error: 'Missing chatId or userId' })
+
+  const records = await listChatMessages(chatId)
+  const target = [...records].reverse().find(record => record.author !== userId && record.createdAt <= seenAt)
+  if (!target) return res.status(200).json({ success: true })
+
+  const payload = { ...target.payload, status: 'seen' as const }
+  const updated: ChatMessage = {
+    id: target.id,
+    chatId: target.chatId,
+    author: target.author,
+    createdAt: target.createdAt,
+    timestamp: target.timestamp,
+    body: payload.body,
+    replyToId: payload.replyToId,
+    editedAt: payload.editedAt,
+    deletedAt: payload.deletedAt,
+    status: payload.status,
+    pinned: payload.pinned,
+    reactions: payload.reactions,
+    attachments: payload.attachments?.map(att => ({
+      id: att.id,
+      name: att.name,
+      mimeType: att.mimeType,
+      size: att.size,
+      vfsPath: att.downloadUrl,
+      downloadUrl: att.downloadUrl
+    })),
+    linkPreviews: payload.linkPreviews
+  }
+
+  await updateChatMessageDb({
+    id: updated.id,
+    chatId: updated.chatId,
+    author: updated.author,
+    createdAt: updated.createdAt,
+    timestamp: updated.timestamp,
+    payload
+  })
+
+  publishChatEvent({ type: 'message-update', chatId, message: updated })
+  return res.status(200).json({ success: true, message: updated })
 }
 
 function chatPresenceUpdate(req: VercelRequest, res: VercelResponse) {
@@ -2150,6 +2215,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         case 'history': return chatHistory(req, res)
         case 'typing': return chatTyping(req, res)
         case 'presence': return chatPresenceUpdate(req, res)
+        case 'seen': return chatSeen(req, res)
         case 'events': return chatEvents(req, res)
         case 'upload': return chatUploadAttachment(req, res)
         case 'attachment': return chatDownloadAttachment(req, res)

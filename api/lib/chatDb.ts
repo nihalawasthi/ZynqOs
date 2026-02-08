@@ -38,6 +38,7 @@ export type ChatMessagePayload = {
   replyToId?: string
   editedAt?: string
   deletedAt?: string
+  status?: 'sent' | 'seen'
   pinned?: boolean
   reactions?: Record<string, string[]>
   attachments?: Array<{
@@ -216,6 +217,35 @@ export async function listChatMessages(chatId: string, since?: number): Promise<
     payloadTag: row.payload_tag,
     payload: decryptPayload<ChatMessagePayload>(row.payload_enc, row.payload_iv, row.payload_tag)
   }))
+}
+
+export async function deleteOldChatMessages(cutoff: number): Promise<void> {
+  if (!HAS_DB) {
+    for (const [chatId, list] of memoryMessages.entries()) {
+      const filtered = list.filter(item => item.createdAt >= cutoff)
+      if (filtered.length) {
+        memoryMessages.set(chatId, filtered)
+      } else {
+        memoryMessages.delete(chatId)
+      }
+    }
+
+    for (const [attachmentId, record] of memoryAttachments.entries()) {
+      if (record.createdAt < cutoff) {
+        memoryAttachments.delete(attachmentId)
+      }
+    }
+    return
+  }
+
+  await sql`
+    DELETE FROM zynqchat_messages
+    WHERE created_at < ${cutoff}
+  `
+  await sql`
+    DELETE FROM zynqchat_attachments
+    WHERE created_at < ${cutoff}
+  `
 }
 
 export async function insertAttachment(input: { chatId: string; name: string; mimeType: string; size: number; bytes: Uint8Array }): Promise<ChatAttachmentRecord> {

@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { type Attachment, type Chat, type Message, loadZynqChatStore, saveZynqChatStore } from './storage.js'
-import { connectChatEvents, fetchChatHistory, sendChatMessage, sendPresenceUpdate, sendTypingSignal, updateChatMessage, uploadChatAttachment } from './chatApi.js'
+import { connectChatEvents, fetchChatHistory, sendChatMessage, sendPresenceUpdate, sendSeenSignal, sendTypingSignal, updateChatMessage, uploadChatAttachment } from './chatApi.js'
 import { readFile, writeFile } from '../../vfs/fs.js'
 import { downloadFile } from '../../utils/fileUpload.js'
 import { getStorageStatus } from '../../auth/storage.js'
@@ -166,8 +166,14 @@ export default function ZynqChatUI() {
                 const stored = await loadZynqChatStore()
                 if (cancelled) return
                 if (stored?.chats?.length) {
+                    const cutoff = Date.now() - 24 * 60 * 60 * 1000
+                    const filteredMessages: Record<string, Message[]> = {}
+                    const sourceMessages = stored.messagesByChat || {}
+                    for (const [chatId, items] of Object.entries(sourceMessages)) {
+                        filteredMessages[chatId] = items.filter(msg => (msg.createdAt || 0) >= cutoff)
+                    }
                     setChats(stored.chats)
-                    setMessagesByChat(stored.messagesByChat || {})
+                    setMessagesByChat(filteredMessages)
                     if (stored.chats[0]?.id) {
                         setActiveChatId(stored.chats[0].id)
                     }
@@ -222,7 +228,7 @@ export default function ZynqChatUI() {
         const unsubscribe = connectChatEvents((event) => {
             if (event.type === 'presence') {
                 setChats(prev => prev.map(chat => (
-                    chat.kind === 'dm' && chat.name === event.userId
+                    chat.kind === 'dm' && normalizeHandle(chat.name) === normalizeHandle(event.userId)
                         ? { ...chat, presence: event.presence }
                         : chat
                 )))
@@ -230,7 +236,7 @@ export default function ZynqChatUI() {
             }
 
             if (event.type === 'typing') {
-                if (event.userId === resolvedHandle) return
+                if (event.userId === resolvedUserId || event.userId === resolvedHandle) return
                 setTypingByChat(prev => {
                     const existing = prev[event.chatId] || []
                     const next = event.isTyping
@@ -242,12 +248,28 @@ export default function ZynqChatUI() {
             }
 
             if (event.type === 'message') {
-                appendMessage(event.chatId, event.message)
-                setChats(prev => prev.map(chat => {
-                    if (chat.id !== event.chatId) return chat
-                    const unreadCount = chat.id === activeChatIdRef.current ? 0 : (chat.unreadCount || 0) + 1
-                    return { ...chat, lastMessage: event.message.body, unreadCount }
-                }))
+                const incoming = {
+                    ...event.message,
+                    status: (event.message.author === resolvedUserId || event.message.author === resolvedHandle)
+                        ? (event.message.status || 'sent')
+                        : event.message.status
+                }
+                appendMessage(event.chatId, incoming)
+                if (event.chatId === activeChatIdRef.current && incoming.author !== resolvedUserId && incoming.author !== resolvedHandle) {
+                    sendSeenSignal(event.chatId, resolvedUserId, incoming.createdAt || Date.now()).catch(() => undefined)
+                }
+                setChats(prev => {
+                    const existing = prev.find(chat => chat.id === event.chatId)
+                    if (!existing) {
+                        const dmPeer = getDmPeerFromChatId(event.chatId, resolvedUserId) || event.message.author
+                        return [{ id: event.chatId, name: normalizeHandle(dmPeer), kind: 'dm', presence: 'offline', lastMessage: event.message.body, unreadCount: 1 }, ...prev]
+                    }
+                    return prev.map(chat => {
+                        if (chat.id !== event.chatId) return chat
+                        const unreadCount = chat.id === activeChatIdRef.current ? 0 : (chat.unreadCount || 0) + 1
+                        return { ...chat, lastMessage: event.message.body, unreadCount }
+                    })
+                })
                 return
             }
 
@@ -280,7 +302,7 @@ export default function ZynqChatUI() {
                 reconnectTimerRef.current = null
             }
         }
-    }, [resolvedHandle, reconnectToken])
+    }, [resolvedHandle, resolvedUserId, reconnectToken])
 
     useEffect(() => {
         if (realtimeStatus !== 'error') return
@@ -381,6 +403,10 @@ export default function ZynqChatUI() {
                             ? { ...chat, lastMessage: messages[messages.length - 1].body }
                             : chat
                     )))
+                    const lastMessage = messages[messages.length - 1]
+                    if (lastMessage.author !== resolvedUserId && lastMessage.author !== resolvedHandle) {
+                        sendSeenSignal(activeChatId, resolvedUserId, lastMessage.createdAt || Date.now()).catch(() => undefined)
+                    }
                     return
                 }
 
@@ -417,6 +443,10 @@ export default function ZynqChatUI() {
                         )))
 
                         setActiveChatId(altChatId)
+                        const lastMessage = altMessages[altMessages.length - 1]
+                        if (lastMessage && lastMessage.author !== resolvedUserId && lastMessage.author !== resolvedHandle) {
+                            sendSeenSignal(altChatId, resolvedUserId, lastMessage.createdAt || Date.now()).catch(() => undefined)
+                        }
                     })
                     .catch(() => {
                         if (!cancelled) setMessagesByChat(prev => ({ ...prev, [activeChatId]: messages }))
@@ -496,13 +526,13 @@ export default function ZynqChatUI() {
                 attachments: pendingAttachments.length ? pendingAttachments : undefined
             })
 
-            appendMessage(activeChatId, sent)
+            appendMessage(activeChatId, { ...sent, status: sent.status || 'sent' })
 
             setChats(prev => prev.map(chat => (
                 chat.id === activeChatId ? { ...chat, lastMessage: sent.body, unreadCount: 0 } : chat
             )))
 
-            sendTypingSignal(activeChatId, resolvedHandle, false).catch(() => undefined)
+            sendTypingSignal(activeChatId, resolvedUserId, false).catch(() => undefined)
             setDraft('')
             setReplyToId(null)
             setPendingAttachments([])
@@ -560,6 +590,21 @@ export default function ZynqChatUI() {
 
     function normalizeHandle(value: string): string {
         return value.replace(/^@/, '').trim().toLowerCase()
+    }
+
+    function formatHandle(value: string): string {
+        const trimmed = value.trim()
+        if (!trimmed) return ''
+        return trimmed.startsWith('@') ? trimmed : `@${trimmed}`
+    }
+
+    function getDmPeerFromChatId(chatId: string, selfId: string): string | null {
+        if (!chatId.startsWith('dm:')) return null
+        const parts = chatId.split(':').slice(1)
+        if (parts.length < 2) return null
+        const normalizedSelf = normalizeHandle(selfId)
+        const peer = parts.find(part => normalizeHandle(part) !== normalizedSelf)
+        return peer || null
     }
 
     function buildDmChatId(userA: string, userB: string): string {
@@ -925,15 +970,17 @@ export default function ZynqChatUI() {
                         const isDeleted = Boolean(message.deletedAt)
                         const linkPreviews = message.linkPreviews || []
                         const timeLabel = formatMessageTime(message)
-                        const deliveryLabel = isDeleted ? 'deleted' : (message.status || '')
+                        const deliveryLabel = isDeleted
+                            ? 'deleted'
+                            : (isMine ? (message.status || 'sent') : (message.status || ''))
                         return (
                             <div key={message.id} className={`flex ${isMine ? 'justify-end' : 'justify-start'}`}>
                                 <div className={`max-w-[70%] rounded-2xl px-4 py-3 text-sm border group ${isMine ? 'bg-cyan-600/20 border-cyan-500/30' : 'bg-[#131a24] border-[#1f242c]'}`}>
                                     <div className="flex items-center gap-2 mb-1">
                                         {!isMine ? (
-                                            <div className="text-xs text-slate-400">{message.author}</div>
+                                            <div className="text-xs text-slate-400">{formatHandle(message.author)}</div>
                                         ) : (
-                                            <div className="text-xs text-transparent select-none">.</div>
+                                            <div className="text-xs text-slate-400">You</div>
                                         )}
                                         <div className="ml-auto relative">
                                             <button
@@ -1080,7 +1127,10 @@ export default function ZynqChatUI() {
                     })}
                     {typingByChat[activeChatId]?.length ? (
                         <div className="text-xs text-slate-500">
-                            {typingByChat[activeChatId].slice(0, 2).join(', ')}{typingByChat[activeChatId].length > 2 ? ' and others' : ''} typing...
+                            {typingByChat[activeChatId]
+                                .slice(0, 2)
+                                .map(name => formatHandle(name || ''))
+                                .join(', ')}{typingByChat[activeChatId].length > 2 ? ' and others' : ''} typing...
                         </div>
                     ) : null}
                     <div ref={messagesEndRef} />

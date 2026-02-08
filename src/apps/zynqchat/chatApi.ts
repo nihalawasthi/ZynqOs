@@ -123,3 +123,12 @@ export async function sendPresenceUpdate(userId: string, presence: 'online' | 'a
     body: JSON.stringify({ userId, presence })
   })
 }
+
+export async function sendSeenSignal(chatId: string, userId: string, seenAt: number): Promise<void> {
+  await fetch('/api?route=chat&action=seen', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify({ chatId, userId, seenAt })
+  })
+}

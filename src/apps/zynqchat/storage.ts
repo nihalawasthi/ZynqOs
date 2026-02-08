@@ -38,7 +38,7 @@ export type Message = {
   reactions?: Record<string, string[]>
   attachments?: Attachment[]
   linkPreviews?: Array<{ url: string; title?: string; description?: string; image?: string }>
-  status?: 'sent' | 'read'
+  status?: 'sent' | 'seen'
 }
 
 export type ZynqChatStore = {
