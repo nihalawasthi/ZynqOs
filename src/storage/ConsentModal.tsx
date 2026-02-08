@@ -1,10 +1,26 @@
 import React, { useState, useEffect } from 'react'
+import { clearStatusCache } from '../auth/storage'
 
-export default function ConsentModal({ onClose }: { onClose: () => void }) {
+export default function ConsentModal({ onClose }: { onClose?: () => void }) {
   const [provider, setProvider] = useState<'google' | 'github' | null>(null)
   const [waiting, setWaiting] = useState(false)
   const [pollCount, setPollCount] = useState(0)
   const [envStatus, setEnvStatus] = useState<any>(null)
+
+  const closeModal = () => {
+    if (typeof onClose === 'function') {
+      onClose()
+      return
+    }
+    ;(window as any).ZynqOS_closeActiveWindow?.()
+  }
+
+  const notifyAuthReady = (status: any) => {
+    window.dispatchEvent(new CustomEvent('zynqos:auth-initialized', { detail: status }))
+    if (status?.connected) {
+      window.dispatchEvent(new CustomEvent('zynqos:storage-connected', { detail: { provider: status.provider } }))
+    }
+  }
 
   useEffect(() => {
     // Check what credentials are available
@@ -22,8 +38,10 @@ export default function ConsentModal({ onClose }: { onClose: () => void }) {
         const res = await fetch('/api?route=auth&action=status', { credentials: 'include' })
         const json = await res.json()
         if (json.connected || json.authenticated) {
+          clearStatusCache()
           setWaiting(false)
-          onClose()
+          notifyAuthReady(json)
+          closeModal()
         }
       } catch (e) {
         console.error('[ConsentModal] Poll failed', e)
@@ -40,7 +58,14 @@ export default function ConsentModal({ onClose }: { onClose: () => void }) {
     const handleMessage = (event: MessageEvent) => {
       if (event.data?.type === 'zynqos-auth-complete') {
         setWaiting(false)
-        onClose()
+        fetch('/api?route=auth&action=status', { credentials: 'include' })
+          .then(res => res.json())
+          .then((json) => {
+            clearStatusCache()
+            notifyAuthReady(json)
+          })
+          .catch(() => undefined)
+          .finally(() => closeModal())
       }
     }
     window.addEventListener('message', handleMessage)
@@ -60,7 +85,7 @@ export default function ConsentModal({ onClose }: { onClose: () => void }) {
           <p className="text-sm text-[#808080]">Please complete the authentication in the popup window.</p>
           <p className="text-xs text-[#606060] mt-2">Checking every 5 seconds...</p>
         </div>
-        <button onClick={() => { setWaiting(false); onClose() }} className="w-full px-4 py-2 rounded bg-[#2a2a2a] hover:bg-[#333] mt-4">Cancel</button>
+        <button onClick={() => { setWaiting(false); closeModal() }} className="w-full px-4 py-2 rounded bg-[#2a2a2a] hover:bg-[#333] mt-4">Cancel</button>
       </div>
     )
   }
@@ -96,7 +121,7 @@ export default function ConsentModal({ onClose }: { onClose: () => void }) {
       </div>
 
       <div className="mt-4 flex gap-2">
-        <button onClick={onClose} className="px-4 py-2 rounded bg-[#2a2a2a] hover:bg-[#333]">Cancel</button>
+        <button onClick={closeModal} className="px-4 py-2 rounded bg-[#2a2a2a] hover:bg-[#333]">Cancel</button>
         <button onClick={() => {
           if (provider === 'google') {
             if (!envStatus?.google?.clientId) {

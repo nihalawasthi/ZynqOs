@@ -23,6 +23,7 @@ export default function ZynqChatUI() {
     const [replyToId, setReplyToId] = useState<string | null>(null)
     const [editingMessageId, setEditingMessageId] = useState<string | null>(null)
     const [currentUser, setCurrentUser] = useState('You')
+    const [currentUserId, setCurrentUserId] = useState('')
     const [customHandle, setCustomHandle] = useState(() => localStorage.getItem('zynqchat_handle') || '')
     const [realtimeStatus, setRealtimeStatus] = useState<'connecting' | 'open' | 'error'>('connecting')
     const [reconnectToken, setReconnectToken] = useState(0)
@@ -43,6 +44,7 @@ export default function ZynqChatUI() {
     const activeChat = chats.find(chat => chat.id === activeChatId)
     const activeMessages = messagesByChat[activeChatId] || []
     const resolvedHandle = customHandle.trim() || currentUser
+    const resolvedUserId = currentUserId.trim() || resolvedHandle
     const replyTarget = replyToId ? activeMessages.find(msg => msg.id === replyToId) : null
 
     const filteredChats = useMemo(() => {
@@ -198,14 +200,19 @@ export default function ZynqChatUI() {
             const profile = status.profile || {}
             const name = profile.login || profile.name || profile.email || 'You'
             setCurrentUser(name)
+            setCurrentUserId(profile.login || profile.id || name)
         }
-        loadProfile().catch(() => setCurrentUser('You'))
+        loadProfile().catch(() => {
+            setCurrentUser('You')
+            setCurrentUserId('')
+        })
 
         const handleAuthRefresh = (event: Event) => {
             const customEvent = event as CustomEvent<any>
             const profile = customEvent?.detail?.profile || {}
             const name = profile.login || profile.name || profile.email || 'You'
             setCurrentUser(name)
+            setCurrentUserId(profile.login || profile.id || name)
         }
         window.addEventListener('zynqos:auth-initialized', handleAuthRefresh as EventListener)
         return () => window.removeEventListener('zynqos:auth-initialized', handleAuthRefresh as EventListener)
@@ -367,14 +374,53 @@ export default function ZynqChatUI() {
         fetchChatHistory(activeChatId)
             .then((messages) => {
                 if (cancelled) return
-                setMessagesByChat(prev => ({ ...prev, [activeChatId]: messages }))
                 if (messages.length) {
+                    setMessagesByChat(prev => ({ ...prev, [activeChatId]: messages }))
                     setChats(prev => prev.map(chat => (
                         chat.id === activeChatId
                             ? { ...chat, lastMessage: messages[messages.length - 1].body }
                             : chat
                     )))
+                    return
                 }
+
+                if (!activeChat || activeChat.kind !== 'dm') {
+                    setMessagesByChat(prev => ({ ...prev, [activeChatId]: messages }))
+                    return
+                }
+
+                const altChatId = buildDmChatId(resolvedUserId, activeChat.name)
+                if (!altChatId || altChatId === activeChatId) {
+                    setMessagesByChat(prev => ({ ...prev, [activeChatId]: messages }))
+                    return
+                }
+
+                fetchChatHistory(altChatId)
+                    .then((altMessages) => {
+                        if (cancelled) return
+                        if (!altMessages.length) {
+                            setMessagesByChat(prev => ({ ...prev, [activeChatId]: messages }))
+                            return
+                        }
+
+                        setMessagesByChat(prev => {
+                            const next = { ...prev }
+                            delete next[activeChatId]
+                            next[altChatId] = altMessages
+                            return next
+                        })
+
+                        setChats(prev => prev.map(chat => (
+                            chat.id === activeChatId
+                                ? { ...chat, id: altChatId, lastMessage: altMessages[altMessages.length - 1].body }
+                                : chat
+                        )))
+
+                        setActiveChatId(altChatId)
+                    })
+                    .catch(() => {
+                        if (!cancelled) setMessagesByChat(prev => ({ ...prev, [activeChatId]: messages }))
+                    })
             })
             .catch((err) => {
                 if (!cancelled) setServerError(err instanceof Error ? err.message : String(err))
@@ -394,7 +440,7 @@ export default function ZynqChatUI() {
 
         const sendPresence = async (presence: 'online' | 'away' | 'offline') => {
             try {
-                await sendPresenceUpdate(resolvedHandle, presence)
+                await sendPresenceUpdate(resolvedUserId, presence)
             } catch {
                 if (mounted) setServerError('Failed to update presence')
             }
@@ -416,7 +462,7 @@ export default function ZynqChatUI() {
             document.removeEventListener('visibilitychange', handleVisibility)
             sendPresence('offline')
         }
-    }, [resolvedHandle])
+    }, [resolvedHandle, resolvedUserId])
 
     async function handleSend() {
         const trimmed = draft.trim()
@@ -485,11 +531,11 @@ export default function ZynqChatUI() {
     function handleDraftChange(value: string) {
         setDraft(value)
         if (!activeChatId) return
-        sendTypingSignal(activeChatId, resolvedHandle, true).catch(() => undefined)
+        sendTypingSignal(activeChatId, resolvedUserId, true).catch(() => undefined)
 
         if (typingTimerRef.current) window.clearTimeout(typingTimerRef.current)
         typingTimerRef.current = window.setTimeout(() => {
-            sendTypingSignal(activeChatId, resolvedHandle, false).catch(() => undefined)
+            sendTypingSignal(activeChatId, resolvedUserId, false).catch(() => undefined)
         }, 1600)
     }
 
@@ -512,19 +558,23 @@ export default function ZynqChatUI() {
         if (next) updateHandle(next)
     }
 
+    function normalizeHandle(value: string): string {
+        return value.replace(/^@/, '').trim().toLowerCase()
+    }
+
     function buildDmChatId(userA: string, userB: string): string {
-        const pair = [userA.trim().toLowerCase(), userB.trim().toLowerCase()].sort()
+        const pair = [normalizeHandle(userA), normalizeHandle(userB)].sort()
         return `dm:${pair[0]}:${pair[1]}`
     }
 
     function handleNewChat() {
         const target = window.prompt('Start chat with GitHub username or handle')
         if (!target) return
-        const chatId = buildDmChatId(resolvedHandle, target)
+        const chatId = buildDmChatId(resolvedUserId, target)
         const exists = chats.some(chat => chat.id === chatId)
         if (!exists) {
             setChats(prev => ([
-                { id: chatId, name: target, kind: 'dm', presence: 'offline' },
+                { id: chatId, name: normalizeHandle(target), kind: 'dm', presence: 'offline' },
                 ...prev
             ]))
         }
