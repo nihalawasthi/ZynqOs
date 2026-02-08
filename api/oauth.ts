@@ -3,7 +3,7 @@
  * Centralizes credential checks and common OAuth patterns
  */
 import { ENV, ERRORS, OAUTH_URLS } from './config'
-import { VercelResponse } from '@vercel/node'
+import type { VercelResponse } from '@vercel/node'
 import { sendValidationError, sendError } from './helpers'
 
 type OAuthProvider = 'google' | 'github'
