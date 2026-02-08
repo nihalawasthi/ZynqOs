@@ -705,14 +705,17 @@ export default function ZynqChatUI() {
         const existing = activeMessages.find(msg => msg.id === messageId)
         if (!existing) return
         const current = existing.reactions || {}
-        const users = current[reaction] || []
-        const hasMine = users.includes(resolvedHandle)
-        const nextUsers = hasMine ? users.filter(user => user !== resolvedHandle) : [...users, resolvedHandle]
-        const nextReactions = { ...current }
-        if (nextUsers.length) {
+        const hasMine = (current[reaction] || []).includes(resolvedHandle)
+        const nextReactions: Record<string, string[]> = {}
+
+        for (const [key, users] of Object.entries(current)) {
+            const filtered = users.filter(user => user !== resolvedHandle)
+            if (filtered.length) nextReactions[key] = filtered
+        }
+
+        if (!hasMine) {
+            const nextUsers = [...(nextReactions[reaction] || []), resolvedHandle]
             nextReactions[reaction] = nextUsers
-        } else {
-            delete nextReactions[reaction]
         }
         const updated = { ...existing, reactions: nextReactions }
         updateMessage(activeChatId, messageId, () => updated)
@@ -872,6 +875,7 @@ export default function ZynqChatUI() {
                         const isDeleted = Boolean(message.deletedAt)
                         const linkPreviews = message.linkPreviews || []
                         const timeLabel = formatMessageTime(message)
+                        const deliveryLabel = isDeleted ? 'deleted' : (message.status || '')
                         return (
                             <div key={message.id} className={`flex ${isMine ? 'justify-end' : 'justify-start'}`}>
                                 <div className={`max-w-[70%] rounded-2xl px-4 py-3 text-sm border group ${isMine ? 'bg-cyan-600/20 border-cyan-500/30' : 'bg-[#131a24] border-[#1f242c]'}`}>
@@ -894,7 +898,7 @@ export default function ZynqChatUI() {
                                             </button>
                                             {openActionMessageId === message.id ? (
                                                 <div
-                                                    className="absolute right-0 mt-2 w-45 rounded-lg border border-[#263040] bg-[#0e1218] shadow-lg text-xs text-slate-200 z-10"
+                                                    className={`absolute mt-2 w-45 rounded-lg border border-[#263040] bg-[#0e1218] shadow-lg text-xs text-slate-200 z-10 ${isMine ? 'right-0' : 'left-0'}`}
                                                     onClick={(event) => event.stopPropagation()}
                                                 >
                                                     <div className="flex gap-0 overflow-x">
@@ -1001,25 +1005,24 @@ export default function ZynqChatUI() {
                                             ))}
                                         </div>
                                     ) : null}
-                                    {!isDeleted && reactionEntries.length ? (
-                                        <div className="flex flex-wrap gap-2 mt-2">
-                                            {reactionEntries.map(([reaction, users]) => (
-                                                <button
-                                                    key={reaction}
-                                                    onClick={() => handleReaction(message.id, reaction)}
-                                                    className={`text-[11px] px-2 py-0.5 rounded-full border ${users.includes('You') ? 'border-cyan-500/50 text-cyan-200' : 'border-[#263040] text-slate-400'}`}
-                                                >
-                                                    {reaction} {users.length}
-                                                </button>
-                                            ))}
-                                        </div>
-                                    ) : null}
-                                    <div className="text-[10px] text-slate-500 mt-2 flex items-center gap-2">
+                                    <div className="text-[10px] text-slate-500 mt-2 flex flex-wrap items-center gap-2">
                                         <span>{timeLabel}</span>
                                         {message.editedAt ? <span>edited</span> : null}
-                                        {message.deletedAt ? <span>deleted</span> : null}
                                         {message.pinned ? <span>pinned</span> : null}
-                                        {isMine && message.status ? <span className="uppercase">{message.status}</span> : null}
+                                        {deliveryLabel ? <span className="uppercase">{deliveryLabel}</span> : null}
+                                        {!isDeleted && reactionEntries.length ? (
+                                            <div className="flex flex-wrap gap-2">
+                                                {reactionEntries.map(([reaction, users]) => (
+                                                    <button
+                                                        key={reaction}
+                                                        onClick={() => handleReaction(message.id, reaction)}
+                                                        className={`text-[11px] px-2 py-0.5 rounded-full border ${users.includes('You') ? 'border-cyan-500/50 text-cyan-200' : 'border-[#263040] text-slate-400'}`}
+                                                    >
+                                                        {reaction} {users.length}
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        ) : null}
                                     </div>
                                 </div>
                             </div>

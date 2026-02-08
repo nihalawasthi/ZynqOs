@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
-import CrossWindowManager, { BrowserWindowData } from '../utils/CrossWindowManager';
+import CrossWindowManager from '../utils/CrossWindowManager';
+import type { BrowserWindowData } from '../utils/CrossWindowManager';
 
 let globalWindowManager: CrossWindowManager | null = null;
 

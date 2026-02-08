@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react'
 import { writeFile, readFile, readdir } from '../vfs/fs'
-import { getStorageStatus, disconnectStorage, type StorageStatus } from '../auth/storage'
+import { getStorageStatus, disconnectStorage, clearStatusCache, type StorageStatus } from '../auth/storage'
 import { isTextFile } from '../vfs/fileTypes'
 import { uploadFiles } from '../utils/fileUpload'
 import { getInstalledPackages, executePackage } from '../packages/manager'
@@ -182,11 +182,22 @@ export default function StartMenu() {
                 setCachedProfile(profileData)
             })
         }
+        const onAuthRequired = () => {
+            clearStatusCache()
+            setStorageStatus({ connected: false, authenticated: false })
+            setProfile({})
+            clearCachedProfile()
+            setImportStatus('✗ GitHub session expired')
+            setTimeout(() => setImportStatus(''), 3000)
+        }
+
         window.addEventListener('zynqos:auth-initialized', onAuthInitialized as EventListener)
         window.addEventListener('zynqos:storage-connected', onConnected as EventListener)
+        window.addEventListener('microos:auth-required', onAuthRequired as EventListener)
         return () => {
             window.removeEventListener('zynqos:auth-initialized', onAuthInitialized as EventListener)
             window.removeEventListener('zynqos:storage-connected', onConnected as EventListener)
+            window.removeEventListener('microos:auth-required', onAuthRequired as EventListener)
         }
     }, [])
 

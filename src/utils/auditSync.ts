@@ -6,6 +6,7 @@
 
 import { fetchGitHubFile, uploadGitHubFile, listGitHubFiles } from './githubApi.js'
 import { base64ToString } from './encoding.js'
+import { clearStatusCache } from '../auth/storage.js'
 
 export type AuditEntry = {
   id: string
@@ -129,6 +130,7 @@ class AuditLogSyncService {
 
       this.notifyStatusChange()
     } catch (error) {
+      this.handleAuthExpired(error)
       console.error('[AuditSync] Sync error:', error)
       throw error
     } finally {
@@ -178,6 +180,7 @@ class AuditLogSyncService {
 
       return allLogs
     } catch (error) {
+      this.handleAuthExpired(error)
       console.error('[AuditSync] Pull error:', error)
       return {}
     }
@@ -387,6 +390,14 @@ class AuditLogSyncService {
       const decoded = base64ToString(content)
       return JSON.parse(decoded)
     }
+  }
+
+  private handleAuthExpired(error: unknown) {
+    const message = error instanceof Error ? error.message : String(error)
+    if (!message.toLowerCase().includes('session expired')) return
+
+    clearStatusCache()
+    window.dispatchEvent(new CustomEvent('microos:auth-required', { detail: { provider: 'github' } }))
   }
 }
 
