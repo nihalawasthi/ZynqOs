@@ -103,7 +103,7 @@ export default function SettingsUI() {
     const [autoSyncEnabled, setAutoSyncEnabled] = useState(DEFAULT_SETTINGS.sync.autoSyncEnabled)
     const [autoSyncInterval, setAutoSyncInterval] = useState<number>(DEFAULT_SETTINGS.sync.autoSyncIntervalMinutes)
     const [remotePythonEnabled, setRemotePythonEnabled] = useState(DEFAULT_SETTINGS.remotePython.enabled)
-    const [remotePythonBaseUrl, setRemotePythonBaseUrl] = useState(DEFAULT_SETTINGS.remotePython.baseUrl)
+    const [remotePythonBaseUrl, setRemotePythonBaseUrl] = useState(DEFAULT_SETTINGS.remotePython.baseUrl || 'https://ec2-13-233-236-112.ap-south-1.compute.amazonaws.com:8000')
     const [remotePythonUserId, setRemotePythonUserId] = useState(DEFAULT_SETTINGS.remotePython.userId)
     const [remotePythonOverwriteOnPull, setRemotePythonOverwriteOnPull] = useState(DEFAULT_SETTINGS.remotePython.overwriteOnPull)
     const [remotePythonPullIntervalSec, setRemotePythonPullIntervalSec] = useState(DEFAULT_SETTINGS.remotePython.pullIntervalSec)
