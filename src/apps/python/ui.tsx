@@ -1,5 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { getPyodide, runPython, runPythonFile, cancelPythonExecution, requestPythonCancel } from '../../wasm/pyodideLoader'
+import { getRemotePythonConfig, setRemotePythonEnabled } from '../../remotePython/config'
+import { remoteRun } from '../../remotePython/client'
 import { readFile as readVfsFile, readdir } from '../../vfs/fs'
 
 export default function PythonUI() {
@@ -10,6 +12,9 @@ export default function PythonUI() {
   const [running, setRunning] = useState(false)
   const [timeoutMs, setTimeoutMs] = useState(8000)
   const [stopRequested, setStopRequested] = useState(false)
+  const [remoteEnabled, setRemoteEnabled] = useState(false)
+  const [remoteBaseUrl, setRemoteBaseUrl] = useState('')
+  const [remoteUserId, setRemoteUserId] = useState('')
   const [copied, setCopied] = useState(false)
   const [showFilePicker, setShowFilePicker] = useState(false)
   const [vfsFiles, setVfsFiles] = useState<string[]>([])
@@ -30,12 +35,44 @@ export default function PythonUI() {
     })()
   }, [])
 
+  useEffect(() => {
+    const loadRemote = async () => {
+      try {
+        const cfg = await getRemotePythonConfig()
+        setRemoteEnabled(cfg.enabled)
+        setRemoteBaseUrl(cfg.baseUrl)
+        setRemoteUserId(cfg.userId)
+      } catch {
+        // ignore
+      }
+    }
+
+    loadRemote()
+
+    const handleVfsChange = (e: Event) => {
+      const ev = e as CustomEvent
+      const detail = ev.detail || {}
+      if (detail.path === '/settings.json') {
+        loadRemote()
+      }
+    }
+    window.addEventListener('microos:vfs-changed', handleVfsChange as EventListener)
+    return () => window.removeEventListener('microos:vfs-changed', handleVfsChange as EventListener)
+  }, [])
+
   async function handleRunCode() {
     setRunning(true)
     setStopRequested(false)
     let streamedOutput = ''
     setOutput('')
     try {
+      if (remoteEnabled) {
+        const result = await remoteRun(code, [], Math.ceil(timeoutMs / 1000))
+        const combined = `${result.stdout || ''}${result.stderr || ''}`
+        setOutput(combined || '(no output)')
+        return
+      }
+
       const result = await runPython(code, timeoutMs, (chunk, stream) => {
         const line = chunk === '' ? '\n' : chunk + '\n'
         streamedOutput += line
@@ -77,6 +114,18 @@ export default function PythonUI() {
         setOutput('')
         return
       }
+      if (remoteEnabled) {
+        const content = await readVfsFile(scriptPath)
+        if (content === undefined) {
+          throw new Error(`File not found: ${scriptPath}`)
+        }
+        const codeText = content instanceof Uint8Array ? new TextDecoder().decode(content) : String(content)
+        const result = await remoteRun(codeText, [], Math.ceil(timeoutMs / 1000))
+        const combined = `${result.stdout || ''}${result.stderr || ''}`
+        setOutput(combined || '(no output)')
+        return
+      }
+
       let gotStream = false
       const result = await runPythonFile(scriptPath, (chunk, stream) => {
         gotStream = true
@@ -120,6 +169,29 @@ export default function PythonUI() {
             disabled={loading || running}
           >Import</button>
           <div className="flex items-center gap-2">
+            <span className="text-xs text-gray-400">Runtime</span>
+            <button
+              className={`px-2 py-1 text-xs rounded border ${remoteEnabled ? 'bg-blue-700 border-blue-500' : 'bg-[#222] border-[#444]'}`}
+              onClick={async () => {
+                try {
+                  const cfg = await setRemotePythonEnabled(!remoteEnabled)
+                  setRemoteEnabled(cfg.enabled)
+                  setRemoteBaseUrl(cfg.baseUrl)
+                  setRemoteUserId(cfg.userId)
+                } catch (e: any) {
+                  setOutput(`Error: ${String(e)}`)
+                }
+              }}
+              disabled={running}
+            >{remoteEnabled ? 'Remote' : 'Local'}</button>
+            {remoteEnabled && !remoteBaseUrl && (
+              <span className="text-xs text-yellow-400">Set URL in Settings</span>
+            )}
+            {remoteEnabled && remoteUserId && (
+              <span className="text-xs text-gray-400">User: {remoteUserId}</span>
+            )}
+          </div>
+          <div className="flex items-center gap-2">
             <label className="text-xs text-gray-400">Timeout (ms)</label>
             <input
               className="w-24 bg-[#151515] border border-[#333] rounded px-2 py-1 text-sm"
@@ -137,6 +209,10 @@ export default function PythonUI() {
             className={`px-3 py-1 rounded disabled:opacity-50 ${running ? 'bg-red-600' : 'bg-green-600'}`}
             onClick={async () => {
               if (running) {
+                if (remoteEnabled) {
+                  setOutput(prev => prev || 'Remote runtime does not support cancel')
+                  return
+                }
                 setStopRequested(true)
                 try { await requestPythonCancel() } catch {}
                 // Give the worker a moment to return final buffers;

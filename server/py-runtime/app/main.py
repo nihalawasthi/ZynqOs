@@ -1,0 +1,426 @@
+import asyncio
+import json
+import os
+import re
+import tempfile
+from typing import Dict, List, Optional
+
+from fastapi import Depends, FastAPI, Header, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel, Field
+
+APP_TITLE = "ZynqOS Remote Python Runtime"
+DATA_ROOT = os.environ.get("DATA_ROOT", "/data/users")
+API_KEY = os.environ.get("API_KEY", "")
+ALLOWED_ORIGINS = os.environ.get("ALLOWED_ORIGINS", "*")
+
+USER_ID_RE = re.compile(r"^[a-zA-Z0-9_-]{1,64}$")
+
+app = FastAPI(title=APP_TITLE)
+
+allowed_origins = [o.strip() for o in ALLOWED_ORIGINS.split(",") if o.strip()]
+if not allowed_origins:
+    allowed_origins = ["*"]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=allowed_origins,
+    allow_credentials=False,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+_user_locks: Dict[str, asyncio.Lock] = {}
+
+
+def _get_user_lock(user_id: str) -> asyncio.Lock:
+    lock = _user_locks.get(user_id)
+    if lock is None:
+        lock = asyncio.Lock()
+        _user_locks[user_id] = lock
+    return lock
+
+
+def _normalize_user_id(user_id: str) -> str:
+    if not USER_ID_RE.match(user_id):
+        raise HTTPException(status_code=400, detail="Invalid user id")
+    return user_id
+
+
+def _get_user_dirs(user_id: str) -> Dict[str, str]:
+    root = os.path.join(DATA_ROOT, user_id)
+    home = os.path.join(root, "home")
+    venv = os.path.join(root, "venv")
+    tmp = os.path.join(root, ".tmp")
+    return {"root": root, "home": home, "venv": venv, "tmp": tmp}
+
+
+def _ensure_dirs(paths: Dict[str, str]) -> None:
+    os.makedirs(paths["home"], exist_ok=True)
+    os.makedirs(paths["tmp"], exist_ok=True)
+
+
+def _resolve_home_path(home: str, rel_path: str) -> str:
+    rel = rel_path.strip()
+    if rel.startswith("/"):
+        rel = rel[1:]
+    home_abs = os.path.abspath(home)
+    full = os.path.abspath(os.path.normpath(os.path.join(home_abs, rel)))
+    if os.path.commonpath([home_abs, full]) != home_abs:
+        raise HTTPException(status_code=400, detail="Path escapes home")
+    return full
+
+
+def _get_venv_python(venv_dir: str) -> str:
+    return os.path.join(venv_dir, "bin", "python")
+
+
+async def _ensure_venv(user_id: str, paths: Dict[str, str]) -> str:
+    venv_dir = paths["venv"]
+    venv_python = _get_venv_python(venv_dir)
+    if os.path.exists(venv_python):
+        return venv_python
+
+    lock = _get_user_lock(user_id)
+    async with lock:
+        if os.path.exists(venv_python):
+            return venv_python
+        os.makedirs(paths["root"], exist_ok=True)
+        _ensure_dirs(paths)
+        proc = await asyncio.create_subprocess_exec(
+            "python",
+            "-m",
+            "venv",
+            venv_dir,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        stdout, stderr = await proc.communicate()
+        if proc.returncode != 0:
+            raise HTTPException(
+                status_code=500,
+                detail=f"Failed to create venv: {stderr.decode(errors='ignore')}",
+            )
+    return venv_python
+
+
+def _require_api_key(x_api_key: Optional[str] = Header(default=None)) -> None:
+    if not API_KEY:
+        return
+    if not x_api_key or x_api_key != API_KEY:
+        raise HTTPException(status_code=401, detail="Invalid API key")
+
+
+def _get_user_id(x_user_id: Optional[str] = Header(default=None)) -> str:
+    return _normalize_user_id(x_user_id or "default")
+
+
+class RunRequest(BaseModel):
+    code: str = Field(..., min_length=1)
+    cwd: Optional[str] = None
+    args: List[str] = Field(default_factory=list)
+    timeout_s: float = Field(default=20.0, ge=1.0, le=120.0)
+    env: Dict[str, str] = Field(default_factory=dict)
+
+
+class RunResponse(BaseModel):
+    stdout: str
+    stderr: str
+    exit_code: int
+    timed_out: bool
+
+
+class PipInstallRequest(BaseModel):
+    packages: List[str] = Field(..., min_items=1)
+    upgrade: bool = False
+
+
+class PipListResponse(BaseModel):
+    packages: List[Dict[str, str]]
+
+
+class FsWriteRequest(BaseModel):
+    path: str
+    content: str
+    encoding: str = "utf-8"
+    mkdirs: bool = True
+
+
+class FsReadResponse(BaseModel):
+    path: str
+    content: str
+    encoding: str
+    size: int
+
+
+class FsListResponse(BaseModel):
+    path: str
+    entries: List[Dict[str, str]]
+
+
+class FsDeleteRequest(BaseModel):
+    path: str
+
+
+async def _run_command(
+    cmd: List[str],
+    cwd: str,
+    env: Dict[str, str],
+    timeout_s: float,
+) -> RunResponse:
+    proc = await asyncio.create_subprocess_exec(
+        *cmd,
+        cwd=cwd,
+        env=env,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    timed_out = False
+    try:
+        stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=timeout_s)
+    except asyncio.TimeoutError:
+        timed_out = True
+        proc.kill()
+        stdout, stderr = await proc.communicate()
+    max_bytes = 2 * 1024 * 1024
+    out = (stdout or b"")[:max_bytes].decode(errors="ignore")
+    err = (stderr or b"")[:max_bytes].decode(errors="ignore")
+    return RunResponse(
+        stdout=out,
+        stderr=err,
+        exit_code=proc.returncode if proc.returncode is not None else -1,
+        timed_out=timed_out,
+    )
+
+
+@app.get("/health")
+async def health() -> Dict[str, str]:
+    return {"status": "ok"}
+
+
+@app.get("/v1/python/version")
+async def python_version(
+    _: None = Depends(_require_api_key),
+    user_id: str = Depends(_get_user_id),
+) -> Dict[str, str]:
+    paths = _get_user_dirs(user_id)
+    _ensure_dirs(paths)
+    venv_python = await _ensure_venv(user_id, paths)
+    resp = await _run_command(
+        [venv_python, "-c", "import sys; print(sys.version)"],
+        cwd=paths["home"],
+        env=os.environ.copy(),
+        timeout_s=10.0,
+    )
+    return {"version": resp.stdout.strip()}
+
+
+@app.post("/v1/run", response_model=RunResponse)
+async def run_code(
+    payload: RunRequest,
+    _: None = Depends(_require_api_key),
+    user_id: str = Depends(_get_user_id),
+) -> RunResponse:
+    paths = _get_user_dirs(user_id)
+    _ensure_dirs(paths)
+    venv_python = await _ensure_venv(user_id, paths)
+    cwd = paths["home"]
+    if payload.cwd:
+        cwd = _resolve_home_path(paths["home"], payload.cwd)
+        os.makedirs(cwd, exist_ok=True)
+
+    with tempfile.NamedTemporaryFile(
+        mode="w",
+        suffix=".py",
+        delete=False,
+        dir=paths["tmp"],
+        encoding="utf-8",
+    ) as handle:
+        handle.write(payload.code)
+        script_path = handle.name
+
+    env = os.environ.copy()
+    env.update(payload.env or {})
+    env["PYTHONUNBUFFERED"] = "1"
+
+    try:
+        cmd = [venv_python, script_path] + list(payload.args or [])
+        return await _run_command(cmd, cwd=cwd, env=env, timeout_s=payload.timeout_s)
+    finally:
+        try:
+            os.remove(script_path)
+        except OSError:
+            pass
+
+
+@app.post("/v1/pip/install", response_model=RunResponse)
+async def pip_install(
+    payload: PipInstallRequest,
+    _: None = Depends(_require_api_key),
+    user_id: str = Depends(_get_user_id),
+) -> RunResponse:
+    paths = _get_user_dirs(user_id)
+    _ensure_dirs(paths)
+    venv_python = await _ensure_venv(user_id, paths)
+
+    cmd = [
+        venv_python,
+        "-m",
+        "pip",
+        "install",
+        "--disable-pip-version-check",
+        "--no-input",
+    ]
+    if payload.upgrade:
+        cmd.append("--upgrade")
+    cmd.extend(payload.packages)
+
+    return await _run_command(cmd, cwd=paths["home"], env=os.environ.copy(), timeout_s=120.0)
+
+
+@app.get("/v1/pip/list", response_model=PipListResponse)
+async def pip_list(
+    _: None = Depends(_require_api_key),
+    user_id: str = Depends(_get_user_id),
+) -> PipListResponse:
+    paths = _get_user_dirs(user_id)
+    _ensure_dirs(paths)
+    venv_python = await _ensure_venv(user_id, paths)
+
+    resp = await _run_command(
+        [venv_python, "-m", "pip", "list", "--format=json"],
+        cwd=paths["home"],
+        env=os.environ.copy(),
+        timeout_s=30.0,
+    )
+    try:
+        packages = json.loads(resp.stdout or "[]")
+    except json.JSONDecodeError:
+        packages = []
+    return PipListResponse(packages=packages)
+
+
+@app.post("/v1/fs/write")
+async def fs_write(
+    payload: FsWriteRequest,
+    _: None = Depends(_require_api_key),
+    user_id: str = Depends(_get_user_id),
+) -> Dict[str, str]:
+    paths = _get_user_dirs(user_id)
+    _ensure_dirs(paths)
+    target = _resolve_home_path(paths["home"], payload.path)
+    parent = os.path.dirname(target)
+    if payload.mkdirs:
+        os.makedirs(parent, exist_ok=True)
+
+    if payload.encoding == "base64":
+        import base64
+        try:
+            content = base64.b64decode(payload.content.encode("utf-8"), validate=True)
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=f"Invalid base64: {exc}")
+        with open(target, "wb") as handle:
+            handle.write(content)
+    elif payload.encoding == "utf-8":
+        with open(target, "w", encoding="utf-8") as handle:
+            handle.write(payload.content)
+    else:
+        raise HTTPException(status_code=400, detail="Unsupported encoding")
+
+    return {"status": "ok"}
+
+
+@app.get("/v1/fs/read", response_model=FsReadResponse)
+async def fs_read(
+    path: str,
+    encoding: str = "utf-8",
+    _: None = Depends(_require_api_key),
+    user_id: str = Depends(_get_user_id),
+) -> FsReadResponse:
+    paths = _get_user_dirs(user_id)
+    _ensure_dirs(paths)
+    target = _resolve_home_path(paths["home"], path)
+
+    if not os.path.exists(target):
+        raise HTTPException(status_code=404, detail="File not found")
+
+    if encoding == "base64":
+        import base64
+        with open(target, "rb") as handle:
+            raw = handle.read()
+        return FsReadResponse(
+            path=path,
+            content=base64.b64encode(raw).decode("utf-8"),
+            encoding="base64",
+            size=len(raw),
+        )
+
+    if encoding != "utf-8":
+        raise HTTPException(status_code=400, detail="Unsupported encoding")
+
+    with open(target, "r", encoding="utf-8", errors="ignore") as handle:
+        data = handle.read()
+    return FsReadResponse(path=path, content=data, encoding="utf-8", size=len(data))
+
+
+@app.get("/v1/fs/list", response_model=FsListResponse)
+async def fs_list(
+    path: str = "",
+    _: None = Depends(_require_api_key),
+    user_id: str = Depends(_get_user_id),
+) -> FsListResponse:
+    paths = _get_user_dirs(user_id)
+    _ensure_dirs(paths)
+    target = _resolve_home_path(paths["home"], path)
+
+    if not os.path.exists(target):
+        raise HTTPException(status_code=404, detail="Path not found")
+
+    entries: List[Dict[str, str]] = []
+    if os.path.isfile(target):
+        entries.append({
+            "name": os.path.basename(target),
+            "type": "file",
+            "size": str(os.path.getsize(target)),
+        })
+    else:
+        for name in sorted(os.listdir(target)):
+            full = os.path.join(target, name)
+            entry_type = "dir" if os.path.isdir(full) else "file"
+            size = str(os.path.getsize(full)) if entry_type == "file" else "0"
+            entries.append({"name": name, "type": entry_type, "size": size})
+
+    return FsListResponse(path=path, entries=entries)
+
+
+@app.post("/v1/fs/delete")
+async def fs_delete(
+    payload: FsDeleteRequest,
+    _: None = Depends(_require_api_key),
+    user_id: str = Depends(_get_user_id),
+) -> Dict[str, str]:
+    paths = _get_user_dirs(user_id)
+    _ensure_dirs(paths)
+    target = _resolve_home_path(paths["home"], payload.path)
+
+    if not os.path.exists(target):
+        return {"status": "missing"}
+    if os.path.isdir(target):
+        for root, dirs, files in os.walk(target, topdown=False):
+            for fname in files:
+                try:
+                    os.remove(os.path.join(root, fname))
+                except OSError:
+                    pass
+            for dname in dirs:
+                try:
+                    os.rmdir(os.path.join(root, dname))
+                except OSError:
+                    pass
+        try:
+            os.rmdir(target)
+        except OSError:
+            pass
+    else:
+        os.remove(target)
+    return {"status": "ok"}

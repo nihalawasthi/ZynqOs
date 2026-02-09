@@ -47,6 +47,7 @@ import { bootstrapAuthRedirect } from './auth/init'
 import { getStorageStatus } from './auth/storage'
 import { autoRefreshAuth } from './auth/quietAuth'
 import { auditSync } from './utils/auditSync'
+import { initRemotePythonSync } from './remotePython/sync'
 
 // Apply saved wallpaper on load
 function applySavedWallpaper() {
@@ -76,6 +77,7 @@ const MIN_LOADER_MS = 5000
 async function bootstrap(report: (msg: string) => void) {
   report('Booting ZynqOS core')
   await initializeVFS()
+  initRemotePythonSync().catch((e) => console.warn('[RemotePython] Sync init failed:', e))
 
   report('Syncing auth and session')
   await bootstrapAuthRedirect()

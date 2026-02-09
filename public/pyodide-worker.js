@@ -90,6 +90,19 @@ finally:
   }
 }
 
+function formatInstallError(name, err) {
+  const message = String(err && err.message ? err.message : err);
+  if (message.includes("Can't find a pure Python 3 wheel")) {
+    return (
+      `Cannot install ${name} in Pyodide. ` +
+      `This environment only supports pure-Python wheels or Pyodide-built packages, ` +
+      `and ${name} requires native binaries. ` +
+      `See https://pyodide.org/en/stable/usage/faq.html#why-can-t-micropip-find-a-pure-python-wheel-for-a-package`
+    );
+  }
+  return message;
+}
+
 async function installPackage(name) {
   const p = await ensurePyodide();
   try {
@@ -97,7 +110,7 @@ async function installPackage(name) {
     await p.runPythonAsync(`import micropip; await micropip.install(${JSON.stringify(name)})`);
     return { ok: true, message: `Successfully installed ${name}` };
   } catch (e) {
-    return { ok: false, error: String(e && e.message ? e.message : e) };
+    return { ok: false, error: formatInstallError(name, e) };
   }
 }
 

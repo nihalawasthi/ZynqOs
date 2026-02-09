@@ -53,6 +53,7 @@ export default function TerminalWasi(_: Props) {
   const bashSessionRef = useRef<InteractiveBashSession | null>(null)
   const inBashModeRef = useRef(false)
   const inPythonModeRef = useRef(false)
+  const pythonRemoteModeRef = useRef(false)
   const wasmerReadyRef = useRef(false)
 
   const username = 'nihal'
@@ -68,6 +69,7 @@ export default function TerminalWasi(_: Props) {
     'ls', 'cat', 'mkdir', 'rm', 'touch', 'upload', 'clear', 'help',
     'cd', 'pwd', 'echo', 'whoami', 'date', 'uname', 'tree', 'run',
     'bash', 'sh', 'bash-status', 'coreutils',
+    'remote-python',
     // Coreutils (available via Wasmer)
     'head', 'tail', 'wc', 'sort', 'uniq', 'cut', 'tr', 'tee',
     'cp', 'mv', 'ln', 'stat', 'basename', 'dirname', 'seq', 'env', 'sleep',
@@ -417,6 +419,7 @@ export default function TerminalWasi(_: Props) {
       writeLine(term, '  python -c "print(\'Hello\')"      # execute Python code')
       writeLine(term, '  pip install <package>           # install Python package')
       writeLine(term, '  pip list                        # list installed packages')
+      writeLine(term, '  remote-python [on|off|status]   # toggle remote runtime')
       writeLine(term, '')
       writeLine(term, '\x1b[1;36mApps:\x1b[0m')
       writeLine(term, '  Launch by name: files (alias: zynqpad) | terminal | python | calculator | store | wednesday')
@@ -931,13 +934,58 @@ export default function TerminalWasi(_: Props) {
       }
     } else if (c === 'clear') {
       term.clear()
+    } else if (c === 'remote-python') {
+      const args = parts.slice(1)
+      try {
+        const { getRemotePythonConfig, setRemotePythonEnabled } = await import('../../remotePython/config')
+        const current = await getRemotePythonConfig()
+        const action = (args[0] || 'status').toLowerCase()
+
+        if (action === 'on' || action === 'enable') {
+          await setRemotePythonEnabled(true)
+          writeLine(term, 'Remote Python enabled')
+        } else if (action === 'off' || action === 'disable') {
+          await setRemotePythonEnabled(false)
+          writeLine(term, 'Remote Python disabled')
+        } else if (action === 'toggle') {
+          await setRemotePythonEnabled(!current.enabled)
+          writeLine(term, `Remote Python ${!current.enabled ? 'enabled' : 'disabled'}`)
+        } else if (action === 'status') {
+          const { getRemotePythonSyncStatus } = await import('../../remotePython/sync')
+          const syncStatus = await getRemotePythonSyncStatus()
+          const status = current.enabled ? 'enabled' : 'disabled'
+          writeLine(term, `Remote Python: ${status}`)
+          if (current.baseUrl) writeLine(term, `  URL: ${current.baseUrl}`)
+          if (current.userId) writeLine(term, `  User: ${current.userId}`)
+          if (syncStatus.lastPullAt) {
+            writeLine(term, `  Last pull: ${new Date(syncStatus.lastPullAt).toLocaleString()}`)
+          } else {
+            writeLine(term, '  Last pull: never')
+          }
+          writeLine(term, `  Conflicts: ${syncStatus.conflictCount}`)
+        } else {
+          writeLine(term, 'Usage: remote-python [on|off|status|toggle]')
+        }
+      } catch (e: any) {
+        writeLine(term, `\x1b[31m${String(e)}\x1b[0m`)
+      }
     } else if (c === 'python' || c === 'python3' || c === 'py') {
       // Python REPL or script execution
       const args = parts.slice(1)
+      const { getRemotePythonConfig } = await import('../../remotePython/config')
+      const remoteConfig = await getRemotePythonConfig()
+      const remoteEnabled = remoteConfig.enabled && !!remoteConfig.baseUrl
       
       if (args.length === 0) {
         // Interactive REPL
         writeLine(term, '\x1b[1;33mPython REPL - Enter Python code (type "exit()" to quit)\x1b[0m')
+        if (remoteEnabled) {
+          writeLine(term, '\x1b[33mRemote runtime enabled (stateless REPL)\x1b[0m')
+          pythonRemoteModeRef.current = true
+          inPythonModeRef.current = true
+          term.write('\r\n>>> ')
+          return
+        }
         writeLine(term, 'Loading Pyodide...')
         
         try {
@@ -947,9 +995,35 @@ export default function TerminalWasi(_: Props) {
           
           // Enter Python REPL mode
           inPythonModeRef.current = true
+          pythonRemoteModeRef.current = false
           term.write('\r\n>>> ')
         } catch (e: any) {
           writeLine(term, `\x1b[31mError loading Python: ${String(e)}\x1b[0m`)
+        }
+      } else if (['-V', '--version', '-version', '-v'].includes(args[0])) {
+        // Show Python version (Pyodide)
+        if (remoteEnabled) {
+          try {
+            const { remotePythonVersion } = await import('../../remotePython/client')
+            const version = await remotePythonVersion()
+            writeLine(term, version || 'Remote Python available')
+          } catch (e: any) {
+            writeLine(term, `\x1b[31m${String(e)}\x1b[0m`)
+          }
+          return
+        }
+
+        writeLine(term, 'Loading Pyodide...')
+
+        try {
+          const { getPyodide, runPython } = await import('../../wasm/pyodideLoader')
+          await getPyodide()
+          const result = await runPython('import sys; print(sys.version)')
+          result.split('\n').forEach(line => {
+            if (line) writeLine(term, line)
+          })
+        } catch (e: any) {
+          writeLine(term, `\x1b[31m${String(e)}\x1b[0m`)
         }
       } else if (args[0] === '-c' && args.length > 1) {
         // Execute code from command line
@@ -957,14 +1031,21 @@ export default function TerminalWasi(_: Props) {
         writeLine(term, 'Running Python code...')
         
         try {
-          const { runPython } = await import('../../wasm/pyodideLoader')
-          let streamed = false
-          const result = await runPython(code, undefined, (chunk, stream) => {
-            streamed = true
-            chunk.split('\n').forEach(line => writeLine(term, line))
-          })
-          if (!streamed && result) {
-            result.split('\n').forEach(line => writeLine(term, line))
+          if (remoteEnabled) {
+            const { remoteRun } = await import('../../remotePython/client')
+            const result = await remoteRun(code)
+            if (result.stdout) result.stdout.split('\n').forEach(line => writeLine(term, line))
+            if (result.stderr) result.stderr.split('\n').forEach(line => writeLine(term, `\x1b[31m${line}\x1b[0m`))
+          } else {
+            const { runPython } = await import('../../wasm/pyodideLoader')
+            let streamed = false
+            const result = await runPython(code, undefined, (chunk, stream) => {
+              streamed = true
+              chunk.split('\n').forEach(line => writeLine(term, line))
+            })
+            if (!streamed && result) {
+              result.split('\n').forEach(line => writeLine(term, line))
+            }
           }
         } catch (e: any) {
           writeLine(term, `\x1b[31m${String(e)}\x1b[0m`)
@@ -977,14 +1058,27 @@ export default function TerminalWasi(_: Props) {
         writeLine(term, `Running ${filePath}...`)
         
         try {
-          const { runPythonFile } = await import('../../wasm/pyodideLoader')
-          let streamed = false
-          const result = await runPythonFile(filePath, (chunk, stream) => {
-            streamed = true
-            chunk.split('\n').forEach(line => writeLine(term, line))
-          })
-          if (!streamed && result) {
-            result.split('\n').forEach(line => writeLine(term, line))
+          if (remoteEnabled) {
+            const { readFile: readVfsFile } = await import('../../vfs/fs')
+            const { remoteRun } = await import('../../remotePython/client')
+            const content = await readVfsFile(filePath)
+            if (content === undefined) {
+              throw new Error(`File not found: ${filePath}`)
+            }
+            const code = content instanceof Uint8Array ? new TextDecoder().decode(content) : String(content)
+            const result = await remoteRun(code)
+            if (result.stdout) result.stdout.split('\n').forEach(line => writeLine(term, line))
+            if (result.stderr) result.stderr.split('\n').forEach(line => writeLine(term, `\x1b[31m${line}\x1b[0m`))
+          } else {
+            const { runPythonFile } = await import('../../wasm/pyodideLoader')
+            let streamed = false
+            const result = await runPythonFile(filePath, (chunk, stream) => {
+              streamed = true
+              chunk.split('\n').forEach(line => writeLine(term, line))
+            })
+            if (!streamed && result) {
+              result.split('\n').forEach(line => writeLine(term, line))
+            }
           }
         } catch (e: any) {
           writeLine(term, `\x1b[31m${String(e)}\x1b[0m`)
@@ -1009,15 +1103,25 @@ export default function TerminalWasi(_: Props) {
     } else if (c === 'pip' || c === 'pip3') {
       // Package installation
       const args = parts.slice(1)
+      const { getRemotePythonConfig } = await import('../../remotePython/config')
+      const remoteConfig = await getRemotePythonConfig()
+      const remoteEnabled = remoteConfig.enabled && !!remoteConfig.baseUrl
       
       if (args[0] === 'install' && args.length > 1) {
         const packageName = args[1]
-        writeLine(term, `Installing ${packageName} via micropip...`)
+        writeLine(term, `Installing ${packageName} via ${remoteEnabled ? 'remote pip' : 'micropip'}...`)
         
         try {
-          const { installPackage } = await import('../../wasm/pyodideLoader')
-          const result = await installPackage(packageName)
-          writeLine(term, result)
+          if (remoteEnabled) {
+            const { remotePipInstall } = await import('../../remotePython/client')
+            const result = await remotePipInstall([packageName])
+            if (result.stdout) result.stdout.split('\n').forEach(line => writeLine(term, line))
+            if (result.stderr) result.stderr.split('\n').forEach(line => writeLine(term, `\x1b[31m${line}\x1b[0m`))
+          } else {
+            const { installPackage } = await import('../../wasm/pyodideLoader')
+            const result = await installPackage(packageName)
+            writeLine(term, result)
+          }
         } catch (e: any) {
           writeLine(term, `\x1b[31m${String(e)}\x1b[0m`)
         }
@@ -1025,9 +1129,15 @@ export default function TerminalWasi(_: Props) {
         writeLine(term, 'Installed Python packages:')
         
         try {
-          const { listPackages } = await import('../../wasm/pyodideLoader')
-          const packages = await listPackages()
-          packages.forEach(pkg => writeLine(term, `  ${pkg}`))
+          if (remoteEnabled) {
+            const { remotePipList } = await import('../../remotePython/client')
+            const result = await remotePipList()
+            result.packages.forEach(pkg => writeLine(term, `  ${pkg.name}==${pkg.version}`))
+          } else {
+            const { listPackages } = await import('../../wasm/pyodideLoader')
+            const packages = await listPackages()
+            packages.forEach(pkg => writeLine(term, `  ${pkg}`))
+          }
         } catch (e: any) {
           writeLine(term, `\x1b[31m${String(e)}\x1b[0m`)
         }
@@ -1498,6 +1608,7 @@ export default function TerminalWasi(_: Props) {
         if (inPythonModeRef.current) {
           if (line.trim() === 'exit()' || line.trim() === 'quit()') {
             inPythonModeRef.current = false
+            pythonRemoteModeRef.current = false
             writeLine(term, 'Exiting Python REPL...')
             currentLineRef.current = ''
             writePrompt(term)
@@ -1506,14 +1617,21 @@ export default function TerminalWasi(_: Props) {
           
           if (line.trim()) {
             try {
-              const { runPython } = await import('../../wasm/pyodideLoader')
-              let streamed = false
-              const result = await runPython(line, undefined, (chunk, stream) => {
-                streamed = true
-                chunk.split('\n').forEach(l => writeLine(term, l))
-              })
-              if (!streamed && result && result !== '(no output)') {
-                result.split('\n').forEach(l => writeLine(term, l))
+              if (pythonRemoteModeRef.current) {
+                const { remoteRun } = await import('../../remotePython/client')
+                const result = await remoteRun(line)
+                if (result.stdout) result.stdout.split('\n').forEach(l => writeLine(term, l))
+                if (result.stderr) result.stderr.split('\n').forEach(l => writeLine(term, `\x1b[31m${l}\x1b[0m`))
+              } else {
+                const { runPython } = await import('../../wasm/pyodideLoader')
+                let streamed = false
+                const result = await runPython(line, undefined, (chunk, stream) => {
+                  streamed = true
+                  chunk.split('\n').forEach(l => writeLine(term, l))
+                })
+                if (!streamed && result && result !== '(no output)') {
+                  result.split('\n').forEach(l => writeLine(term, l))
+                }
               }
             } catch (e: any) {
               writeLine(term, `\x1b[31m${String(e)}\x1b[0m`)

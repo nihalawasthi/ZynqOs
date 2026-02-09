@@ -1,5 +1,5 @@
 import type { PyodideInterface } from 'pyodide'
-import { readFile } from '../vfs/fs'
+import { readFile, writeFile } from '../vfs/fs'
 
 let worker: Worker | null = null
 let readyPromise: Promise<void> | null = null
@@ -14,6 +14,52 @@ type PendingReq = {
 }
 const pending = new Map<number, PendingReq>()
 const DEFAULT_TIMEOUT_MS = 10000
+const INSTALLED_PACKAGES_PATH = '/.python/installed.json'
+let restorePromise: Promise<void> | null = null
+
+async function readInstalledPackagesFromVfs(): Promise<string[]> {
+  try {
+    const content = await readFile(INSTALLED_PACKAGES_PATH)
+    if (!content) return []
+    const text = content instanceof Uint8Array
+      ? new TextDecoder('utf-8', { fatal: false }).decode(content)
+      : String(content)
+    const parsed = JSON.parse(text)
+    if (!Array.isArray(parsed)) return []
+    const normalized = parsed.map(v => String(v).trim()).filter(Boolean)
+    return Array.from(new Set(normalized))
+  } catch {
+    return []
+  }
+}
+
+async function writeInstalledPackagesToVfs(packages: string[]): Promise<void> {
+  const unique = Array.from(new Set(packages.map(v => String(v).trim()).filter(Boolean)))
+  await writeFile(INSTALLED_PACKAGES_PATH, JSON.stringify(unique))
+}
+
+async function rememberInstalledPackage(name: string): Promise<void> {
+  const list = await readInstalledPackagesFromVfs()
+  if (list.includes(name)) return
+  list.push(name)
+  await writeInstalledPackagesToVfs(list)
+}
+
+async function restoreInstalledPackages(): Promise<void> {
+  if (restorePromise) return restorePromise
+  restorePromise = (async () => {
+    const packages = await readInstalledPackagesFromVfs()
+    if (packages.length === 0) return
+    for (const name of packages) {
+      try {
+        await callWorker({ type: 'install', name }, DEFAULT_TIMEOUT_MS)
+      } catch {
+        // Ignore restore failures; user can reinstall manually.
+      }
+    }
+  })()
+  return restorePromise
+}
 
 function startWorker(): Promise<void> {
   if (readyPromise) return readyPromise
@@ -112,6 +158,7 @@ function callWorker<T=any>(message: any, timeoutMs = DEFAULT_TIMEOUT_MS, onData?
  */
 export async function getPyodide(): Promise<PyodideInterface | any> {
   await startWorker()
+  await restoreInstalledPackages()
   // Return a minimal stub to keep existing call sites happy
   return { worker: true }
 }
@@ -138,7 +185,11 @@ export async function runPython(code: string, timeoutMs?: number, onData?: (chun
  */
 export async function installPackage(packageName: string): Promise<string> {
   const resp: any = await callWorker({ type: 'install', name: packageName }, DEFAULT_TIMEOUT_MS)
-  return resp.ok ? resp.message : `Error installing ${packageName}: ${resp.error || 'failed'}`
+  if (resp.ok) {
+    await rememberInstalledPackage(packageName)
+    return resp.message
+  }
+  return `Error installing ${packageName}: ${resp.error || 'failed'}`
 }
 
 /**

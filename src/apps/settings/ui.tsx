@@ -3,7 +3,7 @@ import { toast } from '../../hooks/use-toast'
 import { getStorageStatus, disconnectStorage, type StorageStatus, connectGitHubRepo } from '../../auth/storage'
 import { githubSync } from '../../storage/githubSync'
 import { auditSync, type AuditEntry as AuditSyncEntry } from '../../utils/auditSync'
-import { readFile, writeFile } from '../../vfs/fs'
+import { readFile, writeFile, removeFile, readdir } from '../../vfs/fs'
 
 type TabType = 'display' | 'storage' | 'security' | 'system' | 'about'
 
@@ -17,6 +17,13 @@ type UserSettings = {
             position: string
             repeat: string
         }
+    }
+    remotePython: {
+        enabled: boolean
+        baseUrl: string
+        userId: string
+        overwriteOnPull: boolean
+        pullIntervalSec: number
     }
     sync: {
         autoSyncEnabled: boolean
@@ -37,6 +44,13 @@ const DEFAULT_SETTINGS: UserSettings = {
             position: 'center',
             repeat: 'no-repeat'
         }
+    },
+    remotePython: {
+        enabled: false,
+        baseUrl: '',
+        userId: '',
+        overwriteOnPull: false,
+        pullIntervalSec: 60
     },
     sync: {
         autoSyncEnabled: false,
@@ -66,6 +80,8 @@ type SyncStatus = {
     pendingChanges: number
 }
 
+const REMOTE_PY_API_KEY_STORAGE = 'zynqos_remote_python_api_key'
+
 export default function SettingsUI() {
     const [settings, setSettings] = useState<UserSettings>(DEFAULT_SETTINGS)
     const [activeTab, setActiveTab] = useState<TabType>('about')
@@ -86,6 +102,15 @@ export default function SettingsUI() {
     })
     const [autoSyncEnabled, setAutoSyncEnabled] = useState(DEFAULT_SETTINGS.sync.autoSyncEnabled)
     const [autoSyncInterval, setAutoSyncInterval] = useState<number>(DEFAULT_SETTINGS.sync.autoSyncIntervalMinutes)
+    const [remotePythonEnabled, setRemotePythonEnabled] = useState(DEFAULT_SETTINGS.remotePython.enabled)
+    const [remotePythonBaseUrl, setRemotePythonBaseUrl] = useState(DEFAULT_SETTINGS.remotePython.baseUrl)
+    const [remotePythonUserId, setRemotePythonUserId] = useState(DEFAULT_SETTINGS.remotePython.userId)
+    const [remotePythonOverwriteOnPull, setRemotePythonOverwriteOnPull] = useState(DEFAULT_SETTINGS.remotePython.overwriteOnPull)
+    const [remotePythonPullIntervalSec, setRemotePythonPullIntervalSec] = useState(DEFAULT_SETTINGS.remotePython.pullIntervalSec)
+    const [remotePythonApiKey, setRemotePythonApiKey] = useState('')
+    const [remoteConflictFiles, setRemoteConflictFiles] = useState<string[]>([])
+    const [remoteConflictLoading, setRemoteConflictLoading] = useState(false)
+    const [remoteConflictError, setRemoteConflictError] = useState<string | null>(null)
     const [auditSyncStatus, setAuditSyncStatus] = useState({
         syncing: false,
         pendingCount: 0,
@@ -94,6 +119,39 @@ export default function SettingsUI() {
     })
     const [showSyncedLogs, setShowSyncedLogs] = useState(false)
     const [syncedAuditEntries, setSyncedAuditEntries] = useState<AuditSyncEntry[]>([])
+
+    const mergeSettings = (loaded: Partial<UserSettings>): UserSettings => ({
+        ...DEFAULT_SETTINGS,
+        ...loaded,
+        display: {
+            ...DEFAULT_SETTINGS.display,
+            ...(loaded.display || {}),
+            wallpaper: {
+                ...DEFAULT_SETTINGS.display.wallpaper,
+                ...(loaded.display?.wallpaper || {})
+            }
+        },
+        remotePython: {
+            ...DEFAULT_SETTINGS.remotePython,
+            ...(loaded.remotePython || {})
+        },
+        sync: {
+            ...DEFAULT_SETTINGS.sync,
+            ...(loaded.sync || {})
+        },
+        audit: {
+            ...DEFAULT_SETTINGS.audit,
+            ...(loaded.audit || {})
+        }
+    })
+
+    const loadRemoteApiKey = () => {
+        try {
+            return localStorage.getItem(REMOTE_PY_API_KEY_STORAGE) || ''
+        } catch {
+            return ''
+        }
+    }
 
     // Save settings to VFS and track for sync
     const saveSettings = async (newSettings: UserSettings) => {
@@ -112,9 +170,10 @@ export default function SettingsUI() {
         try {
             const data = await readFile('settings.json')
             if (data && typeof data === 'string') {
-                const loadedSettings = JSON.parse(data) as UserSettings
-                setSettings(loadedSettings)
-                return loadedSettings
+                const loadedSettings = JSON.parse(data) as Partial<UserSettings>
+                const merged = mergeSettings(loadedSettings)
+                setSettings(merged)
+                return merged
             }
         } catch (error) {
             console.debug('No saved settings found, using defaults')
@@ -128,6 +187,12 @@ export default function SettingsUI() {
             // Initialize autoSync states from loaded settings
             setAutoSyncEnabled(loadedSettings.sync.autoSyncEnabled)
             setAutoSyncInterval(loadedSettings.sync.autoSyncIntervalMinutes)
+            setRemotePythonEnabled(loadedSettings.remotePython.enabled)
+            setRemotePythonBaseUrl(loadedSettings.remotePython.baseUrl)
+            setRemotePythonUserId(loadedSettings.remotePython.userId)
+            setRemotePythonOverwriteOnPull(loadedSettings.remotePython.overwriteOnPull)
+            setRemotePythonPullIntervalSec(loadedSettings.remotePython.pullIntervalSec)
+            setRemotePythonApiKey(loadRemoteApiKey())
             
             // Apply wallpaper from settings
             const root = document.querySelector('.h-screen')
@@ -262,6 +327,24 @@ export default function SettingsUI() {
             setAuditSyncStatus(status)
         }
     }, [activeTab])
+
+    useEffect(() => {
+        if (activeTab !== 'system') return
+        refreshRemoteConflicts()
+    }, [activeTab])
+
+    useEffect(() => {
+        const handleRemoteConflictUpdate = (e: Event) => {
+            const ev = e as CustomEvent
+            const detail = ev.detail || {}
+            const path = String(detail.path || '')
+            if (path.startsWith('/home/') && path.includes('.remote-')) {
+                refreshRemoteConflicts()
+            }
+        }
+        window.addEventListener('microos:vfs-changed', handleRemoteConflictUpdate as EventListener)
+        return () => window.removeEventListener('microos:vfs-changed', handleRemoteConflictUpdate as EventListener)
+    }, [])
 
     // Listen for audit sync status changes
     useEffect(() => {
@@ -409,6 +492,94 @@ export default function SettingsUI() {
         }
     }
 
+    const normalizeRemoteBaseUrl = (value: string) => {
+        const trimmed = value.trim().replace(/\/+$/, '')
+        if (!trimmed) return ''
+        if (/^https?:\/\//i.test(trimmed)) return trimmed
+        return `http://${trimmed}`
+    }
+
+    const handleSaveRemotePython = async () => {
+        try {
+            const normalizedBaseUrl = normalizeRemoteBaseUrl(remotePythonBaseUrl)
+            const cleanedUserId = remotePythonUserId.trim()
+            const normalizedInterval = Math.max(15, Math.min(3600, Number(remotePythonPullIntervalSec) || 60))
+            const newSettings: UserSettings = {
+                ...settings,
+                remotePython: {
+                    enabled: remotePythonEnabled,
+                    baseUrl: normalizedBaseUrl,
+                    userId: cleanedUserId,
+                    overwriteOnPull: remotePythonOverwriteOnPull,
+                    pullIntervalSec: normalizedInterval
+                }
+            }
+            await saveSettings(newSettings)
+            if (remotePythonApiKey) {
+                localStorage.setItem(REMOTE_PY_API_KEY_STORAGE, remotePythonApiKey)
+            } else {
+                localStorage.removeItem(REMOTE_PY_API_KEY_STORAGE)
+            }
+            setRemotePythonBaseUrl(normalizedBaseUrl)
+            setRemotePythonUserId(cleanedUserId)
+            setRemotePythonPullIntervalSec(normalizedInterval)
+            toast({
+                title: 'Saved',
+                description: 'Remote Python settings updated',
+                variant: 'success'
+            })
+        } catch (e) {
+            console.error('Failed to save remote Python settings', e)
+            toast({
+                title: 'Save failed',
+                description: 'Could not update Remote Python settings',
+                variant: 'destructive'
+            })
+        }
+    }
+
+    const handleTestRemotePython = async () => {
+        const baseUrl = normalizeRemoteBaseUrl(remotePythonBaseUrl)
+        if (!baseUrl) {
+            toast({
+                title: 'Missing URL',
+                description: 'Add the runtime base URL before testing',
+                variant: 'destructive'
+            })
+            return
+        }
+
+        try {
+            const headers: Record<string, string> = {}
+            if (remotePythonApiKey) headers['X-Api-Key'] = remotePythonApiKey
+            if (remotePythonUserId) headers['X-User-Id'] = remotePythonUserId
+
+            const res = await fetch(`${baseUrl}/v1/python/version`, { headers })
+            if (!res.ok) {
+                const text = await res.text()
+                throw new Error(text || `HTTP ${res.status}`)
+            }
+            const contentType = res.headers.get('content-type') || ''
+            if (!contentType.includes('application/json')) {
+                const text = await res.text()
+                throw new Error(text || 'Invalid response from runtime')
+            }
+            const json = await res.json()
+            toast({
+                title: 'Connected',
+                description: json.version ? `Python ${json.version}` : 'Runtime reachable',
+                variant: 'success'
+            })
+        } catch (e) {
+            console.error('Remote Python test failed', e)
+            toast({
+                title: 'Connection failed',
+                description: e instanceof Error ? e.message : 'Unable to reach runtime',
+                variant: 'destructive'
+            })
+        }
+    }
+
     const handleClearCache = async () => {
         const { dismiss } = toast({
             title: 'Clear Cache?',
@@ -494,6 +665,47 @@ export default function SettingsUI() {
     const handleRefreshWallpaper = () => {
         // Force reload the background
         window.location.reload()
+    }
+
+    const refreshRemoteConflicts = async () => {
+        setRemoteConflictLoading(true)
+        setRemoteConflictError(null)
+        try {
+            const keys = await readdir('')
+            const conflicts = keys
+                .filter(k => k.startsWith('/home/') && /\.remote-\d{14}$/.test(k))
+                .sort()
+            setRemoteConflictFiles(conflicts)
+        } catch (e) {
+            console.error('Failed to list remote conflicts', e)
+            setRemoteConflictError('Failed to load conflicts')
+        } finally {
+            setRemoteConflictLoading(false)
+        }
+    }
+
+    const resolveConflictKeepLocal = async (conflictPath: string) => {
+        try {
+            await removeFile(conflictPath)
+            await refreshRemoteConflicts()
+            toast({ title: 'Resolved', description: 'Kept local version', variant: 'success' })
+        } catch (e) {
+            toast({ title: 'Resolve failed', description: 'Could not remove conflict file', variant: 'destructive' })
+        }
+    }
+
+    const resolveConflictUseRemote = async (conflictPath: string) => {
+        try {
+            const content = await readFile(conflictPath)
+            if (content === undefined) throw new Error('Conflict file missing')
+            const basePath = conflictPath.replace(/\.remote-\d{14}$/, '')
+            await writeFile(basePath, content)
+            await removeFile(conflictPath)
+            await refreshRemoteConflicts()
+            toast({ title: 'Resolved', description: 'Remote version applied', variant: 'success' })
+        } catch (e) {
+            toast({ title: 'Resolve failed', description: 'Could not apply remote version', variant: 'destructive' })
+        }
     }
 
     const handleWallpaperUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -1107,6 +1319,166 @@ export default function SettingsUI() {
                     <div className="bg-black/50 rounded p-3 flex items-center justify-between">
                         <span className="text-gray-400">Runtime</span>
                         <span className="text-gray-200">WASI + WebAssembly</span>
+                    </div>
+                </div>
+            </div>
+
+            {/* Remote Python Runtime */}
+            <div className="border border-[#333] rounded-lg p-4 bg-[#1a1a1a]">
+                <h3 className="text-white font-semibold mb-3 flex items-center gap-2">
+                    <i className="fas fa-terminal"></i>
+                    Remote Python Runtime
+                </h3>
+                <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                        <div>
+                            <p className="text-gray-300 text-sm">Enable Remote Runtime</p>
+                            <p className="text-gray-500 text-xs">Optional: only set this if you run your own server-side runtime.</p>
+                        </div>
+                        <button
+                            onClick={() => setRemotePythonEnabled(prev => !prev)}
+                            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                                remotePythonEnabled ? 'bg-blue-600' : 'bg-gray-600'
+                            }`}
+                        >
+                            <span
+                                className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                                    remotePythonEnabled ? 'translate-x-6' : 'translate-x-1'
+                                }`}
+                            />
+                        </button>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        <div>
+                            <label className="text-gray-400 text-xs">Base URL</label>
+                            <input
+                                value={remotePythonBaseUrl}
+                                onChange={(e) => setRemotePythonBaseUrl(e.target.value)}
+                                placeholder="ec2-13-233-236-112.ap-south-1.compute.amazonaws.com:8000"
+                                className="w-full mt-1 bg-[#151515] border border-[#333] rounded px-3 py-2 text-sm text-gray-200"
+                            />
+                            <p className="text-gray-500 text-[11px] mt-1">Leave empty to keep local Pyodide runtime.</p>
+                        </div>
+                        <div>
+                            <label className="text-gray-400 text-xs">User ID</label>
+                            <input
+                                value={remotePythonUserId}
+                                onChange={(e) => setRemotePythonUserId(e.target.value)}
+                                placeholder="nihal"
+                                className="w-full mt-1 bg-[#151515] border border-[#333] rounded px-3 py-2 text-sm text-gray-200"
+                            />
+                            <p className="text-gray-500 text-[11px] mt-1">Used to isolate /home on the remote server.</p>
+                        </div>
+                    </div>
+
+                    <div>
+                        <label className="text-gray-400 text-xs">API Key (stored locally only)</label>
+                        <input
+                            type="password"
+                            value={remotePythonApiKey}
+                            onChange={(e) => setRemotePythonApiKey(e.target.value)}
+                            placeholder="Same as in EC2 .env - If no api key set leave this blank"
+                            className="w-full mt-1 bg-[#151515] border border-[#333] rounded px-3 py-2 text-sm text-gray-200"
+                        />
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        <div className="flex items-center justify-between bg-black/40 border border-[#333] rounded px-3 py-2">
+                            <div>
+                                <p className="text-gray-300 text-sm">Overwrite on Pull</p>
+                                <p className="text-gray-500 text-xs">Replace local files when remote differs.</p>
+                            </div>
+                            <button
+                                onClick={() => setRemotePythonOverwriteOnPull(prev => !prev)}
+                                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                                    remotePythonOverwriteOnPull ? 'bg-blue-600' : 'bg-gray-600'
+                                }`}
+                            >
+                                <span
+                                    className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                                        remotePythonOverwriteOnPull ? 'translate-x-6' : 'translate-x-1'
+                                    }`}
+                                />
+                            </button>
+                        </div>
+                        <div>
+                            <label className="text-gray-400 text-xs">Pull Interval (seconds)</label>
+                            <input
+                                type="number"
+                                min={15}
+                                max={3600}
+                                value={remotePythonPullIntervalSec}
+                                onChange={(e) => {
+                                    const val = Number((e.target as HTMLInputElement).value || 60)
+                                    setRemotePythonPullIntervalSec(Number.isNaN(val) ? 60 : val)
+                                }}
+                                className="w-full mt-1 bg-[#151515] border border-[#333] rounded px-3 py-2 text-sm text-gray-200"
+                            />
+                        </div>
+                    </div>
+
+                    <div className="flex flex-wrap gap-2">
+                        <button
+                            onClick={handleSaveRemotePython}
+                            className="px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded transition"
+                        >
+                            Save Settings
+                        </button>
+                        <button
+                            onClick={handleTestRemotePython}
+                            className="px-3 py-2 bg-gray-700 hover:bg-gray-600 text-white text-sm rounded transition"
+                        >
+                            Test Connection
+                        </button>
+                    </div>
+
+                    <div className="border border-[#333] rounded bg-black/40 p-3">
+                        <div className="flex items-center justify-between mb-2">
+                            <p className="text-gray-300 text-sm">Conflict Viewer</p>
+                            <button
+                                onClick={refreshRemoteConflicts}
+                                className="text-xs text-gray-300 hover:text-white"
+                            >
+                                Refresh
+                            </button>
+                        </div>
+                        {remoteConflictLoading && (
+                            <p className="text-xs text-gray-400">Loading conflicts...</p>
+                        )}
+                        {remoteConflictError && !remoteConflictLoading && (
+                            <p className="text-xs text-red-400">{remoteConflictError}</p>
+                        )}
+                        {!remoteConflictLoading && !remoteConflictError && remoteConflictFiles.length === 0 && (
+                            <p className="text-xs text-gray-500">No conflicts detected.</p>
+                        )}
+                        {!remoteConflictLoading && !remoteConflictError && remoteConflictFiles.length > 0 && (
+                            <div className="space-y-2">
+                                {remoteConflictFiles.map((path) => {
+                                    const basePath = path.replace(/\.remote-\d{14}$/, '')
+                                    return (
+                                        <div key={path} className="bg-[#151515] border border-[#333] rounded px-3 py-2">
+                                            <div className="text-xs text-gray-300 break-all">{path}</div>
+                                            <div className="text-[11px] text-gray-500">Original: {basePath}</div>
+                                            <div className="flex gap-2 mt-2">
+                                                <button
+                                                    onClick={() => resolveConflictUseRemote(path)}
+                                                    className="px-2 py-1 text-xs bg-blue-600 hover:bg-blue-700 text-white rounded"
+                                                >
+                                                    Use Remote
+                                                </button>
+                                                <button
+                                                    onClick={() => resolveConflictKeepLocal(path)}
+                                                    className="px-2 py-1 text-xs bg-gray-700 hover:bg-gray-600 text-white rounded"
+                                                >
+                                                    Keep Local
+                                                </button>
+                                            </div>
+                                        </div>
+                                    )
+                                })}
+                            </div>
+                        )}
                     </div>
                 </div>
             </div>

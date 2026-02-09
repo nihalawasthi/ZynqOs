@@ -1,0 +1,3 @@
+# Ignore server runtime for Vercel deploys
+server/py-runtime/
+server/py-runtime/**
