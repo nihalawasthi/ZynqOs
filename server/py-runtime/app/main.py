@@ -1,7 +1,6 @@
 import asyncio
 import json
 import os
-import re
 import tempfile
 from typing import Dict, List, Optional
 
@@ -13,8 +12,7 @@ APP_TITLE = "ZynqOS Remote Python Runtime"
 DATA_ROOT = os.environ.get("DATA_ROOT", "/data/users")
 API_KEY = os.environ.get("API_KEY", "")
 ALLOWED_ORIGINS = os.environ.get("ALLOWED_ORIGINS", "*")
-
-USER_ID_RE = re.compile(r"^[a-zA-Z0-9_-]{1,64}$")
+DEFAULT_USER_ID = "default"
 
 app = FastAPI(title=APP_TITLE)
 
@@ -30,25 +28,11 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-_user_locks: Dict[str, asyncio.Lock] = {}
+_venv_lock = asyncio.Lock()
 
 
-def _get_user_lock(user_id: str) -> asyncio.Lock:
-    lock = _user_locks.get(user_id)
-    if lock is None:
-        lock = asyncio.Lock()
-        _user_locks[user_id] = lock
-    return lock
-
-
-def _normalize_user_id(user_id: str) -> str:
-    if not USER_ID_RE.match(user_id):
-        raise HTTPException(status_code=400, detail="Invalid user id")
-    return user_id
-
-
-def _get_user_dirs(user_id: str) -> Dict[str, str]:
-    root = os.path.join(DATA_ROOT, user_id)
+def _get_shared_dirs() -> Dict[str, str]:
+    root = os.path.join(DATA_ROOT, DEFAULT_USER_ID)
     home = os.path.join(root, "home")
     venv = os.path.join(root, "venv")
     tmp = os.path.join(root, ".tmp")
@@ -75,14 +59,13 @@ def _get_venv_python(venv_dir: str) -> str:
     return os.path.join(venv_dir, "bin", "python")
 
 
-async def _ensure_venv(user_id: str, paths: Dict[str, str]) -> str:
+async def _ensure_venv(paths: Dict[str, str]) -> str:
     venv_dir = paths["venv"]
     venv_python = _get_venv_python(venv_dir)
     if os.path.exists(venv_python):
         return venv_python
 
-    lock = _get_user_lock(user_id)
-    async with lock:
+    async with _venv_lock:
         if os.path.exists(venv_python):
             return venv_python
         os.makedirs(paths["root"], exist_ok=True)
@@ -110,9 +93,6 @@ def _require_api_key(x_api_key: Optional[str] = Header(default=None)) -> None:
     if not x_api_key or x_api_key != API_KEY:
         raise HTTPException(status_code=401, detail="Invalid API key")
 
-
-def _get_user_id(x_user_id: Optional[str] = Header(default=None)) -> str:
-    return _normalize_user_id(x_user_id or "default")
 
 
 class RunRequest(BaseModel):
@@ -201,11 +181,10 @@ async def health() -> Dict[str, str]:
 @app.get("/v1/python/version")
 async def python_version(
     _: None = Depends(_require_api_key),
-    user_id: str = Depends(_get_user_id),
 ) -> Dict[str, str]:
-    paths = _get_user_dirs(user_id)
+    paths = _get_shared_dirs()
     _ensure_dirs(paths)
-    venv_python = await _ensure_venv(user_id, paths)
+    venv_python = await _ensure_venv(paths)
     resp = await _run_command(
         [venv_python, "-c", "import sys; print(sys.version)"],
         cwd=paths["home"],
@@ -219,11 +198,10 @@ async def python_version(
 async def run_code(
     payload: RunRequest,
     _: None = Depends(_require_api_key),
-    user_id: str = Depends(_get_user_id),
 ) -> RunResponse:
-    paths = _get_user_dirs(user_id)
+    paths = _get_shared_dirs()
     _ensure_dirs(paths)
-    venv_python = await _ensure_venv(user_id, paths)
+    venv_python = await _ensure_venv(paths)
     cwd = paths["home"]
     if payload.cwd:
         cwd = _resolve_home_path(paths["home"], payload.cwd)
@@ -257,11 +235,10 @@ async def run_code(
 async def pip_install(
     payload: PipInstallRequest,
     _: None = Depends(_require_api_key),
-    user_id: str = Depends(_get_user_id),
 ) -> RunResponse:
-    paths = _get_user_dirs(user_id)
+    paths = _get_shared_dirs()
     _ensure_dirs(paths)
-    venv_python = await _ensure_venv(user_id, paths)
+    venv_python = await _ensure_venv(paths)
 
     cmd = [
         venv_python,
@@ -281,11 +258,10 @@ async def pip_install(
 @app.get("/v1/pip/list", response_model=PipListResponse)
 async def pip_list(
     _: None = Depends(_require_api_key),
-    user_id: str = Depends(_get_user_id),
 ) -> PipListResponse:
-    paths = _get_user_dirs(user_id)
+    paths = _get_shared_dirs()
     _ensure_dirs(paths)
-    venv_python = await _ensure_venv(user_id, paths)
+    venv_python = await _ensure_venv(paths)
 
     resp = await _run_command(
         [venv_python, "-m", "pip", "list", "--format=json"],
@@ -304,9 +280,8 @@ async def pip_list(
 async def fs_write(
     payload: FsWriteRequest,
     _: None = Depends(_require_api_key),
-    user_id: str = Depends(_get_user_id),
 ) -> Dict[str, str]:
-    paths = _get_user_dirs(user_id)
+    paths = _get_shared_dirs()
     _ensure_dirs(paths)
     target = _resolve_home_path(paths["home"], payload.path)
     parent = os.path.dirname(target)
@@ -335,9 +310,8 @@ async def fs_read(
     path: str,
     encoding: str = "utf-8",
     _: None = Depends(_require_api_key),
-    user_id: str = Depends(_get_user_id),
 ) -> FsReadResponse:
-    paths = _get_user_dirs(user_id)
+    paths = _get_shared_dirs()
     _ensure_dirs(paths)
     target = _resolve_home_path(paths["home"], path)
 
@@ -367,9 +341,8 @@ async def fs_read(
 async def fs_list(
     path: str = "",
     _: None = Depends(_require_api_key),
-    user_id: str = Depends(_get_user_id),
 ) -> FsListResponse:
-    paths = _get_user_dirs(user_id)
+    paths = _get_shared_dirs()
     _ensure_dirs(paths)
     target = _resolve_home_path(paths["home"], path)
 
@@ -397,9 +370,8 @@ async def fs_list(
 async def fs_delete(
     payload: FsDeleteRequest,
     _: None = Depends(_require_api_key),
-    user_id: str = Depends(_get_user_id),
 ) -> Dict[str, str]:
-    paths = _get_user_dirs(user_id)
+    paths = _get_shared_dirs()
     _ensure_dirs(paths)
     target = _resolve_home_path(paths["home"], payload.path)
 

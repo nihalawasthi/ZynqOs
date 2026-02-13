@@ -1,6 +1,6 @@
 # ZynqOS Remote Python Runtime (FastAPI + Docker)
 
-This service provides a server-side CPython runtime with per-user virtual environments and a persistent `/home` for syncing to the ZynqOS VFS.
+This service provides a server-side CPython runtime with a shared virtual environment and a persistent `/home` for syncing to the ZynqOS VFS.
 
 ## Endpoints (high level)
 
@@ -16,7 +16,7 @@ This service provides a server-side CPython runtime with per-user virtual enviro
 
 ## Auth
 
-If `API_KEY` is set, requests must include `X-Api-Key`. Requests can also include `X-User-Id` to isolate per-user `/home` and `venv`. If omitted, `default` is used.
+If `API_KEY` is set, requests must include `X-Api-Key`.
 
 ## EC2 (t2.micro) deployment
 
@@ -55,12 +55,11 @@ Service will listen on `http://<EC2_IP>:8000`.
 curl -X POST http://localhost:8000/v1/run \
   -H "Content-Type: application/json" \
   -H "X-Api-Key: change-me" \
-  -H "X-User-Id: nihal" \
   -d '{"code":"print(2+2)"}'
 ```
 
 ## Notes
 
-- Each user gets a dedicated virtualenv under `/data/users/<userId>/venv`.
-- Files are stored under `/data/users/<userId>/home` and persist across restarts.
+- The shared virtualenv is stored under `/data/users/default/venv`.
+- Files are stored under `/data/users/default/home` and persist across restarts.
 - This is not a hardened sandbox. For untrusted code, run in locked-down containers or a dedicated sandbox.

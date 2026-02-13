@@ -103,7 +103,7 @@ export default function SettingsUI() {
     const [autoSyncEnabled, setAutoSyncEnabled] = useState(DEFAULT_SETTINGS.sync.autoSyncEnabled)
     const [autoSyncInterval, setAutoSyncInterval] = useState<number>(DEFAULT_SETTINGS.sync.autoSyncIntervalMinutes)
     const [remotePythonEnabled, setRemotePythonEnabled] = useState(DEFAULT_SETTINGS.remotePython.enabled)
-    const [remotePythonBaseUrl, setRemotePythonBaseUrl] = useState(DEFAULT_SETTINGS.remotePython.baseUrl || 'https://ec2-13-233-236-112.ap-south-1.compute.amazonaws.com:8000')
+    const [remotePythonBaseUrl, setRemotePythonBaseUrl] = useState(DEFAULT_SETTINGS.remotePython.baseUrl || 'http://13.233.236.112:8000')
     const [remotePythonUserId, setRemotePythonUserId] = useState(DEFAULT_SETTINGS.remotePython.userId)
     const [remotePythonOverwriteOnPull, setRemotePythonOverwriteOnPull] = useState(DEFAULT_SETTINGS.remotePython.overwriteOnPull)
     const [remotePythonPullIntervalSec, setRemotePythonPullIntervalSec] = useState(DEFAULT_SETTINGS.remotePython.pullIntervalSec)
@@ -1355,7 +1355,7 @@ export default function SettingsUI() {
                             <input
                                 value={remotePythonBaseUrl}
                                 onChange={(e) => setRemotePythonBaseUrl(e.target.value)}
-                                placeholder="ec2-13-233-236-112.ap-south-1.compute.amazonaws.com:8000"
+                                placeholder="ec2-xxx-xxx-xxx-xxx.yy-yyyyy.compute.amazonaws.com:8000"
                                 className="w-full mt-1 bg-[#151515] border border-[#333] rounded px-3 py-2 text-sm text-gray-200"
                             />
                             <p className="text-gray-500 text-[11px] mt-1">Leave empty to keep local Pyodide runtime.</p>
