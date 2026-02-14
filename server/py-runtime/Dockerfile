@@ -19,8 +19,6 @@ RUN apt-get update \
     nodejs \
     npm \
   && npm install -g pnpm \
-  && rm -rf /var/lib/apt/lists/*
-
 COPY requirements.txt /app/requirements.txt
 RUN pip install -r /app/requirements.txt
 

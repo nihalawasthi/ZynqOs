@@ -37,6 +37,7 @@ DEFAULT_ALLOWED_APT_PACKAGES = [
     "git",
     "nodejs",
     "npm",
+    "wireshark",
 ]
 
 
@@ -537,7 +538,8 @@ async def tools_run(
 
     cmd_lower = cmd.lower()
     if cmd_lower not in ALLOWED_TOOLS:
-        raise HTTPException(status_code=403, detail="Command not allowed")
+        allowed_list = ", ".join(sorted(ALLOWED_TOOLS))
+        raise HTTPException(status_code=403, detail=f"Command not allowed. Allowed tools: {allowed_list}")
     if cmd_lower in {"apt", "apt-get"}:
         raise HTTPException(status_code=400, detail="Use /v1/tools/install for apt installs")
 
@@ -569,7 +571,8 @@ async def tools_install(
         if not re.fullmatch(r"[a-z0-9+._-]+", value):
             raise HTTPException(status_code=400, detail=f"Invalid package name: {raw}")
         if value not in ALLOWED_APT_PACKAGES:
-            raise HTTPException(status_code=403, detail=f"Package not allowed: {raw}")
+            allowed_list = ", ".join(sorted(ALLOWED_APT_PACKAGES))
+            raise HTTPException(status_code=403, detail=f"Package not allowed: {raw}. Allowed packages: {allowed_list}")
         packages.append(value)
 
     if not packages:

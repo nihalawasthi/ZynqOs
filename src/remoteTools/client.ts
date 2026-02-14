@@ -37,13 +37,27 @@ function buildHeaders(config: RemotePythonConfig, includeJson = true) {
   return headers
 }
 
+async function handleErrorResponse(res: Response): Promise<string> {
+  const text = await res.text()
+  try {
+    const json = JSON.parse(text)
+    if (json.detail) {
+      return json.detail
+    }
+  } catch {
+    // Not JSON, return as-is
+  }
+  return text || `HTTP ${res.status}`
+}
+
 export async function remoteToolsList(): Promise<ToolsListResponse> {
   const config = await getConfigOrThrow()
   const res = await fetch(`${config.baseUrl}/v1/tools/list`, {
     headers: buildHeaders(config, false)
   })
   if (!res.ok) {
-    throw new Error(await res.text())
+    const detail = await handleErrorResponse(res)
+    throw new Error(detail)
   }
   return res.json()
 }
@@ -63,7 +77,8 @@ export async function remoteToolsRun(command: string, args: string[] = [], optio
     body: JSON.stringify(payload)
   })
   if (!res.ok) {
-    throw new Error(await res.text())
+    const detail = await handleErrorResponse(res)
+    throw new Error(detail)
   }
   return res.json()
 }
@@ -76,7 +91,8 @@ export async function remoteToolsInstall(packages: string[], manager: 'apt' = 'a
     body: JSON.stringify({ manager, packages })
   })
   if (!res.ok) {
-    throw new Error(await res.text())
+    const detail = await handleErrorResponse(res)
+    throw new Error(detail)
   }
   return res.json()
 }
