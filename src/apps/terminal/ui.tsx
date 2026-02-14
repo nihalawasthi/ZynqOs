@@ -70,12 +70,29 @@ export default function TerminalWasi(_: Props) {
     'cd', 'pwd', 'echo', 'whoami', 'date', 'uname', 'tree', 'run',
     'bash', 'sh', 'bash-status', 'coreutils',
     'remote-python',
+    'remote-tools',
+    'curl', 'nmap', 'dig', 'nslookup', 'traceroute', 'git', 'npm', 'pnpm', 'apt',
     // Coreutils (available via Wasmer)
     'head', 'tail', 'wc', 'sort', 'uniq', 'cut', 'tr', 'tee',
     'cp', 'mv', 'ln', 'stat', 'basename', 'dirname', 'seq', 'env', 'sleep',
     // JS-implemented commands
     'grep', 'sed', 'awk', 'find', 'wget', 'zip', 'unzip',
   ]
+
+  const remoteToolCommands = new Set([
+    'curl',
+    'wget',
+    'nmap',
+    'dig',
+    'nslookup',
+    'traceroute',
+    'git',
+    'node',
+    'npm',
+    'pnpm',
+    'apt',
+    'apt-get',
+  ])
 
   // Helper functions for VFS
   function normalizePathForVfs(p: string): string {
@@ -85,6 +102,13 @@ export default function TerminalWasi(_: Props) {
     if (s.startsWith('/')) s = s.slice(1)
     if (s.endsWith('/')) s = s.slice(0, -1)
     return s
+  }
+
+  function normalizeRemoteCwd(dir: string): string {
+    if (!dir || dir === '~' || dir === '/') return ''
+    if (dir.startsWith('~/')) return dir.slice(2)
+    if (dir.startsWith('/')) return dir.slice(1)
+    return dir
   }
 
   function parentDir(normPath: string): string {
@@ -378,6 +402,49 @@ export default function TerminalWasi(_: Props) {
     if (!trimmed) return
     const parts = parseCommandLine(trimmed)
     const c = parts[0]
+    const args = parts.slice(1)
+
+    if (remoteToolCommands.has(c)) {
+      try {
+        const { getRemotePythonConfig } = await import('../../remotePython/config')
+        const remoteConfig = await getRemotePythonConfig()
+        const remoteEnabled = remoteConfig.enabled && !!remoteConfig.baseUrl
+
+        if (remoteEnabled) {
+          const { remoteToolsInstall, remoteToolsRun } = await import('../../remoteTools/client')
+          if (c === 'apt' || c === 'apt-get') {
+            if (args[0] === 'install' && args.length > 1) {
+              const packages = args.slice(1).filter((pkg) => !pkg.startsWith('-'))
+              if (packages.length === 0) {
+                writeLine(term, 'Usage: apt install <package> [package...]')
+                return
+              }
+              writeLine(term, `Installing ${packages.join(', ')} on remote runtime...`)
+              const result = await remoteToolsInstall(packages)
+              if (result.stdout) result.stdout.split('\n').forEach(line => writeLine(term, line))
+              if (result.stderr) result.stderr.split('\n').forEach(line => writeLine(term, `\x1b[31m${line}\x1b[0m`))
+            } else {
+              writeLine(term, 'Usage: apt install <package> [package...]')
+            }
+            return
+          }
+
+          const cwd = normalizeRemoteCwd(currentDirRef.current)
+          const result = await remoteToolsRun(c, args, { cwd: cwd || undefined })
+          if (result.stdout) result.stdout.split('\n').forEach(line => writeLine(term, line))
+          if (result.stderr) result.stderr.split('\n').forEach(line => writeLine(term, `\x1b[31m${line}\x1b[0m`))
+          return
+        }
+
+        if (c !== 'wget') {
+          writeLine(term, `${c}: remote tools disabled (use: remote-python on)`)
+          return
+        }
+      } catch (e: any) {
+        writeLine(term, `\x1b[31m${String(e)}\x1b[0m`)
+        return
+      }
+    }
 
     if (c === 'help') {
       writeLine(term, 'ZynqOS Terminal - Available Commands:')
@@ -420,6 +487,17 @@ export default function TerminalWasi(_: Props) {
       writeLine(term, '  pip install <package>           # install Python package')
       writeLine(term, '  pip list                        # list installed packages')
       writeLine(term, '  remote-python [on|off|status]   # toggle remote runtime')
+      writeLine(term, '')
+      writeLine(term, '\x1b[1;36mRemote Tools (EC2):\x1b[0m')
+      writeLine(term, '  curl <url>                      # fetch URL on remote runtime')
+      writeLine(term, '  wget <url>                      # download via remote runtime')
+      writeLine(term, '  nmap <args>                     # network scan (remote)')
+      writeLine(term, '  dig|nslookup <host>             # DNS lookup (remote)')
+      writeLine(term, '  traceroute <host>               # trace route (remote)')
+      writeLine(term, '  git <args>                      # Git tooling (remote)')
+      writeLine(term, '  npm|pnpm <args>                 # Node package managers (remote)')
+      writeLine(term, '  apt install <pkg>               # install allowlisted tools (remote)')
+      writeLine(term, '  remote-tools [status|list]      # show remote tool status')
       writeLine(term, '')
       writeLine(term, '\x1b[1;36mApps:\x1b[0m')
       writeLine(term, '  Launch by name: files (alias: zynqpad) | terminal | python | calculator | store | wednesday')
@@ -965,6 +1043,41 @@ export default function TerminalWasi(_: Props) {
           writeLine(term, `  Conflicts: ${syncStatus.conflictCount}`)
         } else {
           writeLine(term, 'Usage: remote-python [on|off|status|toggle]')
+        }
+      } catch (e: any) {
+        writeLine(term, `\x1b[31m${String(e)}\x1b[0m`)
+      }
+    } else if (c === 'remote-tools') {
+      const action = (args[0] || 'status').toLowerCase()
+      try {
+        const { getRemotePythonConfig } = await import('../../remotePython/config')
+        const remoteConfig = await getRemotePythonConfig()
+        const remoteEnabled = remoteConfig.enabled && !!remoteConfig.baseUrl
+
+        if (!remoteEnabled) {
+          writeLine(term, 'Remote tools: disabled (use: remote-python on)')
+          return
+        }
+
+        if (action === 'status' || action === 'list') {
+          writeLine(term, 'Remote tools: enabled')
+          if (remoteConfig.baseUrl) writeLine(term, `  URL: ${remoteConfig.baseUrl}`)
+          if (remoteConfig.userId) writeLine(term, `  User: ${remoteConfig.userId}`)
+
+          try {
+            const { remoteToolsList } = await import('../../remoteTools/client')
+            const info = await remoteToolsList()
+            if (info.tools.length > 0) {
+              writeLine(term, `  Tools: ${info.tools.join(', ')}`)
+            }
+            if (info.apt_packages.length > 0) {
+              writeLine(term, `  Apt allowlist: ${info.apt_packages.join(', ')}`)
+            }
+          } catch (e: any) {
+            writeLine(term, `  \x1b[31m${String(e)}\x1b[0m`)
+          }
+        } else {
+          writeLine(term, 'Usage: remote-tools [status|list]')
         }
       } catch (e: any) {
         writeLine(term, `\x1b[31m${String(e)}\x1b[0m`)

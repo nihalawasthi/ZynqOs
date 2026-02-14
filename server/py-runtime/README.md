@@ -13,10 +13,23 @@ This service provides a server-side CPython runtime with a shared virtual enviro
 - `GET /v1/fs/read`
 - `GET /v1/fs/list`
 - `POST /v1/fs/delete`
+- `GET /v1/tools/list`
+- `POST /v1/tools/run`
+- `POST /v1/tools/install`
 
 ## Auth
 
 If `API_KEY` is set, requests must include `X-Api-Key`.
+
+If `X-User-Id` is provided, the service isolates files and tool state under
+`/data/users/<user-id>`. Allowed characters: letters, numbers, `.`, `_`, `-`.
+
+## Tool Execution
+
+Remote tools run with an allowlist. Configure it via:
+
+- `ALLOWED_TOOLS` (default includes curl/wget/nmap/dig/nslookup/traceroute/git/node/npm/pnpm)
+- `ALLOWED_APT_PACKAGES` (default includes common base tools)
 
 ## EC2 (t2.micro) deployment
 

@@ -7,7 +7,18 @@ ENV PYTHONUNBUFFERED=1 \
 WORKDIR /app
 
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends ca-certificates \
+  && apt-get install -y --no-install-recommends \
+    ca-certificates \
+    curl \
+    wget \
+    nmap \
+    dnsutils \
+    traceroute \
+    gh \
+    openssh-client \
+    nodejs \
+    npm \
+  && npm install -g pnpm \
   && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt /app/requirements.txt

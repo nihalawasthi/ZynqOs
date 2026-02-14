@@ -125,6 +125,10 @@ export function isTerminalCommand(command: string): boolean {
     
     // System info
     'whoami', 'date', 'uname', 'hostname', 'uptime', 'ps', 'top',
+
+    // Remote network/tools
+    'curl', 'wget', 'nmap', 'dig', 'nslookup', 'traceroute',
+    'git', 'npm', 'pnpm', 'apt', 'apt-get',
     
     // File search/info
     'find', 'locate', 'which', 'whereis', 'file', 'stat',

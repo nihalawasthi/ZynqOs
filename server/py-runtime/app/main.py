@@ -1,6 +1,7 @@
 import asyncio
 import json
 import os
+import re
 import tempfile
 from typing import Dict, List, Optional
 
@@ -13,6 +14,47 @@ DATA_ROOT = os.environ.get("DATA_ROOT", "/data/users")
 API_KEY = os.environ.get("API_KEY", "")
 ALLOWED_ORIGINS = os.environ.get("ALLOWED_ORIGINS", "*")
 DEFAULT_USER_ID = "default"
+DEFAULT_ALLOWED_TOOLS = [
+    "curl",
+    "wget",
+    "nmap",
+    "dig",
+    "nslookup",
+    "traceroute",
+    "git",
+    "node",
+    "npm",
+    "pnpm",
+    "apt",
+    "apt-get",
+]
+DEFAULT_ALLOWED_APT_PACKAGES = [
+    "curl",
+    "wget",
+    "nmap",
+    "dnsutils",
+    "traceroute",
+    "git",
+    "nodejs",
+    "npm",
+]
+
+
+def _parse_allowlist(raw: str, fallback: List[str]) -> List[str]:
+    values = [v.strip() for v in raw.split(",") if v.strip()]
+    if values:
+        return values
+    return fallback
+
+
+ALLOWED_TOOLS = set(
+    v.lower()
+    for v in _parse_allowlist(os.environ.get("ALLOWED_TOOLS", ""), DEFAULT_ALLOWED_TOOLS)
+)
+ALLOWED_APT_PACKAGES = set(
+    v.lower()
+    for v in _parse_allowlist(os.environ.get("ALLOWED_APT_PACKAGES", ""), DEFAULT_ALLOWED_APT_PACKAGES)
+)
 
 app = FastAPI(title=APP_TITLE)
 
@@ -31,17 +73,40 @@ app.add_middleware(
 _venv_lock = asyncio.Lock()
 
 
-def _get_shared_dirs() -> Dict[str, str]:
-    root = os.path.join(DATA_ROOT, DEFAULT_USER_ID)
+def _normalize_user_id(raw: Optional[str]) -> str:
+    if not raw:
+        return DEFAULT_USER_ID
+    value = raw.strip()
+    if not value:
+        return DEFAULT_USER_ID
+    if not re.fullmatch(r"[A-Za-z0-9._-]{1,64}", value):
+        raise HTTPException(status_code=400, detail="Invalid user id")
+    return value
+
+
+def _get_user_dirs(user_id: str) -> Dict[str, str]:
+    root = os.path.join(DATA_ROOT, user_id)
     home = os.path.join(root, "home")
     venv = os.path.join(root, "venv")
     tmp = os.path.join(root, ".tmp")
-    return {"root": root, "home": home, "venv": venv, "tmp": tmp}
+    bin_dir = os.path.join(root, "bin")
+    npm_dir = os.path.join(root, "npm")
+    return {
+        "root": root,
+        "home": home,
+        "venv": venv,
+        "tmp": tmp,
+        "bin": bin_dir,
+        "npm": npm_dir,
+    }
 
 
 def _ensure_dirs(paths: Dict[str, str]) -> None:
     os.makedirs(paths["home"], exist_ok=True)
     os.makedirs(paths["tmp"], exist_ok=True)
+    os.makedirs(paths["bin"], exist_ok=True)
+    os.makedirs(paths["npm"], exist_ok=True)
+    os.makedirs(os.path.join(paths["npm"], "bin"), exist_ok=True)
 
 
 def _resolve_home_path(home: str, rel_path: str) -> str:
@@ -94,6 +159,20 @@ def _require_api_key(x_api_key: Optional[str] = Header(default=None)) -> None:
         raise HTTPException(status_code=401, detail="Invalid API key")
 
 
+def _build_tool_env(paths: Dict[str, str], extra_env: Dict[str, str]) -> Dict[str, str]:
+    env = os.environ.copy()
+    env.update(extra_env or {})
+    npm_bin = os.path.join(paths["npm"], "bin")
+    user_bin = paths["bin"]
+    existing_path = env.get("PATH", "")
+    env["PATH"] = ":".join([user_bin, npm_bin, existing_path])
+    env["HOME"] = paths["home"]
+    env["NPM_CONFIG_PREFIX"] = paths["npm"]
+    env["PNPM_HOME"] = npm_bin
+    env["PNPM_STORE_DIR"] = os.path.join(paths["npm"], "store")
+    return env
+
+
 
 class RunRequest(BaseModel):
     code: str = Field(..., min_length=1)
@@ -142,6 +221,24 @@ class FsDeleteRequest(BaseModel):
     path: str
 
 
+class ToolRunRequest(BaseModel):
+    command: str = Field(..., min_length=1)
+    args: List[str] = Field(default_factory=list)
+    cwd: Optional[str] = None
+    timeout_s: float = Field(default=30.0, ge=1.0, le=120.0)
+    env: Dict[str, str] = Field(default_factory=dict)
+
+
+class ToolInstallRequest(BaseModel):
+    manager: str = Field(default="apt")
+    packages: List[str] = Field(..., min_items=1)
+
+
+class ToolsListResponse(BaseModel):
+    tools: List[str]
+    apt_packages: List[str]
+
+
 async def _run_command(
     cmd: List[str],
     cwd: str,
@@ -181,8 +278,10 @@ async def health() -> Dict[str, str]:
 @app.get("/v1/python/version")
 async def python_version(
     _: None = Depends(_require_api_key),
+    x_user_id: Optional[str] = Header(default=None),
 ) -> Dict[str, str]:
-    paths = _get_shared_dirs()
+    user_id = _normalize_user_id(x_user_id)
+    paths = _get_user_dirs(user_id)
     _ensure_dirs(paths)
     venv_python = await _ensure_venv(paths)
     resp = await _run_command(
@@ -198,8 +297,10 @@ async def python_version(
 async def run_code(
     payload: RunRequest,
     _: None = Depends(_require_api_key),
+    x_user_id: Optional[str] = Header(default=None),
 ) -> RunResponse:
-    paths = _get_shared_dirs()
+    user_id = _normalize_user_id(x_user_id)
+    paths = _get_user_dirs(user_id)
     _ensure_dirs(paths)
     venv_python = await _ensure_venv(paths)
     cwd = paths["home"]
@@ -235,8 +336,10 @@ async def run_code(
 async def pip_install(
     payload: PipInstallRequest,
     _: None = Depends(_require_api_key),
+    x_user_id: Optional[str] = Header(default=None),
 ) -> RunResponse:
-    paths = _get_shared_dirs()
+    user_id = _normalize_user_id(x_user_id)
+    paths = _get_user_dirs(user_id)
     _ensure_dirs(paths)
     venv_python = await _ensure_venv(paths)
 
@@ -258,8 +361,10 @@ async def pip_install(
 @app.get("/v1/pip/list", response_model=PipListResponse)
 async def pip_list(
     _: None = Depends(_require_api_key),
+    x_user_id: Optional[str] = Header(default=None),
 ) -> PipListResponse:
-    paths = _get_shared_dirs()
+    user_id = _normalize_user_id(x_user_id)
+    paths = _get_user_dirs(user_id)
     _ensure_dirs(paths)
     venv_python = await _ensure_venv(paths)
 
@@ -280,8 +385,10 @@ async def pip_list(
 async def fs_write(
     payload: FsWriteRequest,
     _: None = Depends(_require_api_key),
+    x_user_id: Optional[str] = Header(default=None),
 ) -> Dict[str, str]:
-    paths = _get_shared_dirs()
+    user_id = _normalize_user_id(x_user_id)
+    paths = _get_user_dirs(user_id)
     _ensure_dirs(paths)
     target = _resolve_home_path(paths["home"], payload.path)
     parent = os.path.dirname(target)
@@ -310,8 +417,10 @@ async def fs_read(
     path: str,
     encoding: str = "utf-8",
     _: None = Depends(_require_api_key),
+    x_user_id: Optional[str] = Header(default=None),
 ) -> FsReadResponse:
-    paths = _get_shared_dirs()
+    user_id = _normalize_user_id(x_user_id)
+    paths = _get_user_dirs(user_id)
     _ensure_dirs(paths)
     target = _resolve_home_path(paths["home"], path)
 
@@ -341,8 +450,10 @@ async def fs_read(
 async def fs_list(
     path: str = "",
     _: None = Depends(_require_api_key),
+    x_user_id: Optional[str] = Header(default=None),
 ) -> FsListResponse:
-    paths = _get_shared_dirs()
+    user_id = _normalize_user_id(x_user_id)
+    paths = _get_user_dirs(user_id)
     _ensure_dirs(paths)
     target = _resolve_home_path(paths["home"], path)
 
@@ -370,8 +481,10 @@ async def fs_list(
 async def fs_delete(
     payload: FsDeleteRequest,
     _: None = Depends(_require_api_key),
+    x_user_id: Optional[str] = Header(default=None),
 ) -> Dict[str, str]:
-    paths = _get_shared_dirs()
+    user_id = _normalize_user_id(x_user_id)
+    paths = _get_user_dirs(user_id)
     _ensure_dirs(paths)
     target = _resolve_home_path(paths["home"], payload.path)
 
@@ -396,3 +509,95 @@ async def fs_delete(
     else:
         os.remove(target)
     return {"status": "ok"}
+
+
+@app.get("/v1/tools/list", response_model=ToolsListResponse)
+async def tools_list(
+    _: None = Depends(_require_api_key),
+) -> ToolsListResponse:
+    return ToolsListResponse(
+        tools=sorted(ALLOWED_TOOLS),
+        apt_packages=sorted(ALLOWED_APT_PACKAGES),
+    )
+
+
+@app.post("/v1/tools/run", response_model=RunResponse)
+async def tools_run(
+    payload: ToolRunRequest,
+    _: None = Depends(_require_api_key),
+    x_user_id: Optional[str] = Header(default=None),
+) -> RunResponse:
+    user_id = _normalize_user_id(x_user_id)
+    paths = _get_user_dirs(user_id)
+    _ensure_dirs(paths)
+
+    cmd = payload.command.strip()
+    if not cmd:
+        raise HTTPException(status_code=400, detail="Missing command")
+
+    cmd_lower = cmd.lower()
+    if cmd_lower not in ALLOWED_TOOLS:
+        raise HTTPException(status_code=403, detail="Command not allowed")
+    if cmd_lower in {"apt", "apt-get"}:
+        raise HTTPException(status_code=400, detail="Use /v1/tools/install for apt installs")
+
+    cwd = paths["home"]
+    if payload.cwd:
+        cwd = _resolve_home_path(paths["home"], payload.cwd)
+        os.makedirs(cwd, exist_ok=True)
+
+    env = _build_tool_env(paths, payload.env or {})
+    cmd_list = [cmd_lower] + list(payload.args or [])
+    return await _run_command(cmd_list, cwd=cwd, env=env, timeout_s=payload.timeout_s)
+
+
+@app.post("/v1/tools/install", response_model=RunResponse)
+async def tools_install(
+    payload: ToolInstallRequest,
+    _: None = Depends(_require_api_key),
+    x_user_id: Optional[str] = Header(default=None),
+) -> RunResponse:
+    manager = (payload.manager or "").strip().lower()
+    if manager != "apt":
+        raise HTTPException(status_code=400, detail="Only apt manager is supported")
+
+    packages: List[str] = []
+    for raw in payload.packages:
+        value = raw.strip().lower()
+        if not value:
+            continue
+        if not re.fullmatch(r"[a-z0-9+._-]+", value):
+            raise HTTPException(status_code=400, detail=f"Invalid package name: {raw}")
+        if value not in ALLOWED_APT_PACKAGES:
+            raise HTTPException(status_code=403, detail=f"Package not allowed: {raw}")
+        packages.append(value)
+
+    if not packages:
+        raise HTTPException(status_code=400, detail="No packages to install")
+
+    user_id = _normalize_user_id(x_user_id)
+    paths = _get_user_dirs(user_id)
+    _ensure_dirs(paths)
+
+    env = _build_tool_env(paths, {})
+    update_resp = await _run_command(
+        ["apt-get", "update"],
+        cwd=paths["home"],
+        env=env,
+        timeout_s=120.0,
+    )
+    if update_resp.exit_code != 0:
+        return update_resp
+
+    install_cmd = ["apt-get", "install", "-y", "--no-install-recommends"] + packages
+    install_resp = await _run_command(
+        install_cmd,
+        cwd=paths["home"],
+        env=env,
+        timeout_s=120.0,
+    )
+    if update_resp.stdout:
+        install_resp.stdout = update_resp.stdout + "\n" + install_resp.stdout
+    if update_resp.stderr:
+        install_resp.stderr = update_resp.stderr + "\n" + install_resp.stderr
+    return install_resp
