@@ -114,7 +114,6 @@ export async function loadCoreutils(): Promise<any> {
   console.log('[Wasmer] Loading coreutils from registry...')
   // Using sharrattj/coreutils which provides better GNU coreutils compatibility
   coreutilsPackage = await Wasmer.fromRegistry('sharrattj/coreutils')
-  console.log('[Wasmer] Coreutils loaded, available commands:', Object.keys(coreutilsPackage.commands || {}))
   return coreutilsPackage
 }
 
@@ -1204,6 +1203,20 @@ Examples:
   
   try {
     for (const file of filesToZip) {
+      // Validate file exists first
+      const normalizedPath = file.startsWith('/') ? file : '/' + file
+      const content = await readFile(normalizedPath)
+      
+      if (content === null || content === undefined) {
+        // File doesn't exist - error out
+        return {
+          stdout: '',
+          stderr: `zip: ${file}: No such file or directory`,
+          exitCode: 1,
+          success: false,
+        }
+      }
+      
       const zipEntryName = file.startsWith('/') ? file.slice(1) : file
       await addToZip(file, zipEntryName)
     }

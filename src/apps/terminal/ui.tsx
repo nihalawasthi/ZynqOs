@@ -1,6 +1,7 @@
 // src/apps/terminal/ui.tsx
 import React, { useEffect, useRef, useState, useCallback } from 'react'
 import { readFile } from '../../vfs/fs'
+import { normalizeTerminalPath } from '../../utils/pathUtils'
 import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import { WebLinksAddon } from '@xterm/addon-web-links'
@@ -13,7 +14,6 @@ import { WASI, File, OpenFile, PreopenDirectory, Directory } from '@bjorn3/brows
 import {
   initWasmer,
   checkCrossOriginIsolation,
-  runBashCommand,
   runBashScript,
   runCoreutil,
   listCoreutilsCommands,
@@ -52,6 +52,8 @@ export default function TerminalWasi(_: Props) {
   const currentDirRef = useRef('~')
   const bashSessionRef = useRef<InteractiveBashSession | null>(null)
   const inBashModeRef = useRef(false)
+  const bashCompatModeRef = useRef(false)
+  const bashCompatCwdRef = useRef('/home/nihal')
   const inPythonModeRef = useRef(false)
   const pythonRemoteModeRef = useRef(false)
   const wasmerReadyRef = useRef(false)
@@ -70,7 +72,7 @@ export default function TerminalWasi(_: Props) {
     'cd', 'pwd', 'echo', 'whoami', 'date', 'uname', 'tree', 'run',
     'bash', 'sh', 'bash-status', 'coreutils',
     'remote-python',
-    'remote-tools',
+    'tools',
     'curl', 'nmap', 'dig', 'nslookup', 'traceroute', 'git', 'npm', 'pnpm', 'apt',
     // Coreutils (available via Wasmer)
     'head', 'tail', 'wc', 'sort', 'uniq', 'cut', 'tr', 'tee',
@@ -109,6 +111,29 @@ export default function TerminalWasi(_: Props) {
     if (dir.startsWith('~/')) return dir.slice(2)
     if (dir.startsWith('/')) return dir.slice(1)
     return dir
+  }
+
+  function resolveCompatBashPath(inputPath: string, cwd: string): string {
+    const home = `/home/${username}`
+    const path = inputPath.trim()
+
+    if (!path || path === '~') return home
+    if (path.startsWith('~/')) return `${home}/${path.slice(2)}`
+    if (path.startsWith('/')) return path
+
+    const baseParts = cwd.split('/').filter(Boolean)
+    const relParts = path.split('/').filter(Boolean)
+
+    for (const part of relParts) {
+      if (part === '.') continue
+      if (part === '..') {
+        if (baseParts.length > 0) baseParts.pop()
+      } else {
+        baseParts.push(part)
+      }
+    }
+
+    return '/' + baseParts.join('/')
   }
 
   function parentDir(normPath: string): string {
@@ -153,6 +178,27 @@ export default function TerminalWasi(_: Props) {
       }
     }
     return Array.from(set).sort()
+  }
+
+  // Resolve a path relative to current directory to absolute path
+  function resolveRelativePath(path: string, currentDir: string): string {
+    if (!path) return ''
+    
+    // Already absolute
+    if (path.startsWith('/')) {
+      return path
+    }
+    
+    // Relative to home
+    if (currentDir === '~') {
+      return '/' + path
+    }
+    
+    // Relative to current dir
+    const currentNorm = normalizePathForVfs(currentDir)
+    if (!currentNorm) return '/' + path
+    
+    return '/' + currentNorm + '/' + path
   }
 
   // Write prompt to terminal
@@ -497,7 +543,7 @@ export default function TerminalWasi(_: Props) {
       writeLine(term, '  git <args>                      # Git tooling (remote)')
       writeLine(term, '  npm|pnpm <args>                 # Node package managers (remote)')
       writeLine(term, '  apt install <pkg>               # install allowlisted tools (remote)')
-      writeLine(term, '  remote-tools [status|list]      # show remote tool status')
+      writeLine(term, '  tools [status|list]      # show remote tool status')
       writeLine(term, '')
       writeLine(term, '\x1b[1;36mApps:\x1b[0m')
       writeLine(term, '  Launch by name: files (alias: zynqpad) | terminal | python | calculator | store | wednesday')
@@ -706,17 +752,17 @@ export default function TerminalWasi(_: Props) {
         const { readdir, removeFile } = await import('../../vfs/fs')
 
         for (const t of targets) {
-          const targetNorm = normalizePathForVfs(t)
-          const prefixes = [targetNorm, targetNorm ? '/' + targetNorm : '/']
+          const targetNorm = normalizeTerminalPath(t, currentDirRef.current)
+          const targetSlash = targetNorm ? '/' + targetNorm : '/'
 
-          const allMatches: string[] = []
-          for (const p of prefixes) {
-            try {
-              const keys = await readdir(p)
-              keys.forEach(k => allMatches.push(k))
-            } catch {
-              // ignore
-            }
+          let allMatches: string[] = []
+          try {
+            const keys = await readdir(targetNorm)
+            allMatches = keys
+              .map(k => (k.startsWith('/') ? k.slice(1) : k))
+              .filter(k => k === targetNorm || k.startsWith(targetNorm + '/'))
+          } catch {
+            // ignore
           }
 
           if (recursive) {
@@ -733,17 +779,14 @@ export default function TerminalWasi(_: Props) {
               }
             }
             try { await removeFile(targetNorm) } catch { }
-            try { await removeFile('/' + targetNorm) } catch { }
+            try { await removeFile(targetSlash) } catch { }
+            try { await removeFile(targetSlash + '/.keep') } catch { }
             writeLine(term, `rm: removed '${t}'`)
             continue
           }
 
           const uniq = Array.from(new Set(allMatches))
-          const hasChildren = uniq.some(k => {
-            const nk = k.startsWith('/') ? k.slice(1) : k
-            const norm = targetNorm
-            return nk !== norm && nk.startsWith(norm + '/')
-          })
+          const hasChildren = uniq.some(k => k !== targetNorm && k.startsWith(targetNorm + '/'))
           if (hasChildren) {
             writeLine(term, `rm: cannot remove '${t}': Is a directory (use 'rm -r' for directories)`)
             continue
@@ -751,7 +794,7 @@ export default function TerminalWasi(_: Props) {
 
           let deleted = false
           try { await removeFile(targetNorm); deleted = true } catch { }
-          try { await removeFile('/' + targetNorm); deleted = true } catch { }
+          try { await removeFile(targetSlash); deleted = true } catch { }
 
           if (!deleted) {
             if (!force) writeLine(term, `rm: cannot remove '${t}': No such file or directory`)
@@ -789,7 +832,7 @@ export default function TerminalWasi(_: Props) {
       }
 
       if (!scriptPath) {
-        // Start interactive bash session
+        // Start bash compatibility session (robust in browser/Wasmer)
         writeLine(term, '\x1b[33mStarting interactive bash shell...\x1b[0m')
         writeLine(term, 'Loading bash from Wasmer registry (this may take a moment)...')
 
@@ -798,34 +841,16 @@ export default function TerminalWasi(_: Props) {
           await loadCoreutils()
 
           inBashModeRef.current = true
-          const session = new InteractiveBashSession()
-          bashSessionRef.current = session
+          bashCompatModeRef.current = true
+          bashSessionRef.current = null
+          bashCompatCwdRef.current = currentDirRef.current === '~' ? `/home/${username}` : currentDirRef.current
 
-          await session.start({
-            onOutput: (data) => {
-              // Handle output from bash
-              term.write(data.replace(/\n/g, '\r\n'))
-            },
-            onError: (data) => {
-              term.write(`\x1b[31m${data.replace(/\n/g, '\r\n')}\x1b[0m`)
-            },
-            onExit: (code) => {
-              inBashModeRef.current = false
-              bashSessionRef.current = null
-              writeLine(term, `\r\n\x1b[33mBash exited with code ${code}\x1b[0m`)
-              writePrompt(term)
-            },
-            env: {
-              USER: username,
-              HOME: '/home/' + username,
-              PWD: currentDirRef.current === '~' ? '/home/' + username : currentDirRef.current,
-            },
-          })
-
-          writeLine(term, '\x1b[32mBash shell started. Type "exit" to return to ZynqOS terminal.\x1b[0m')
+          writeLine(term, '\x1b[32mBash shell started (compat mode). Type "exit" to return to ZynqOS terminal.\x1b[0m')
+          term.write(`bash:${bashCompatCwdRef.current}$ `)
         } catch (e: any) {
           writeLine(term, `\x1b[31mbash: failed to start: ${String(e)}\x1b[0m`)
           inBashModeRef.current = false
+          bashCompatModeRef.current = false
           bashSessionRef.current = null
         }
         return
@@ -1047,7 +1072,7 @@ export default function TerminalWasi(_: Props) {
       } catch (e: any) {
         writeLine(term, `\x1b[31m${String(e)}\x1b[0m`)
       }
-    } else if (c === 'remote-tools') {
+    } else if (c === 'tools') {
       const action = (args[0] || 'status').toLowerCase()
       try {
         const { getRemotePythonConfig } = await import('../../remotePython/config')
@@ -1059,11 +1084,7 @@ export default function TerminalWasi(_: Props) {
           return
         }
 
-        if (action === 'status' || action === 'list') {
-          writeLine(term, 'Remote tools: enabled')
-          if (remoteConfig.baseUrl) writeLine(term, `  URL: ${remoteConfig.baseUrl}`)
-          if (remoteConfig.userId) writeLine(term, `  User: ${remoteConfig.userId}`)
-
+        if (action === 'list') {
           try {
             const { remoteToolsList } = await import('../../remoteTools/client')
             const info = await remoteToolsList()
@@ -1076,8 +1097,12 @@ export default function TerminalWasi(_: Props) {
           } catch (e: any) {
             writeLine(term, `  \x1b[31m${String(e)}\x1b[0m`)
           }
+        } else if (action === 'status') {
+          writeLine(term, `Remote tools: ${remoteEnabled ? 'enabled' : 'disabled'}`)
+          if (remoteConfig.baseUrl) writeLine(term, `  URL: ${remoteConfig.baseUrl}`)
+          if (remoteConfig.userId) writeLine(term, `  User: ${remoteConfig.userId}`)
         } else {
-          writeLine(term, 'Usage: remote-tools [status|list]')
+          writeLine(term, 'Usage: Tools [status|list]')
         }
       } catch (e: any) {
         writeLine(term, `\x1b[31m${String(e)}\x1b[0m`)
@@ -1140,7 +1165,31 @@ export default function TerminalWasi(_: Props) {
         }
       } else if (args[0] === '-c' && args.length > 1) {
         // Execute code from command line
-        const code = args.slice(1).join(' ')
+        const codeArg = args.slice(1).join(' ')
+        let code = codeArg
+
+        if (args.length === 2) {
+          const candidate = args[1]
+          const looksLikePath =
+            candidate.startsWith('/') ||
+            candidate.startsWith('./') ||
+            candidate.startsWith('~/') ||
+            candidate.endsWith('.py')
+
+          if (looksLikePath) {
+            const normalized = normalizeTerminalPath(candidate, currentDirRef.current)
+            const vfsPath = normalized ? '/' + normalized : ''
+            if (vfsPath) {
+              const fileContents = await readFile(vfsPath)
+              if (fileContents !== undefined) {
+                code = fileContents instanceof Uint8Array
+                  ? new TextDecoder().decode(fileContents)
+                  : String(fileContents)
+              }
+            }
+          }
+        }
+
         writeLine(term, 'Running Python code...')
         
         try {
@@ -1379,8 +1428,17 @@ export default function TerminalWasi(_: Props) {
             }
             
             if (c === 'zip') {
+              // Resolve file paths to absolute paths
+              const resolvedArgs = cmdArgs.map((arg) => {
+                if (!arg.startsWith('-')) {
+                  const resolved = resolveRelativePath(arg, currentDirRef.current)
+                  return resolved.startsWith('/') ? resolved : '/' + resolved
+                }
+                return arg
+              })
+              
               const result = await jsZip(
-                cmdArgs,
+                resolvedArgs,
                 async (path) => {
                   const content = await readVfsFile(path)
                   return content
@@ -1406,8 +1464,37 @@ export default function TerminalWasi(_: Props) {
             }
             
             if (c === 'unzip') {
+              // Resolve archive name to absolute path
+              const resolvedArgs = cmdArgs.map((arg) => {
+                if (!arg.startsWith('-')) {
+                  const resolved = resolveRelativePath(arg, currentDirRef.current)
+                  return resolved.startsWith('/') ? resolved : '/' + resolved
+                }
+                return arg
+              })
+              
+              // If no -d flag specified, extract to subdirectory named after archive (without .zip)
+              let finalArgs = resolvedArgs
+              if (!resolvedArgs.includes('-d')) {
+                // Find the archive name (first non-flag arg)
+                const archivePath = resolvedArgs.find((arg) => !arg.startsWith('-'))
+                if (archivePath) {
+                  // Get directory of archive and create subdirectory with archive basename (no .zip)
+                  const archiveDir = archivePath.lastIndexOf('/') > 0 
+                    ? archivePath.substring(0, archivePath.lastIndexOf('/'))
+                    : '/'
+                  const archiveBaseName = archivePath.split('/').pop() || 'archive'
+                  const extractDirName = archiveBaseName.endsWith('.zip') 
+                    ? archiveBaseName.slice(0, -4)
+                    : archiveBaseName
+                  const extractDir = archiveDir + '/' + extractDirName
+                  // Insert -d flag with subdirectory
+                  finalArgs = [archivePath, '-d', extractDir]
+                }
+              }
+              
               const result = await jsUnzip(
-                cmdArgs,
+                finalArgs,
                 async (path) => {
                   const content = await readVfsFile(path)
                   return content
@@ -1586,7 +1673,54 @@ export default function TerminalWasi(_: Props) {
         }
       }
 
-      writeLine(term, `unknown command: ${c}`)
+      // Try remote tools as fallback for unknown commands (non-sudo only)
+      try {
+        const { getRemotePythonConfig } = await import('../../remotePython/config')
+        const remoteConfig = await getRemotePythonConfig()
+        const remoteEnabled = remoteConfig.enabled && !!remoteConfig.baseUrl
+
+        if (remoteEnabled && !line.includes('sudo')) {
+          writeLine(term, `Attempting to run '${c}' on remote runtime...`)
+          const { remoteToolsRun } = await import('../../remoteTools/client')
+          const cwd = normalizeRemoteCwd(currentDirRef.current)
+          
+          try {
+            const result = await remoteToolsRun(c, args, { cwd: cwd || undefined })
+            
+            if (result.timed_out) {
+              writeLine(term, `\x1b[31mCommand timed out after 30 seconds\x1b[0m`)
+            } else {
+              if (result.stdout) {
+                result.stdout.split('\n').forEach(line => {
+                  if (line) writeLine(term, line)
+                })
+              }
+              if (result.stderr) {
+                result.stderr.split('\n').forEach(line => {
+                  if (line) writeLine(term, `\x1b[31m${line}\x1b[0m`)
+                })
+              }
+              if (result.exit_code !== 0 && !result.stdout && !result.stderr) {
+                writeLine(term, `\x1b[31mCommand failed with exit code ${result.exit_code}\x1b[0m`)
+              }
+            }
+            return
+          } catch (e: any) {
+            // Command not found or not allowed on server - show local error
+            const errMsg = String(e)
+            if (errMsg.includes('not in allow list') || errMsg.includes('not found') || errMsg.includes('allowed')) {
+              writeLine(term, `\x1b[31m${c}: command not found\x1b[0m`)
+              writeLine(term, `\x1b[90mTip: Type 'help' for available commands or 'tools list' to see what's available\x1b[0m`)
+              return
+            }
+            // Other error, fall through to local unknown command message
+          }
+        }
+      } catch (e: any) {
+        // Remote config not available, fall through to local message
+      }
+
+      writeLine(term, `\x1b[31m${c}: command not found\x1b[0m`)
       writeLine(term, `\x1b[90mTip: Type 'help' for available commands${coiCheck.supported ? " or try running via 'bash -c \"command\"'" : ''}\x1b[0m`)
     }
   }
@@ -1716,8 +1850,61 @@ export default function TerminalWasi(_: Props) {
       if (code === 13) { // Enter
         const line = currentLineRef.current
         term.write('\r\n')
+        currentLineRef.current = ''
 
         // Handle Python REPL mode
+        if (inBashModeRef.current && bashCompatModeRef.current) {
+          const bashLine = line.trim()
+
+          if (bashLine === 'exit' || bashLine === 'logout') {
+            inBashModeRef.current = false
+            bashCompatModeRef.current = false
+            writeLine(term, 'Exiting bash...')
+            currentLineRef.current = ''
+            writePrompt(term)
+            return
+          }
+
+          if (bashLine) {
+            try {
+              const bashParts = parseCommandLine(bashLine)
+
+              if (bashParts[0] === 'cd') {
+                const target = bashParts[1] || '~'
+                const nextCwd = resolveCompatBashPath(target, bashCompatCwdRef.current)
+                bashCompatCwdRef.current = nextCwd
+                currentDirRef.current = nextCwd
+                setCurrentDirectory(nextCwd)
+              } else if (bashParts[0] === 'bash' || bashParts[0] === 'sh') {
+                writeLine(term, 'Already in bash shell. Use "exit" to return to ZynqOS terminal.')
+              } else if (bashParts[0] === 'pwd') {
+                writeLine(term, bashCompatCwdRef.current)
+              } else if (bashParts[0] === 'echo') {
+                writeLine(term, bashParts.slice(1).join(' '))
+              } else {
+                const previousDir = currentDirRef.current
+                currentDirRef.current = bashCompatCwdRef.current
+                setCurrentDirectory(bashCompatCwdRef.current)
+
+                const previousBashMode = inBashModeRef.current
+                inBashModeRef.current = false
+                try {
+                  await handleCommandLine(term, bashLine)
+                } finally {
+                  inBashModeRef.current = previousBashMode
+                  currentDirRef.current = previousDir
+                  setCurrentDirectory(previousDir)
+                }
+              }
+            } catch (e: any) {
+              writeLine(term, `\x1b[31m${String(e)}\x1b[0m`)
+            }
+          }
+
+          term.write(`bash:${bashCompatCwdRef.current}$ `)
+          return
+        }
+
         if (inPythonModeRef.current) {
           if (line.trim() === 'exit()' || line.trim() === 'quit()') {
             inPythonModeRef.current = false
@@ -1751,7 +1938,6 @@ export default function TerminalWasi(_: Props) {
             }
           }
           
-          currentLineRef.current = ''
           term.write('>>> ')
           return
         }
@@ -1765,7 +1951,6 @@ export default function TerminalWasi(_: Props) {
 
         // Only show prompt if not in bash or python mode
         if (!inBashModeRef.current && !inPythonModeRef.current) {
-          currentLineRef.current = ''
           writePrompt(term)
         }
       } else if (code === 127) { // Backspace
@@ -1808,7 +1993,11 @@ export default function TerminalWasi(_: Props) {
       } else if (code === 3) { // Ctrl+C
         term.write('^C')
         currentLineRef.current = ''
-        writePrompt(term)
+        if (inBashModeRef.current && bashCompatModeRef.current) {
+          term.write(`\r\nbash:${bashCompatCwdRef.current}$ `)
+        } else {
+          writePrompt(term)
+        }
       } else if (code === 12) { // Ctrl+L
         term.clear()
         writePrompt(term)

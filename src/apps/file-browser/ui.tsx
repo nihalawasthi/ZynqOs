@@ -174,15 +174,13 @@ function FileRow({
           <i className={`fa-solid ${iconClass} text-[18px]`}></i>
           <span className="text-sm truncate font-medium">{node.name}</span>
         </div>
-        {!node.isDir && (
-          <button
-            onClick={() => onDelete(node.path)}
-            className="opacity-0 group-hover:opacity-100 p-1 hover:bg-red-500/20 hover:text-red-500 rounded transition-all"
-            title="Delete"
-          >
-            <i className="fa-solid fa-trash text-[14px]"></i>
-          </button>
-        )}
+        <button
+          onClick={() => onDelete(node.path)}
+          className="opacity-0 group-hover:opacity-100 p-1 hover:bg-red-500/20 hover:text-red-500 rounded transition-all"
+          title={node.isDir ? 'Delete folder' : 'Delete file'}
+        >
+          <i className="fa-solid fa-trash text-[14px]"></i>
+        </button>
       </div>
       {node.isDir && isExpanded(node.path) && node.children && node.children.length > 0 && (
         <div className="border-l border-slate-200 dark:border-[#233648] ml-3.5">
@@ -380,7 +378,8 @@ export default function Workspace() {
   const refreshFiles = async () => {
     const all = await readdir('')
     setPaths(all.sort())
-    if (selectedPath && !all.includes(selectedPath)) {
+    const normalizedSet = new Set(all.map(p => normalizePath(p)))
+    if (selectedPath && !normalizedSet.has(normalizePath(selectedPath))) {
       setSelectedPath(null)
       setFileContent('')
       setLoadedContent('')
@@ -423,7 +422,13 @@ export default function Workspace() {
     const normalized = normalizePath(path)
     setLoading(true)
     try {
-      const data = await readFile(normalized)
+      let data = await readFile(normalized)
+      if (data === undefined || data === null) {
+        const fallbackPath = normalized.startsWith('/') ? normalized.slice(1) : normalized
+        if (fallbackPath) {
+          data = await readFile(fallbackPath)
+        }
+      }
       setSelectedPath(normalized)
       // Debug: log data type and value
       console.debug('[openFile] Data type:', typeof data, 'instanceof Uint8Array:', data instanceof Uint8Array, 'Array.isArray:', Array.isArray(data), 'value:', data)
@@ -531,22 +536,50 @@ export default function Workspace() {
   }
 
   const deleteFile = async (path: string) => {
+    const normalizedTarget = normalizePath(path)
+    const targetNoSlash = normalizedTarget.slice(1)
+    const isDirTarget = paths.some(p => {
+      const n = normalizePath(p)
+      return n !== normalizedTarget && n.startsWith(normalizedTarget + '/')
+    })
+
     const { dismiss } = toast({
-      title: 'Delete file?',
-      description: path,
+      title: isDirTarget ? 'Delete folder?' : 'Delete file?',
+      description: normalizedTarget,
       action: (
         <button
           onClick={async () => {
             dismiss()
-            await removeFile(path)
-            if (selectedPath === path) {
+            if (isDirTarget) {
+              const all = await readdir('')
+              const toDelete = all.filter(k => {
+                const normalized = normalizePath(k)
+                return normalized === normalizedTarget || normalized.startsWith(normalizedTarget + '/')
+              })
+
+              for (const key of toDelete) {
+                try {
+                  await removeFile(key)
+                } catch {
+                  // ignore individual delete errors
+                }
+              }
+
+              try { await removeFile(normalizedTarget + '/.keep') } catch { }
+              try { await removeFile(targetNoSlash + '/.keep') } catch { }
+            } else {
+              await removeFile(normalizedTarget)
+              try { await removeFile(targetNoSlash) } catch { }
+            }
+
+            if (selectedPath && (selectedPath === normalizedTarget || selectedPath.startsWith(normalizedTarget + '/'))) {
               setSelectedPath(null)
               setFileContent('')
               setLoadedContent('')
               setBinaryData(null)
             }
             await refreshFiles()
-            showStatus(`Deleted ${path}`)
+            showStatus(`Deleted ${normalizedTarget}`)
           }}
           className="px-3 py-1 text-sm bg-red-600 rounded hover:bg-red-700 text-white"
         >

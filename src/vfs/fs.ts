@@ -53,6 +53,22 @@ export async function writeFile(path: string, data: Uint8Array | string) {
   const normPath = path.startsWith('/') ? path : '/' + path;
   const value = data instanceof Uint8Array ? Array.from(data) : data;
   console.debug('[vfs] writeFile', { path: normPath, type: typeof data, isArray: Array.isArray(data), len: data?.length });
+  
+  // Create parent directory entries if needed
+  const parts = normPath.split('/').filter(Boolean);
+  for (let i = 1; i < parts.length; i++) {
+    const dirPath = '/' + parts.slice(0, i).join('/') + '/.keep';
+    try {
+      const existing = await db.get(FILE_STORE, dirPath);
+      if (!existing) {
+        // Create .keep marker to ensure directory exists
+        await db.put(FILE_STORE, '', dirPath);
+      }
+    } catch {
+      // Ignore errors
+    }
+  }
+  
   await db.put(FILE_STORE, value, normPath);
   // Track for sync - all files including imports are tracked for changes
   try {
