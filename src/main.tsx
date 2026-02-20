@@ -85,13 +85,18 @@ async function bootstrap(report: (msg: string) => void) {
   report('Initializing audit sync')
   await auditSync.init()
 
-  // Start preloading in background without blocking (cache for future use)
-  report('Loading Python & Bash in background')
-  
-  // Start both immediately in parallel - don't await to avoid blocking app load
-  // Pyodide worker will start downloading immediately when created
+  // Preload bash and coreutils during loading screen
+  report('Loading bash shell...')
+  const wasmerResult = await preloadWasmerPackages((m) => report(m))
+  if (wasmerResult.success) {
+    report('Bash shell ready')
+  } else {
+    report('Bash unavailable (continuing without it)')
+  }
+
+  // Start Python preloading in background (larger download, don't block)
+  report('Loading Python runtime...')
   getPyodide().then(() => console.log('[Preload] Pyodide ready')).catch(e => console.warn('Pyodide preload failed:', e))
-  preloadWasmerPackages((m) => console.log('[Preload]', m)).catch(e => console.warn('Wasmer preload failed:', e))
 
   report('Finalizing session startup')
 }

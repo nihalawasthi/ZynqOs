@@ -1365,7 +1365,7 @@ export default function SettingsUI() {
                             <input
                                 value={remotePythonUserId}
                                 onChange={(e) => setRemotePythonUserId(e.target.value)}
-                                placeholder="nihal"
+                                placeholder="user"
                                 className="w-full mt-1 bg-[#151515] border border-[#333] rounded px-3 py-2 text-sm text-gray-200"
                             />
                             <p className="text-gray-500 text-[11px] mt-1">Used to isolate /home on the remote server.</p>

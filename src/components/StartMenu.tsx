@@ -6,6 +6,7 @@ import { uploadFiles } from '../utils/fileUpload'
 import { getInstalledPackages, executePackage } from '../packages/manager'
 import type { InstalledPackage } from '../packages/types'
 import CalculatorUI from '../apps/calculator-runtime/CalculatorUI'
+import { getUsername } from '../utils/userUtils'
 
 type App = {
     id: string
@@ -113,8 +114,9 @@ export default function StartMenu() {
             if (status.authenticated || status.connected) {
                 const p = status.profile || {}
                 const provider = status.provider
+                const displayName = getUsername(p)
                 const profileData = {
-                    name: p.name || p.login || p.id || (provider === 'github' ? 'GitHub User' : provider === 'google' ? 'Google User' : 'Connected User'),
+                    name: displayName,
                     email: p.email || (provider === 'github' ? 'GitHub Account' : provider === 'google' ? 'Google Account' : ''),
                     avatar: p.avatar_url || p.picture,
                     provider
@@ -154,8 +156,9 @@ export default function StartMenu() {
             if (status.authenticated || status.connected) {
                 const p = status.profile || {}
                 const provider = status.provider
+                const displayName = getUsername(p)
                 const profileData = {
-                    name: p.name || p.login || p.id || (provider === 'github' ? 'GitHub User' : provider === 'google' ? 'Google User' : 'Connected User'),
+                    name: displayName,
                     email: p.email || (provider === 'github' ? 'GitHub Account' : provider === 'google' ? 'Google Account' : ''),
                     avatar: p.avatar_url || p.picture,
                     provider
@@ -172,8 +175,9 @@ export default function StartMenu() {
                 // Profile data is included in status endpoint now
                 const p = status.profile || {}
                 const provider = status.provider
+                const displayName = getUsername(p)
                 const profileData = {
-                    name: p.name || p.login || p.id || (provider === 'github' ? 'GitHub User' : provider === 'google' ? 'Google User' : 'Connected User'),
+                    name: displayName,
                     email: p.email || (provider === 'github' ? 'GitHub Account' : provider === 'google' ? 'Google Account' : ''),
                     avatar: p.avatar_url || p.picture,
                     provider

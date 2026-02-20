@@ -1635,6 +1635,7 @@ async function authStatus(req: VercelRequest, res: VercelResponse) {
   if (session.userName || session.userEmail || session.userAvatar) {
     profile = {
       name: session.userName || 'User',
+      login: session.userName, // GitHub username (same as name for GitHub users)
       email: session.userEmail,
       avatar_url: session.userAvatar,
       id: session.userId,

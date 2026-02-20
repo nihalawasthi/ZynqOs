@@ -4,6 +4,7 @@ import { connectChatEvents, fetchChatHistory, sendChatMessage, sendPresenceUpdat
 import { readFile, writeFile } from '../../vfs/fs.js'
 import { downloadFile } from '../../utils/fileUpload.js'
 import { getStorageStatus } from '../../auth/storage.js'
+import { getUsername } from '../../utils/userUtils.js'
 
 const initialChats: Chat[] = []
 const initialMessages: Record<string, Message[]> = {}
@@ -204,19 +205,21 @@ export default function ZynqChatUI() {
         const loadProfile = async () => {
             const status = await getStorageStatus(true)
             const profile = status.profile || {}
-            const name = profile.login || profile.name || profile.email || 'You'
+            const name = getUsername(profile)
             setCurrentUser(name)
             setCurrentUserId(profile.login || profile.id || name)
         }
         loadProfile().catch(() => {
-            setCurrentUser('You')
-            setCurrentUserId('')
+            // Use temporary username for non-logged-in users
+            const name = getUsername()
+            setCurrentUser(name)
+            setCurrentUserId(name)
         })
 
         const handleAuthRefresh = (event: Event) => {
             const customEvent = event as CustomEvent<any>
             const profile = customEvent?.detail?.profile || {}
-            const name = profile.login || profile.name || profile.email || 'You'
+            const name = getUsername(profile)
             setCurrentUser(name)
             setCurrentUserId(profile.login || profile.id || name)
         }

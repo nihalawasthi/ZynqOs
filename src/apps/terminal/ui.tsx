@@ -38,8 +38,30 @@ import {
 
 // Buffer polyfill for browser
 import { Buffer } from 'buffer'
+import { getUsername, getAuthProfile } from '../../utils/userUtils'
 
 type Props = {}
+
+// Load initial profile synchronously from cache, then update asynchronously
+let cachedProfile: { login?: string; name?: string; email?: string } = (() => {
+  const cached = sessionStorage.getItem('zynqos_profile_cache')
+  if (cached) {
+    try {
+      return JSON.parse(cached)
+    } catch {
+      return {}
+    }
+  }
+  return {}
+})()
+
+// Async profile update
+getAuthProfile().then(profile => {
+  if (profile) {
+    cachedProfile = profile
+    sessionStorage.setItem('zynqos_profile_cache', JSON.stringify(profile))
+  }
+}).catch(() => {})
 
 export default function TerminalWasi(_: Props) {
   const terminalRef = useRef<HTMLDivElement>(null)
@@ -53,12 +75,12 @@ export default function TerminalWasi(_: Props) {
   const bashSessionRef = useRef<InteractiveBashSession | null>(null)
   const inBashModeRef = useRef(false)
   const bashCompatModeRef = useRef(false)
-  const bashCompatCwdRef = useRef('/home/nihal')
   const inPythonModeRef = useRef(false)
   const pythonRemoteModeRef = useRef(false)
   const wasmerReadyRef = useRef(false)
 
-  const username = 'nihal'
+  const username = getUsername(cachedProfile)
+  const bashCompatCwdRef = useRef(`/home/${username}`)
 
   // Keep currentDirRef in sync
   useEffect(() => {
@@ -630,7 +652,7 @@ export default function TerminalWasi(_: Props) {
         writeLine(term, `cd: ${path}: No such file or directory`)
       }
     } else if (c === 'pwd') {
-      writeLine(term, currentDirRef.current === '~' ? '/home/user' : currentDirRef.current)
+      writeLine(term, currentDirRef.current === '~' ? `/home/${username}` : currentDirRef.current)
     } else if (c === 'cat') {
       const p = parts[1]
       if (!p) {
@@ -675,8 +697,28 @@ export default function TerminalWasi(_: Props) {
       }
       try {
         const { writeFile } = await import('../../vfs/fs')
-        // Always store with leading slash for consistency
-        const normalizedPath = dir.startsWith('/') ? dir : '/' + dir
+        // Resolve path relative to current directory
+        const currentNorm = normalizePathForVfs(currentDirRef.current === '~' ? '' : currentDirRef.current)
+        let targetNorm = ''
+        if (dir.startsWith('/')) {
+          targetNorm = normalizePathForVfs(dir)
+        } else if (dir === '~') {
+          targetNorm = '' // root
+        } else {
+          const curParts = currentNorm ? currentNorm.split('/').filter(Boolean) : []
+          const relParts = dir.split('/').filter(Boolean)
+          for (const p of relParts) {
+            if (p === '..') {
+              curParts.pop()
+            } else if (p === '.') {
+              // noop
+            } else {
+              curParts.push(p)
+            }
+          }
+          targetNorm = curParts.join('/')
+        }
+        const normalizedPath = targetNorm ? '/' + targetNorm : '/' + dir
         await writeFile(`${normalizedPath}/.keep`, '')
         writeLine(term, `mkdir: created directory '${dir}'`)
       } catch (e) {
@@ -690,8 +732,28 @@ export default function TerminalWasi(_: Props) {
       }
       try {
         const { readFile, writeFile } = await import('../../vfs/fs')
-        // Always store with leading slash for consistency
-        const normalizedPath = file.startsWith('/') ? file : '/' + file
+        // Resolve path relative to current directory
+        const currentNorm = normalizePathForVfs(currentDirRef.current === '~' ? '' : currentDirRef.current)
+        let targetNorm = ''
+        if (file.startsWith('/')) {
+          targetNorm = normalizePathForVfs(file)
+        } else if (file === '~') {
+          targetNorm = '' // root
+        } else {
+          const curParts = currentNorm ? currentNorm.split('/').filter(Boolean) : []
+          const relParts = file.split('/').filter(Boolean)
+          for (const p of relParts) {
+            if (p === '..') {
+              curParts.pop()
+            } else if (p === '.') {
+              // noop
+            } else {
+              curParts.push(p)
+            }
+          }
+          targetNorm = curParts.join('/')
+        }
+        const normalizedPath = targetNorm ? '/' + targetNorm : '/' + file
         // Check if file already exists (try both formats)
         let existing = await readFile(normalizedPath)
         if (existing === null || existing === undefined) {
@@ -1793,26 +1855,35 @@ export default function TerminalWasi(_: Props) {
     term.writeln('Type \x1b[1;33mhelp\x1b[0m for available commands.')
     term.writeln('Bash shell available: type \x1b[1;33mbash\x1b[0m for interactive shell or \x1b[1;33mbash script.sh\x1b[0m to run scripts.')
     
-    // Preload Wasmer packages in the background
+    // Check if bash is already loaded (preloaded during app startup)
     const coiCheck = checkCrossOriginIsolation()
     if (coiCheck.supported) {
-      term.writeln('\x1b[90mLoading bash environment...\x1b[0m')
-      preloadWasmerPackages((msg) => {
-        // Update terminal with loading progress
-        if (msg.includes('ready') || msg.includes('loaded') || msg.includes('successfully')) {
-          term.writeln(`\x1b[32m✓ ${msg}\x1b[0m`)
-        }
-      }).then((result) => {
-        if (result.success) {
-          wasmerReadyRef.current = true
-          term.writeln('\x1b[32m✓ Bash environment ready\x1b[0m')
-        } else if (result.error) {
-          term.writeln(`\x1b[33m⚠ Bash not available: ${result.error}\x1b[0m`)
-        }
+      const wasmerStatus = getWasmerStatus()
+      if (wasmerStatus.bashLoaded) {
+        // Already loaded during app startup
+        wasmerReadyRef.current = true
+        term.writeln('\x1b[32m✓ Bash environment ready\x1b[0m')
         writePrompt(term)
-      }).catch(() => {
-        writePrompt(term)
-      })
+      } else {
+        // Not loaded yet, preload now
+        term.writeln('\x1b[90mLoading bash environment...\x1b[0m')
+        preloadWasmerPackages((msg) => {
+          // Update terminal with loading progress
+          if (msg.includes('ready') || msg.includes('loaded') || msg.includes('successfully')) {
+            term.writeln(`\x1b[32m✓ ${msg}\x1b[0m`)
+          }
+        }).then((result) => {
+          if (result.success) {
+            wasmerReadyRef.current = true
+            term.writeln('\x1b[32m✓ Bash environment ready\x1b[0m')
+          } else if (result.error) {
+            term.writeln(`\x1b[33m⚠ Bash not available: ${result.error}\x1b[0m`)
+          }
+          writePrompt(term)
+        }).catch(() => {
+          writePrompt(term)
+        })
+      }
     } else {
       term.writeln(`\x1b[33m⚠ Bash not available: ${coiCheck.reason}\x1b[0m`)
       writePrompt(term)
