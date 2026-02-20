@@ -1,40 +1,31 @@
 /**
  * User identification utilities
- * Handles username generation from GitHub login or temporary sequential IDs
+ * Handles username generation from GitHub login or device fingerprint hash
  */
 
-const USER_COUNTER_KEY = 'zynqos_user_counter'
-const USER_ID_KEY = 'zynqos_temp_user_id'
+import { getDeviceIdentifierSync } from './UserIdentifier'
 
 /**
- * Get or assign a temporary sequential user ID (User1, User2, etc.)
- * Uses localStorage to persist the ID across sessions
+ * Get device fingerprint hash as temporary username
+ * Format: dev_a3f2c8 (7-8 hex chars from device fingerprint)
  */
-function getOrAssignTempUserId(): string {
-  // Check if user already has a temporary ID
-  const existing = localStorage.getItem(USER_ID_KEY)
-  if (existing) {
-    return existing
-  }
-
-  // Get global counter from localStorage
-  const counterStr = localStorage.getItem(USER_COUNTER_KEY)
-  const counter = counterStr ? parseInt(counterStr, 10) : 0
-  const nextCounter = counter + 1
-
-  // Assign new ID
-  const newId = `User${nextCounter}`
+function getDeviceTempUsername(): string {
+  const deviceId = getDeviceIdentifierSync() // e.g., "device_a3f2c8ab"
   
-  // Store the new ID and update counter
-  localStorage.setItem(USER_ID_KEY, newId)
-  localStorage.setItem(USER_COUNTER_KEY, nextCounter.toString())
-
-  return newId
+  // Extract the hash part and shorten to 7-8 chars
+  if (deviceId.startsWith('device_')) {
+    const hash = deviceId.replace('device_', '')
+    // Take first 8 chars of hash for username
+    return `dev_${hash.substring(0, 8)}`
+  }
+  
+  // Fallback for unexpected format
+  return deviceId.substring(0, 12)
 }
 
 /**
- * Get username from profile (GitHub login preferred) or temporary ID
- * Priority: GitHub username > display name > email > temporary User ID
+ * Get username from profile (GitHub login preferred) or device fingerprint
+ * Priority: GitHub username > display name > email > device fingerprint hash
  */
 export function getUsername(profile?: {
   login?: string
@@ -43,7 +34,7 @@ export function getUsername(profile?: {
   [key: string]: any
 }): string {
   if (!profile) {
-    return getOrAssignTempUserId()
+    return getDeviceTempUsername()
   }
 
   // Prefer GitHub username (login field from GitHub API)
@@ -61,15 +52,8 @@ export function getUsername(profile?: {
     return profile.email
   }
 
-  // No profile info available, use temporary ID
-  return getOrAssignTempUserId()
-}
-
-/**
- * Clear the temporary user ID (e.g., when user logs in)
- */
-export function clearTempUserId(): void {
-  localStorage.removeItem(USER_ID_KEY)
+  // No profile info available, use device fingerprint
+  return getDeviceTempUsername()
 }
 
 /**

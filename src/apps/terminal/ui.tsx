@@ -78,9 +78,65 @@ export default function TerminalWasi(_: Props) {
   const inPythonModeRef = useRef(false)
   const pythonRemoteModeRef = useRef(false)
   const wasmerReadyRef = useRef(false)
+  const [terminalKey, setTerminalKey] = useState(0) // Used to force terminal restart
 
   const username = getUsername(cachedProfile)
   const bashCompatCwdRef = useRef(`/home/${username}`)
+
+  // Listen for auth changes and restart terminal when user logs in
+  useEffect(() => {
+    const handleAuthChange = async (event: Event) => {
+      const customEvent = event as CustomEvent<any>
+      const status = customEvent?.detail
+      
+      if (status?.profile?.login) {
+        // User logged in - update cached profile
+        const newProfile = {
+          login: status.profile.name || status.profile.login,
+          name: status.profile.name,
+          email: status.profile.email,
+          id: status.profile.id,
+          avatar: status.profile.avatar_url
+        }
+        
+        cachedProfile = newProfile
+        sessionStorage.setItem('zynqos_profile_cache', JSON.stringify(newProfile))
+        
+        const oldUsername = username
+        const newUsername = getUsername(newProfile)
+        
+        // If username changed (from device hash to actual username), restart terminal
+        if (oldUsername !== newUsername) {
+          console.log(`[Terminal] Username changed: ${oldUsername} → ${newUsername}. Restarting terminal...`)
+          
+          // Create new home directory for authenticated user
+          try {
+            const { writeFile, readFile } = await import('../../vfs/fs')
+            const newHomeDir = `home/${newUsername}`
+            const newHomePath = `/${newHomeDir}/.keep`
+            const exists = await readFile(newHomePath)
+            if (!exists) {
+              await writeFile(newHomePath, '')
+              console.log(`[Terminal] Created home directory: ${newHomeDir}`)
+            }
+          } catch (e) {
+            console.warn('[Terminal] Failed to create authenticated user home directory:', e)
+          }
+          
+          // Restart terminal by incrementing key (forces component remount)
+          setTerminalKey(prev => prev + 1)
+        }
+      }
+    }
+
+    window.addEventListener('zynqos:auth-initialized', handleAuthChange as EventListener)
+    window.addEventListener('zynqos:storage-connected', handleAuthChange as EventListener)
+    
+    return () => {
+      window.removeEventListener('zynqos:auth-initialized', handleAuthChange as EventListener)
+      window.removeEventListener('zynqos:storage-connected', handleAuthChange as EventListener)
+    }
+  }, [username]) // Re-run when username changes
 
   // Keep currentDirRef in sync
   useEffect(() => {
@@ -1851,6 +1907,17 @@ export default function TerminalWasi(_: Props) {
 
     // Welcome message
     term.writeln('\x1b[1;32mZynqOS WASI Terminal v0.5\x1b[0m')
+    
+    // Show username and account type
+    const isDeviceUser = username.startsWith('dev_')
+    if (isDeviceUser) {
+      term.writeln(`\x1b[90mLogged in as: \x1b[33m${username}\x1b[90m (anonymous device)\x1b[0m`)
+      term.writeln('\x1b[90mTip: Sign in with GitHub to get a persistent username\x1b[0m')
+    } else {
+      term.writeln(`\x1b[90mLogged in as: \x1b[36m${username}\x1b[0m`)
+    }
+    term.writeln('')
+    
     term.writeln('Type \x1b[1;33mhelp\x1b[0m for available commands.')
     term.writeln('Bash shell available: type \x1b[1;33mbash\x1b[0m for interactive shell or \x1b[1;33mbash script.sh\x1b[0m to run scripts.')
     
@@ -2149,7 +2216,7 @@ export default function TerminalWasi(_: Props) {
   }, [])
 
   return (
-    <div className="flex flex-col h-full bg-black pb-2 overflow-hidden">
+    <div key={terminalKey} className="flex flex-col h-full bg-black pb-2 overflow-hidden">
       <div
         ref={terminalRef}
         className="flex-1 p-2 pr-0 terminal-scrollbar overflow-hidden"
