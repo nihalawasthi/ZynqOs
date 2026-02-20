@@ -87,6 +87,44 @@ export default function TerminalWasi(_: Props) {
     currentDirRef.current = currentDirectory
   }, [currentDirectory])
 
+  // Helper to get VFS path for home directory
+  const getHomeVfsPath = useCallback(() => `home/${username}`, [username])
+
+  // Helper to resolve ~ and relative paths to VFS paths
+  const resolveVfsPath = useCallback((path: string, relativeTo: string = currentDirRef.current): string => {
+    // Home directory
+    if (path === '~') {
+      return getHomeVfsPath()
+    }
+    
+    // Expand ~/ prefix
+    if (path.startsWith('~/')) {
+      return `${getHomeVfsPath()}/${path.slice(2)}`
+    }
+    
+    // Absolute path
+    if (path.startsWith('/')) {
+      return normalizePathForVfs(path)
+    }
+    
+    // Relative path - resolve relative to relativeTo
+    const basePath = relativeTo === '~' ? getHomeVfsPath() : normalizePathForVfs(relativeTo)
+    const baseParts = basePath ? basePath.split('/').filter(Boolean) : []
+    const relParts = path.split('/').filter(Boolean)
+    
+    for (const p of relParts) {
+      if (p === '..') {
+        baseParts.pop()
+      } else if (p === '.') {
+        // noop
+      } else {
+        baseParts.push(p)
+      }
+    }
+    
+    return baseParts.join('/')
+  }, [username, getHomeVfsPath])
+
   // Command suggestions database (built-in + coreutils + JS implemented)
   const commands = [
     // Built-in ZynqOS commands
@@ -593,7 +631,7 @@ export default function TerminalWasi(_: Props) {
       const path = parts[1] || currentDirRef.current
       try {
         const { readdir } = await import('../../vfs/fs')
-        const requestedNorm = normalizePathForVfs(path === '~' ? '' : path)
+        const requestedNorm = resolveVfsPath(path)
         const keys = await readdir(requestedNorm)
         writeLine(term, '  .')
         writeLine(term, '  ..')
@@ -615,24 +653,7 @@ export default function TerminalWasi(_: Props) {
       if (path === '.') return
       if (path === '~') { currentDirRef.current = '~'; setCurrentDirectory('~'); return }
 
-      const currentNorm = normalizePathForVfs(currentDirRef.current === '~' ? '' : currentDirRef.current)
-      let targetNorm = ''
-      if (path.startsWith('/')) {
-        targetNorm = normalizePathForVfs(path)
-      } else {
-        const curParts = currentNorm ? currentNorm.split('/').filter(Boolean) : []
-        const relParts = path.split('/').filter(Boolean)
-        for (const p of relParts) {
-          if (p === '..') {
-            curParts.pop()
-          } else if (p === '.') {
-            // noop
-          } else {
-            curParts.push(p)
-          }
-        }
-        targetNorm = curParts.join('/')
-      }
+      const targetNorm = resolveVfsPath(path)
 
       try {
         const { readdir } = await import('../../vfs/fs')
@@ -641,8 +662,8 @@ export default function TerminalWasi(_: Props) {
         const children = extractImmediateChildren(keys, parent)
         const baseName = targetNorm ? targetNorm.split('/').pop() || '' : ''
         const hasDir = children.includes(baseName + '/') || children.includes(baseName)
-        if (targetNorm === '' || hasDir) {
-          const newDir = targetNorm === '' ? '~' : '/' + targetNorm
+        if (targetNorm === '' || targetNorm === getHomeVfsPath() || hasDir) {
+          const newDir = targetNorm === getHomeVfsPath() ? '~' : '/' + targetNorm
           currentDirRef.current = newDir
           setCurrentDirectory(newDir)
         } else {
@@ -661,9 +682,10 @@ export default function TerminalWasi(_: Props) {
       }
       try {
         const { readFile } = await import('../../vfs/fs')
+        const targetPath = resolveVfsPath(p)
         // Try multiple path formats since VFS might store with or without leading slash
-        const withSlash = p.startsWith('/') ? p : '/' + p
-        const withoutSlash = p.startsWith('/') ? p.slice(1) : p
+        const withSlash = '/' + targetPath
+        const withoutSlash = targetPath
         
         let v = await readFile(withSlash)
         if (v === null || v === undefined) {
@@ -697,28 +719,8 @@ export default function TerminalWasi(_: Props) {
       }
       try {
         const { writeFile } = await import('../../vfs/fs')
-        // Resolve path relative to current directory
-        const currentNorm = normalizePathForVfs(currentDirRef.current === '~' ? '' : currentDirRef.current)
-        let targetNorm = ''
-        if (dir.startsWith('/')) {
-          targetNorm = normalizePathForVfs(dir)
-        } else if (dir === '~') {
-          targetNorm = '' // root
-        } else {
-          const curParts = currentNorm ? currentNorm.split('/').filter(Boolean) : []
-          const relParts = dir.split('/').filter(Boolean)
-          for (const p of relParts) {
-            if (p === '..') {
-              curParts.pop()
-            } else if (p === '.') {
-              // noop
-            } else {
-              curParts.push(p)
-            }
-          }
-          targetNorm = curParts.join('/')
-        }
-        const normalizedPath = targetNorm ? '/' + targetNorm : '/' + dir
+        const targetNorm = resolveVfsPath(dir)
+        const normalizedPath = targetNorm ? '/' + targetNorm : '/'
         await writeFile(`${normalizedPath}/.keep`, '')
         writeLine(term, `mkdir: created directory '${dir}'`)
       } catch (e) {
@@ -732,28 +734,8 @@ export default function TerminalWasi(_: Props) {
       }
       try {
         const { readFile, writeFile } = await import('../../vfs/fs')
-        // Resolve path relative to current directory
-        const currentNorm = normalizePathForVfs(currentDirRef.current === '~' ? '' : currentDirRef.current)
-        let targetNorm = ''
-        if (file.startsWith('/')) {
-          targetNorm = normalizePathForVfs(file)
-        } else if (file === '~') {
-          targetNorm = '' // root
-        } else {
-          const curParts = currentNorm ? currentNorm.split('/').filter(Boolean) : []
-          const relParts = file.split('/').filter(Boolean)
-          for (const p of relParts) {
-            if (p === '..') {
-              curParts.pop()
-            } else if (p === '.') {
-              // noop
-            } else {
-              curParts.push(p)
-            }
-          }
-          targetNorm = curParts.join('/')
-        }
-        const normalizedPath = targetNorm ? '/' + targetNorm : '/' + file
+        const targetNorm = resolveVfsPath(file)
+        const normalizedPath = targetNorm ? '/' + targetNorm : '/'
         // Check if file already exists (try both formats)
         let existing = await readFile(normalizedPath)
         if (existing === null || existing === undefined) {
@@ -781,7 +763,8 @@ export default function TerminalWasi(_: Props) {
       const path = parts[1] || currentDirRef.current
       try {
         const { readdir } = await import('../../vfs/fs')
-        const keys = await readdir(path === '~' ? '' : path)
+        const targetPath = resolveVfsPath(path)
+        const keys = await readdir(targetPath)
         writeLine(term, path)
         keys.forEach((k, i) => {
           const isLast = i === keys.length - 1
@@ -814,7 +797,7 @@ export default function TerminalWasi(_: Props) {
         const { readdir, removeFile } = await import('../../vfs/fs')
 
         for (const t of targets) {
-          const targetNorm = normalizeTerminalPath(t, currentDirRef.current)
+          const targetNorm = resolveVfsPath(t)
           const targetSlash = targetNorm ? '/' + targetNorm : '/'
 
           let allMatches: string[] = []
@@ -1239,7 +1222,7 @@ export default function TerminalWasi(_: Props) {
             candidate.endsWith('.py')
 
           if (looksLikePath) {
-            const normalized = normalizeTerminalPath(candidate, currentDirRef.current)
+            const normalized = resolveVfsPath(candidate)
             const vfsPath = normalized ? '/' + normalized : ''
             if (vfsPath) {
               const fileContents = await readFile(vfsPath)
@@ -1849,6 +1832,22 @@ export default function TerminalWasi(_: Props) {
 
     xtermRef.current = term
     fitAddonRef.current = fitAddon
+
+    // Ensure user home directory exists
+    ;(async () => {
+      try {
+        const { writeFile, readFile } = await import('../../vfs/fs')
+        const homeDir = getHomeVfsPath()
+        const homePath = `/${homeDir}/.keep`
+        const exists = await readFile(homePath)
+        if (!exists) {
+          await writeFile(homePath, '')
+          console.log(`[Terminal] Created home directory: ${homeDir}`)
+        }
+      } catch (e) {
+        console.warn('[Terminal] Failed to create home directory:', e)
+      }
+    })()
 
     // Welcome message
     term.writeln('\x1b[1;32mZynqOS WASI Terminal v0.5\x1b[0m')
