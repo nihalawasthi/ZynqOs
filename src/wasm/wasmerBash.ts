@@ -228,6 +228,52 @@ function decodeOutput(data: any): string {
 }
 
 /**
+ * Read a process output stream fully as text
+ */
+async function readOutputStream(
+  stream?: ReadableStream<Uint8Array> | null
+): Promise<string> {
+  if (!stream) return ''
+
+  const reader = stream.getReader()
+  const decoder = new TextDecoder()
+  let output = ''
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      if (value) {
+        output += decoder.decode(value, { stream: true })
+      }
+    }
+    output += decoder.decode()
+  } catch {
+    // Ignore stream read failures and return whatever we collected
+  } finally {
+    try {
+      reader.releaseLock()
+    } catch {
+      // No-op
+    }
+  }
+
+  return output
+}
+
+/**
+ * Extract additional error details from Wasmer output metadata
+ */
+function extractWaitError(output: any): string {
+  const candidates = [output?.error, output?.message, output?.reason, output?.signal]
+  for (const candidate of candidates) {
+    const text = decodeOutput(candidate).trim()
+    if (text) return text
+  }
+  return ''
+}
+
+/**
  * Run a bash command string
  */
 export async function runBashCommand(
@@ -242,9 +288,19 @@ export async function runBashCommand(
     stdin: options.stdin ? new TextEncoder().encode(options.stdin) : undefined,
   })
 
-  const output = await instance.wait()
-  const stdout = decodeOutput(output.stdout)
-  const stderr = decodeOutput(output.stderr)
+  const stdoutPromise = readOutputStream(instance.stdout)
+  const stderrPromise = readOutputStream(instance.stderr)
+  const [output, streamStdout, streamStderr] = await Promise.all([
+    instance.wait(),
+    stdoutPromise,
+    stderrPromise,
+  ])
+
+  const stdout = streamStdout || decodeOutput(output.stdout)
+  let stderr = streamStderr || decodeOutput(output.stderr)
+  if (!stderr && !output.ok) {
+    stderr = extractWaitError(output)
+  }
 
   return {
     stdout,
@@ -270,7 +326,8 @@ export async function runBashScript(
   // Mount VFS files at /vfs/ so they're accessible
   const mountConfig: Record<string, any> = {
     '/tmp': {
-      'script.sh': scriptContent,
+      // Mount as bytes to avoid string/encoding edge cases in the VFS layer
+      'script.sh': new TextEncoder().encode(scriptContent),
     },
     '/vfs': {} as Record<string, any>,
   }
@@ -324,7 +381,7 @@ export async function runBashScript(
   }
   
   // Update the script in mount config
-  mountConfig['/tmp']['script.sh'] = rewrittenScript
+  mountConfig['/tmp']['script.sh'] = new TextEncoder().encode(rewrittenScript)
 
   console.log(`[Wasmer] Running bash script (rewritten):`, rewrittenScript)
   console.log(`[Wasmer] Mount config:`, Object.keys(mountConfig['/vfs'] || {}))
@@ -337,9 +394,19 @@ export async function runBashScript(
     mount: mountConfig,
   })
 
-  const output = await instance.wait()
-  const stdout = decodeOutput(output.stdout)
-  const stderr = decodeOutput(output.stderr)
+  const stdoutPromise = readOutputStream(instance.stdout)
+  const stderrPromise = readOutputStream(instance.stderr)
+  const [output, streamStdout, streamStderr] = await Promise.all([
+    instance.wait(),
+    stdoutPromise,
+    stderrPromise,
+  ])
+
+  const stdout = streamStdout || decodeOutput(output.stdout)
+  let stderr = streamStderr || decodeOutput(output.stderr)
+  if (!stderr && !output.ok) {
+    stderr = extractWaitError(output)
+  }
 
   return {
     stdout,
@@ -425,9 +492,19 @@ export async function runCoreutil(
     ...(mountConfig && { mount: mountConfig }),
   })
 
-  const output = await instance.wait()
-  const stdout = decodeOutput(output.stdout)
-  const stderr = decodeOutput(output.stderr)
+  const stdoutPromise = readOutputStream(instance.stdout)
+  const stderrPromise = readOutputStream(instance.stderr)
+  const [output, streamStdout, streamStderr] = await Promise.all([
+    instance.wait(),
+    stdoutPromise,
+    stderrPromise,
+  ])
+
+  const stdout = streamStdout || decodeOutput(output.stdout)
+  let stderr = streamStderr || decodeOutput(output.stderr)
+  if (!stderr && !output.ok) {
+    stderr = extractWaitError(output)
+  }
 
   return {
     stdout,
