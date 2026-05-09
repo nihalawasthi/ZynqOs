@@ -1,0 +1,63 @@
+name: Good First Issue Candidate
+description: Create a beginner-friendly task with complete context
+labels: [good first issue]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this template only for small, well-scoped tasks suitable for first-time contributors.
+
+  - type: textarea
+    id: task
+    attributes:
+      label: Task Summary
+      description: One sentence explaining what to change.
+      placeholder: Add keyboard shortcut hint text in Terminal help UI.
+    validations:
+      required: true
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Background Context
+      description: Explain why this matters and where to start.
+      placeholder: |
+        Relevant file: src/apps/terminal/*
+        Existing behavior: ...
+        Desired behavior: ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Suggested Steps
+      description: Give a simple step-by-step approach.
+      placeholder: |
+        1. Open file ...
+        2. Update ...
+        3. Run npm run lint
+        4. Verify in UI
+    validations:
+      required: true
+
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance Criteria
+      description: Clear checklist of done conditions.
+      placeholder: |
+        - [ ] UI text updated
+        - [ ] No lint errors
+        - [ ] Screenshot added to PR
+    validations:
+      required: true
+
+  - type: textarea
+    id: outofscope
+    attributes:
+      label: Out of Scope
+      description: Prevent accidental scope creep.
+      placeholder: Do not refactor terminal command parser in this issue.
+    validations:
+      required: true

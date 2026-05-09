@@ -1,0 +1,39 @@
+name: Help Wanted
+description: Request community support on a bounded task
+labels: [help wanted]
+body:
+  - type: textarea
+    id: summary
+    attributes:
+      label: Request Summary
+      description: What help is needed?
+    validations:
+      required: true
+
+  - type: textarea
+    id: boundaries
+    attributes:
+      label: Scope Boundaries
+      description: What is included and excluded from this task?
+      placeholder: |
+        In scope: ...
+        Out of scope: ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: technical
+    attributes:
+      label: Technical Context
+      description: Point to relevant code paths and commands.
+      placeholder: src/storage/*, api/index.ts, npm run test
+    validations:
+      required: true
+
+  - type: textarea
+    id: completion
+    attributes:
+      label: Completion Criteria
+      description: How should reviewers validate success?
+    validations:
+      required: true

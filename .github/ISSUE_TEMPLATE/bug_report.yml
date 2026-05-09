@@ -1,0 +1,58 @@
+name: Bug Report
+description: Report a reproducible bug in ZynqOS
+labels: [bug]
+body:
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: Describe the bug and expected behavior.
+      placeholder: A clear and concise description.
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to Reproduce
+      description: Provide exact steps so someone new can reproduce this issue.
+      placeholder: |
+        1. Go to ...
+        2. Click ...
+        3. Run ...
+        4. Observe ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: scope
+    attributes:
+      label: Suggested Scope
+      description: What files, modules, or app areas are likely involved?
+      placeholder: src/apps/terminal, src/vfs, api/*
+    validations:
+      required: true
+
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance Criteria
+      description: List clear success criteria.
+      placeholder: |
+        - [ ] Bug no longer reproduces with above steps
+        - [ ] Existing behavior remains unchanged elsewhere
+    validations:
+      required: true
+
+  - type: textarea
+    id: screenshots
+    attributes:
+      label: Logs/Screenshots
+      description: Paste console logs, traces, or screenshots if available.
+
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      description: Browser, OS, and app version/commit
+      placeholder: Chrome 135, Windows 11, commit abc123

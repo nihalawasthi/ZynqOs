@@ -1,81 +1,59 @@
-name: Build Frontend
+name: CI
 
 on:
+  pull_request:
+    branches: [main]
   push:
-    branches: [ main ]
+    branches: [main]
   workflow_dispatch:
 
 jobs:
-  build:
+  quality:
+    name: Lint, Format, Test, Build
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-        with:
-          persist-credentials: true
 
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
-          cache: 'npm'
+          node-version: "20"
+          cache: "npm"
 
       - name: Install JS deps
-        run: npm install --frozen-lockfile
+        run: npm ci
+
+      - name: Detect changed files
+        id: changed
+        uses: tj-actions/changed-files@v45
+
+      - name: Lint changed files
+        shell: bash
+        run: |
+          FILES="${{ steps.changed.outputs.all_changed_files }}"
+          LINT_FILES=$(echo "$FILES" | tr ' ' '\n' | grep -E '\.(ts|tsx|js|jsx|mjs|cjs)$' || true)
+          if [ -z "$LINT_FILES" ]; then
+            echo "No JS/TS files changed."
+            exit 0
+          fi
+          echo "$LINT_FILES" | tr '\n' ' '
+          npx eslint $LINT_FILES
+
+      - name: Format check changed files
+        shell: bash
+        run: |
+          FILES="${{ steps.changed.outputs.all_changed_files }}"
+          FORMAT_FILES=$(echo "$FILES" | tr ' ' '\n' | grep -E '\.(md|json|ya?ml|css|html|ts|tsx|js|jsx|mjs|cjs)$' || true)
+          if [ -z "$FORMAT_FILES" ]; then
+            echo "No Prettier-supported files changed."
+            exit 0
+          fi
+          echo "$FORMAT_FILES" | tr '\n' ' '
+          npx prettier --check $FORMAT_FILES
+
+      - name: Tests
+        run: npm run test
 
       - name: Build frontend
         run: npm run build
-
-      - name: Upload artifact (frontend build)
-        if: success()
-        uses: actions/upload-artifact@v4
-        with:
-          name: ZynqOS-dist
-          path: dist
-
-      - name: Check Vercel secrets present
-        if: github.ref == 'refs/heads/main'
-        run: |
-          MISSING=0
-          if [ -z "${{ secrets.VERCEL_TOKEN }}" ]; then
-            echo "VERCEL_TOKEN is missing"
-            MISSING=1
-          else
-            echo "VERCEL_TOKEN present"
-          fi
-          if [ -z "${{ secrets.VERCEL_ORG_ID }}" ]; then
-            echo "VERCEL_ORG_ID is missing"
-            MISSING=1
-          else
-            echo "VERCEL_ORG_ID present"
-          fi
-          if [ -z "${{ secrets.VERCEL_PROJECT_ID }}" ]; then
-            echo "VERCEL_PROJECT_ID is missing"
-            MISSING=1
-          else
-            echo "VERCEL_PROJECT_ID present"
-          fi
-          if [ "$MISSING" -ne 0 ]; then
-            echo "One or more Vercel secrets are missing. Set VERCEL_TOKEN, VERCEL_ORG_ID and VERCEL_PROJECT_ID in repo secrets.";
-            exit 1
-          fi
-
-      - name: Prepare Vercel deployment
-        if: github.ref == 'refs/heads/main'
-        run: |
-          echo "Preparing deployment files"
-          # Ensure vercel.json is in dist for deployment
-          cp vercel.json dist/ || true
-          # Copy API folder for serverless functions
-          mkdir -p dist/api
-          cp -r api/* dist/api/ || true
-
-      - name: Deploy to Vercel
-        if: github.ref == 'refs/heads/main'
-        uses: amondnet/vercel-action@v20
-        with:
-          vercel-token: ${{ secrets.VERCEL_TOKEN }}
-          vercel-args: '--prod'
-          working-directory: '.'
-          vercel-org-id: ${{ secrets.VERCEL_ORG_ID }}
-          vercel-project-id: ${{ secrets.VERCEL_PROJECT_ID }}

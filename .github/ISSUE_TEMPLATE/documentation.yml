@@ -1,0 +1,38 @@
+name: Documentation Improvement
+description: Report missing or unclear docs
+labels: [documentation]
+body:
+  - type: textarea
+    id: gap
+    attributes:
+      label: Documentation Gap
+      description: What is missing or unclear?
+      placeholder: README quick start does not mention ...
+    validations:
+      required: true
+
+  - type: input
+    id: location
+    attributes:
+      label: Affected File/Section
+      description: Link the file and section if known.
+      placeholder: README.md -> Quick Start
+
+  - type: textarea
+    id: proposed
+    attributes:
+      label: Suggested Update
+      description: Provide a suggested replacement text or structure.
+    validations:
+      required: true
+
+  - type: textarea
+    id: done
+    attributes:
+      label: Completion Criteria
+      description: Define what "fixed" looks like.
+      placeholder: |
+        - [ ] New section added
+        - [ ] Commands tested on a clean machine
+    validations:
+      required: true

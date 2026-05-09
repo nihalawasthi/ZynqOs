@@ -24,6 +24,7 @@ A browser-hosted "micro-OS" shell that runs two kinds of sandboxed WASM apps:
 ## Available Applications
 
 ### Desktop Apps
+
 - **File Browser** - Browse and manage VFS files
 - **Text Editor** - Edit text files with VFS persistence
 - **Calculator** - Basic calculator with WASM compute
@@ -32,6 +33,7 @@ A browser-hosted "micro-OS" shell that runs two kinds of sandboxed WASM apps:
 - **Settings** - System configuration with sync controls
 
 ### WASI Binaries (Terminal)
+
 - **shell.wasm** - ZynqOS kernel shell with built-in commands
 - **ls.wasm** - List directory contents
 - **cat.wasm** - Display file contents
@@ -53,28 +55,21 @@ See [docs/SYNC_SYSTEM.md](docs/SYNC_SYSTEM.md) for details.
 
 ## Quick Start
 
+Tested on a clean machine with Node.js 20 LTS and npm 10.
+
+### Prerequisites
+
+- Node.js 20 LTS
+- npm 10+
+- Git
+
 ### 1. Install Dependencies
 
 ```powershell
 npm install
 ```
 
-### 2. Build WASM Modules (Optional)
-
-Requires Rust toolchain and `wasm-pack`:
-
-```powershell
-# Install wasm-pack if not already installed
-cargo install wasm-pack
-
-# Add WASI target for Windows
-rustup target add wasm32-wasip1
-
-# Build all WASM modules (calculator + WASI terminal)
-.\scripts\build-wasm.ps1
-```
-
-### 3. Run Development Server
+### 2. Run Development Server
 
 ```powershell
 npm run dev
@@ -82,12 +77,35 @@ npm run dev
 
 Open `http://localhost:5173`
 
+### Verification Checklist
+
+After setup, run the quality checks used in CI:
+
+```powershell
+npm run lint
+npm run format:check
+npm run test
+npm run build
+```
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for pull request requirements, commit message conventions, code style, and review expectations.
+
+## Contact
+
+- GitHub Issues: use the repository issue tracker for bugs and feature requests
+- Discord: ZynqOS community server linked from the package creation guide
+
 ## Scripts
 
 - `npm run dev` - Start Vite dev server
 - `npm run build` - Build production bundle
 - `npm run preview` - Preview production build
 - `npm run build-wasm` - Build all WASM modules (calls `build-wasm.ps1`)
+- `npm run lint` - Run ESLint
+- `npm run format:check` - Verify formatting with Prettier
+- `npm run test` - Run the unit test suite
 
 ## WASM Build Scripts
 
@@ -113,6 +131,7 @@ WASI binaries can be run in three ways:
 ### Quick Run Buttons
 
 The terminal has quick-run buttons for common operations:
+
 - **🐚 Shell** - Run kernel shell with help command
 - **📁 ls /** - List root directory using shell
 - **📄 cat** - Display /input.txt using shell
@@ -123,15 +142,17 @@ The terminal has quick-run buttons for common operations:
 ### Kernel Shell Commands
 
 When running `shell.wasm`, available commands:
+
 - `help` - Show available commands
 - `ls [path]` - List directory contents
-- `cat <file>` - Display file contents  
+- `cat <file>` - Display file contents
 - `pwd` - Print working directory
 - `echo <text>` - Echo text to stdout
 - `stat <path>` - Show file information
 - `version` - Show kernel version
 
 Example usage:
+
 ```bash
 run /apps/wasm/shell.wasm ls /
 run /apps/wasm/shell.wasm cat /input.txt
@@ -168,12 +189,14 @@ run /apps/wasm/rm.wasm /test.txt
 **All file changes made by WASI programs are automatically synced back to the IndexedDB VFS!**
 
 This means you can:
+
 1. Create files with `touch` or `mkdir`
 2. Check them in the File Browser app
 3. Edit them in Zynqpad (supports HTML, CSS, JS, Python, Markdown, and more!)
 4. Read them with `cat` in future terminal sessions
 
 Default mounted files:
+
 - `/input.txt` - Sample text file
 - `/home/demo.txt` - Demo file
 
@@ -269,7 +292,7 @@ The scripts automatically handle this.
 
 - **Frontend**: React + Vite + TypeScript + Tailwind CSS v4
 - **VFS**: IndexedDB via `idb` library
-- **WASM**: 
+- **WASM**:
   - wasm-bindgen for web-integrated modules
   - @wasmer/wasi + @wasmer/wasmfs for WASI runtime
 - **Build**: Vite, wasm-pack, cargo
@@ -284,7 +307,7 @@ The window manager exposes a global function for opening windows:
 
 Apps are mounted via the Taskbar or Launcher components.
 
-<!-- 
+<!--
 [
     "arch",
     "base32",

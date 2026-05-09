@@ -1,0 +1,48 @@
+name: Feature Request
+description: Propose a new capability or enhancement
+labels: [feature]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem Statement
+      description: What user problem does this solve?
+      placeholder: As a user, I cannot ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed Solution
+      description: Describe the implementation idea.
+      placeholder: Add a new component/command that ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: scope
+    attributes:
+      label: Scope and Touchpoints
+      description: Mention expected files, modules, and risks.
+      placeholder: src/apps/settings, src/components/Taskbar.tsx, tests
+    validations:
+      required: true
+
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance Criteria
+      description: Provide measurable conditions for completion.
+      placeholder: |
+        - [ ] New option appears in Settings
+        - [ ] Value persists across reloads
+        - [ ] Tests updated
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives Considered
+      description: Optional alternatives and why they were not chosen.
