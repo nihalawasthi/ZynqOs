@@ -5,6 +5,9 @@
   "functions": {
     "api/index.ts": {
       "maxDuration": 30
+    },
+    "api/wednesday-ai.ts": {
+      "maxDuration": 30
     }
   },
   "headers": [

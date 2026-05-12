@@ -20,6 +20,39 @@ A browser-hosted "micro-OS" shell that runs two kinds of sandboxed WASM apps:
 - ☁️ **Cloud Storage** - Google Drive & GitHub repo sync
 - 🔄 **Peer-to-Peer Sync** - Data stored in user's own GitHub repo
 - ⏱️ **Activity Tracking** - Daily active time tracking with auto-reset
+- 🤖 **AI Assistant (Wednesday)** - AI chat with streaming responses
+
+## AI Integration (Wednesday)
+
+ZynqOS includes **Wednesday**, a built-in AI assistant powered by Google Gemini 2.0 Flash. It supports real-time streaming responses, conversation memory, and inline markdown rendering — all within the OS interface.
+
+### How It Works
+
+- User messages are sent to the **Gemini API** either directly from the browser (client-side key) or via the **server-side proxy** (`/api/wednesday-ai`)
+- Responses stream in token-by-token using **Server-Sent Events (SSE)**
+- Conversation history (up to 20 exchanges) is maintained per session
+
+### Setup
+
+**Option A — Client-side key (recommended for development):**
+1. Get a free API key from [Google AI Studio](https://aistudio.google.com/apikey)
+2. Open Wednesday → ⚙ Settings → paste the key → Save
+
+**Option B — Server-side environment variable (for deployment):**
+```bash
+# In your .env or Vercel environment variables
+GEMINI_API_KEY=your_key_here
+```
+
+### Key Files
+
+| File | Purpose |
+|------|---------|
+| `api/wednesday-ai.ts` | Vercel serverless proxy to Gemini API |
+| `src/apps/wednesday/aiService.ts` | Client-side AI service (streaming, history) |
+| `src/apps/wednesday/ui.tsx` | Chat UI with markdown rendering and settings |
+
+> All AI integration changes are marked with `[AI INTEGRATION]` comments in the source code.
 
 ## Available Applications
 

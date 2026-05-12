@@ -37,6 +37,9 @@ export const ENV = {
   CRON_SECRET: process.env.CRON_SECRET || 'dev-secret-change-in-production',
   POSTGRES_URL: process.env.POSTGRES_URL,
   POSTGRES_URL_NON_POOLING: process.env.POSTGRES_URL_NON_POOLING,
+
+  // [AI INTEGRATION] — Added for Wednesday AI Assistant
+  GEMINI_API_KEY: process.env.GEMINI_API_KEY || '',
 }
 
 // ===== API Constants =====
