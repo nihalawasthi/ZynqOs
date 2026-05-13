@@ -1960,7 +1960,6 @@ export default function TerminalWasi(_: Props) {
     let localHistoryIndex = -1
     let tabMatches: string[] = []
     let tabIndex = -1
-    let lastTabPartial = ''
 
     term.onData(async data => {
       // If in interactive bash mode, send all input directly to bash
@@ -1981,7 +1980,6 @@ export default function TerminalWasi(_: Props) {
       if (code !== 9) {
         tabMatches = []
         tabIndex = -1
-        lastTabPartial = ''
       }
 
       if (code === 13) { // Enter
@@ -2141,19 +2139,46 @@ export default function TerminalWasi(_: Props) {
       } else if (code === 9) { // Tab - autocomplete with cycling
         const partial = currentLineRef.current
 
-        // If this is a new tab sequence or partial changed, get fresh matches
-        if (tabMatches.length === 0 || lastTabPartial !== partial) {
-          tabMatches = commands.filter(c => c.startsWith(partial))
+        // If this is a new tab sequence, get fresh matches
+        if (tabMatches.length === 0) {
+          if (partial.includes(' ')) {
+            // Path autocomplete
+            const lastSpace = partial.lastIndexOf(' ')
+            const prefix = partial.slice(0, lastSpace + 1)
+            const pathPart = partial.slice(lastSpace + 1)
+            
+            const lastSlash = pathPart.lastIndexOf('/')
+            const dirPart = lastSlash >= 0 ? pathPart.slice(0, lastSlash) : ''
+            const searchPrefix = lastSlash >= 0 ? pathPart.slice(lastSlash + 1) : pathPart
+            
+            try {
+              const { readdir } = await import('../../vfs/fs')
+              const targetNorm = resolveVfsPath(dirPart || '.', currentDirRef.current)
+              const keys = await readdir(targetNorm) || []
+              const children = extractImmediateChildren(keys, targetNorm)
+              
+              const matches = children.filter(c => c.startsWith(searchPrefix))
+              tabMatches = matches.map(m => prefix + (dirPart ? dirPart + '/' : '') + m)
+            } catch (e) {
+              tabMatches = []
+            }
+          } else {
+            // Command autocomplete
+            tabMatches = commands.filter(c => c.startsWith(partial))
+          }
           tabIndex = -1
-          lastTabPartial = partial
         }
 
         if (tabMatches.length === 1) {
           // Single match - autocomplete directly
           const clearLen = currentLineRef.current.length
           term.write('\b \b'.repeat(clearLen))
-          currentLineRef.current = tabMatches[0] + ' '
-          term.write(tabMatches[0] + ' ')
+          
+          const match = tabMatches[0]
+          const isDir = match.endsWith('/')
+          currentLineRef.current = match + (isDir ? '' : ' ')
+          term.write(currentLineRef.current)
+          
           tabMatches = []
           tabIndex = -1
         } else if (tabMatches.length > 1) {

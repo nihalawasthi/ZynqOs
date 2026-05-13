@@ -14,7 +14,7 @@ export default function Taskbar() {
       setMinimizedWindows((globalThis as any).ZynqOS_minimizedWindows || [])
       setOpenedWindows((globalThis as any).ZynqOS_openedWindows || [])
     }
-    
+
     const interval = setInterval(checkMaximized, 100)
     return () => clearInterval(interval)
   }, [])
