@@ -25,6 +25,7 @@ export default function Window({
   onCloseAll,
   initialPosition = { x: 100, y: 60 },
   initialWidth,
+  initialHeight,
   forcedPosition,
   isTiled = false,
   isActive = false,
@@ -43,6 +44,7 @@ export default function Window({
   onCloseAll?: () => void
   initialPosition?: { x: number; y: number }
   initialWidth?: number
+  initialHeight?: number
   forcedPosition?: ForcedPosition
   isTiled?: boolean
   isActive?: boolean
@@ -59,8 +61,9 @@ export default function Window({
   const [isDragging, setIsDragging] = useState(false)
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 })
   const [isResizing, setIsResizing] = useState(false)
-  const [resizeStart, setResizeStart] = useState({ x: 0, y: 0, width: 0 })
+  const [resizeStart, setResizeStart] = useState({ x: 0, y: 0, width: 0, height: 0 })
   const [resizedWidth, setResizedWidth] = useState<number | null>(initialWidth ?? null)
+  const [resizedHeight, setResizedHeight] = useState<number | null>(initialHeight ?? null)
   const [isMaximized, setIsMaximized] = useState(initialMaximized)
   const [isMinimized, setIsMinimized] = useState(initialMinimized)
   const [prevPosition, setPrevPosition] = useState(initialPosition)
@@ -97,9 +100,7 @@ export default function Window({
     if (forcedPosition && isTiled) {
       setPosition({ x: forcedPosition.x, y: forcedPosition.y })
       setResizedWidth(forcedPosition.width)
-      if (windowRef.current) {
-        windowRef.current.style.height = `${forcedPosition.height}px`
-      }
+      setResizedHeight(forcedPosition.height)
     }
   }, [forcedPosition, isTiled])
 
@@ -153,7 +154,9 @@ export default function Window({
       if (isResizing) {
         if (isTiled) return // Don't allow resizing when tiled
         const deltaX = e.clientX - resizeStart.x
-        setResizedWidth(Math.max(300, resizeStart.width + deltaX))
+        const deltaY = e.clientY - resizeStart.y
+        setResizedWidth(Math.max(600, resizeStart.width + deltaX))
+        setResizedHeight(Math.max(400, resizeStart.height + deltaY))
       }
     }
 
@@ -203,13 +206,9 @@ export default function Window({
         if (snapPos) {
           setPosition({ x: snapPos.x, y: snapPos.y })
           setResizedWidth(snapPos.width)
+          setResizedHeight(snapPos.height)
           setPrevPosition({ x: snapPos.x, y: snapPos.y })
           setIsSnapped(true)
-          
-          // Update window height via custom property
-          if (windowRef.current) {
-            windowRef.current.style.height = `${snapPos.height}px`
-          }
         }
       }
       
@@ -255,9 +254,6 @@ export default function Window({
       setIsMaximized(false)
       setIsSnapped(false)
       onMaximizedChange?.(false)
-      if (windowRef.current) {
-        windowRef.current.style.height = '400px'
-      }
     } else {
       // Maximize
       setPrevPosition(position)
@@ -285,15 +281,12 @@ export default function Window({
         if (snapPos) {
           setPosition({ x: snapPos.x, y: snapPos.y })
           setResizedWidth(snapPos.width)
+          setResizedHeight(snapPos.height)
           setPrevPosition({ x: snapPos.x, y: snapPos.y })
           setIsSnapped(true)
           const isNowMaximized = zone === 'maximize'
           setIsMaximized(isNowMaximized)
           onMaximizedChange?.(isNowMaximized)
-          
-          if (windowRef.current) {
-            windowRef.current.style.height = `${snapPos.height}px`
-          }
         }
       }
     }
@@ -315,8 +308,10 @@ export default function Window({
     : {
       left: `${position.x}px`,
       top: `${position.y}px`,
-      width: resizedWidth ? `${resizedWidth}px` : '600px',
+      width: resizedWidth ? `${resizedWidth}px` : '800px',
+      height: resizedHeight ? `${resizedHeight}px` : '600px',
       maxWidth: '90vw',
+      maxHeight: '90vh',
       zIndex: 10
     }
 
@@ -340,7 +335,6 @@ export default function Window({
               ? '0 8px 24px rgba(74, 158, 255, 0.2), inset 0 1px 0 rgba(255,255,255,0.06)'
               : '0 6px 20px rgba(11,15,30,0.25), inset 0 1px 0 rgba(255,255,255,0.06)',
           border: isMaximized ? 'none' : (isTiled && isActive) ? '2px solid #4a9eff' : isTiled ? '1px solid #424242' : isActive ? '2px solid #4a9eff' : '1px solid #424242',
-          height: isMaximized ? undefined : '400px',
           ...windowStyle
         }}
         onClick={() => onActivate?.()}
@@ -521,7 +515,8 @@ export default function Window({
             setResizeStart({
               x: e.clientX,
               y: e.clientY,
-              width: windowRef.current?.offsetWidth || 600
+              width: windowRef.current?.offsetWidth || 600,
+              height: windowRef.current?.offsetHeight || 400
             })
           }}
           className="absolute right-1 bottom-1 w-3 h-3 cursor-se-resize opacity-60 hover:opacity-100 transition"
