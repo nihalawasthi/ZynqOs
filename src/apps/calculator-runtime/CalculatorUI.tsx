@@ -18,6 +18,15 @@ export default function CalculatorUI({ wasmModule }: CalculatorUIProps) {
     setResult(s => (s === '0' ? n : s + n))
   }
 
+  function backspace() {
+    setResult(s => {
+      if (s.length <= 1) {
+        return '0'
+      }
+      return s.slice(0, -1)
+    })
+  }
+
   function clear() {
     setResult('0')
   }
@@ -137,7 +146,13 @@ export default function CalculatorUI({ wasmModule }: CalculatorUIProps) {
         >
           +
         </button>
-        
+
+        <button
+          onClick={backspace}
+          className="col-span-2 p-4 bg-gradient-to-b from-yellow-600 to-yellow-700 hover:from-yellow-500 hover:to-yellow-600 text-white rounded-xl font-semibold transition-all shadow-lg active:scale-95"
+        >
+          ⌫
+        </button>
         <button 
           onClick={clear} 
           className="col-span-2 p-4 bg-gradient-to-b from-red-600 to-red-700 hover:from-red-500 hover:to-red-600 text-white rounded-xl font-semibold transition-all shadow-lg active:scale-95"
@@ -146,7 +161,7 @@ export default function CalculatorUI({ wasmModule }: CalculatorUIProps) {
         </button>
         <button 
           onClick={calculate} 
-          className="col-span-2 p-4 bg-gradient-to-b from-green-600 to-green-700 hover:from-green-500 hover:to-green-600 text-white rounded-xl font-semibold transition-all shadow-lg active:scale-95"
+          className="col-span-4 p-4 bg-gradient-to-b from-green-600 to-green-700 hover:from-green-500 hover:to-green-600 text-white rounded-xl font-semibold transition-all shadow-lg active:scale-95"
         >
           =
         </button>
