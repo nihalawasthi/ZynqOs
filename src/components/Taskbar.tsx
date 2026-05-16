@@ -156,8 +156,12 @@ function SessionTimerBadge() {
 
   if (!session) return null
 
-  const isActive = now - session.lastActivityTs < SESSION_IDLE_THRESHOLD_MS
-  const liveMs = session.totalActiveMs + (isActive ? Math.max(0, now - session.lastUpdateTs) : 0)
+  const isActive =
+    now - session.lastActivityTs < SESSION_IDLE_THRESHOLD_MS
+
+  const liveMs =
+    session.totalActiveMs +
+    (isActive ? Math.max(0, now - session.lastUpdateTs) : 0)
 
   return (
     <div
