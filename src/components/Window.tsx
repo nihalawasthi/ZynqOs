@@ -106,7 +106,7 @@ export default function Window({
 
   useEffect(() => {
     const BOTTOM_THRESHOLD = 150; // Distance from bottom to show display selector
-    
+
     const handleMouseMove = (e: MouseEvent) => {
       if (isDragging) {
         const newX = e.clientX - dragOffset.x
@@ -118,13 +118,13 @@ export default function Window({
         // Check if dragging near bottom of screen (for display transfer)
         const distanceFromBottom = window.innerHeight - e.clientY
         const isNearBottom = distanceFromBottom < BOTTOM_THRESHOLD
-        
+
         if (isNearBottom && !displayTransferInitiatedRef.current && !showDisplaySelector) {
           // Show display selector when dragging near bottom
           setShowDisplaySelector(true)
           setDragDisplayPosition({ x: e.clientX, y: e.clientY })
         }
-        
+
         // Update drag position while selector is visible
         if (showDisplaySelector) {
           setDragDisplayPosition({ x: e.clientX, y: e.clientY })
@@ -163,7 +163,7 @@ export default function Window({
     const handleMouseUp = () => {
       const currentShowSelector = showDisplaySelectorRef.current
       const currentSelectedId = selectedDisplayIdRef.current
-      
+
       if (isDragging) {
         console.log('[Window] MouseUp', {
           showDisplaySelector: currentShowSelector,
@@ -175,31 +175,31 @@ export default function Window({
 
       // Reset transfer flag on drag end
       transferredRef.current = false
-      
+
       // Handle display-based transfer
       if (isDragging && currentShowSelector && currentSelectedId && onTransfer && windowPool) {
         console.log(`[Window] Display transfer initiated to display ${currentSelectedId}`);
         displayTransferInitiatedRef.current = true
         setIsTransferring(true)
-        
+
         // Get target window position
         const targetWindowPos = windowPool.getParentWindowPosition(currentSelectedId)
         console.log(`[Window] Target window position:`, targetWindowPos);
-        
+
         if (targetWindowPos) {
           // Calculate center position in target window
           const relativeX = (targetWindowPos.w - (windowRef.current?.offsetWidth || 600)) / 2
           const relativeY = (targetWindowPos.h - (windowRef.current?.offsetHeight || 400)) / 2
-          
+
           console.log(`[Window] Transferring to display ${currentSelectedId}. Target position: (${relativeX}, ${relativeY})`);
-          
+
           // Call the transfer handler with proper parameters
           onTransfer(currentSelectedId, { x: Math.max(0, relativeX), y: Math.max(0, relativeY) }, windowRef.current?.offsetWidth || 600)
         } else {
           console.warn(`[Window] Could not get target window position for display ${currentSelectedId}`);
         }
       }
-      
+
       // Apply snap if in snap zone
       if (isDragging && snapZone && !isTiled) {
         const snapPos = getSnapPosition(snapZone, window.innerWidth, window.innerHeight)
@@ -211,12 +211,12 @@ export default function Window({
           setIsSnapped(true)
         }
       }
-      
+
       // Reset display selector
       setShowDisplaySelector(false)
       setSelectedDisplayId(null)
       setDragDisplayPosition(null)
-      
+
       setIsDragging(false)
       setIsResizing(false)
       setSnapZone(null)
@@ -298,22 +298,22 @@ export default function Window({
   const windowStyle = isMinimized
     ? { display: 'none' }
     : isMaximized
-    ? {
-      left: '0',
-      top: '0',
-      width: '100vw',
-      height: '100vh',
-      zIndex: 10
-    }
-    : {
-      left: `${position.x}px`,
-      top: `${position.y}px`,
-      width: resizedWidth ? `${resizedWidth}px` : '800px',
-      height: resizedHeight ? `${resizedHeight}px` : '600px',
-      maxWidth: '90vw',
-      maxHeight: '90vh',
-      zIndex: 10
-    }
+      ? {
+        left: '0',
+        top: '0',
+        width: '100vw',
+        height: '100vh',
+        zIndex: 10
+      }
+      : {
+        left: `${position.x}px`,
+        top: `${position.y}px`,
+        width: resizedWidth ? `${resizedWidth}px` : '800px',
+        height: resizedHeight ? `${resizedHeight}px` : '600px',
+        maxWidth: '90vw',
+        maxHeight: '90vh',
+        zIndex: isActive ? 999 : 10
+      }
 
   return (
     <>
@@ -331,10 +331,10 @@ export default function Window({
         style={{
           boxShadow: isMaximized
             ? '0 10px 30px rgba(2,6,23,0.45)'
-            : isActive 
+            : isActive
               ? '0 8px 24px rgba(74, 158, 255, 0.2), inset 0 1px 0 rgba(255,255,255,0.06)'
               : '0 6px 20px rgba(11,15,30,0.25), inset 0 1px 0 rgba(255,255,255,0.06)',
-          border: isMaximized ? 'none' : (isTiled && isActive) ? '2px solid #4a9eff' : isTiled ? '1px solid #424242' : isActive ? '2px solid #4a9eff' : '1px solid #424242',
+          border: isMaximized ? 'none' : (isTiled && isActive) ? '2px solid #4a9eff' : isTiled ? '1px solid #424242' : isActive ? '2px solid #4a9eff ' : '1px solid #424242',
           ...windowStyle
         }}
         onClick={() => onActivate?.()}
@@ -342,196 +342,196 @@ export default function Window({
           if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') toggleMaximize?.()
         }}
       >
-      {/* Title bar with integrated tabs */}
-      <div
-        className={`flex items-center overflow-hidden justify-between gap-[0] px-[0] py-[0]
+        {/* Title bar with integrated tabs */}
+        <div
+          className={`flex items-center overflow-hidden justify-between gap-[0] px-[0] py-[0]
           ${isMaximized ? 'rounded-t-none' : 'rounded-t-[5px]'}
           cursor-move bg-[#2D2D2D]`}
-        onMouseDown={handleMouseDown}
-        aria-hidden
-      >
-        {/* Left side: Tabs or Title */}
-        <div className="flex items-center min-w-0 flex-1 overflow-hidden">
-          {tabs && tabs.length > 1 ? (
-            // Show tabs with S-curve styling
-            (() => {
-              const activeIndex = tabs.findIndex(t => t.active)
-              const activeTab = tabs.find(t => t.active)
-              
-              return tabs.map((tab, index) => {
-                const isLeftOfActive = index === activeIndex - 1
-                const isRightOfActive = index === activeIndex + 1
-                
-                return (
-                  <div
-                    key={tab.id}
-                    className={`group relative flex items-center w-[40%] gap-1 px-4 py-1.5 text-xs cursor-pointer
-                      ${tab.active 
-                        ? 'bg-[#1F1F1F] text-white rounded-t-lg z-10' 
-                        : 'text-gray-400 hover:text-gray-200 hover:bg-[#383838] transition-none'
-                      }`}
-                    style={tab.active ? { marginLeft: index === 0 ? '0' : '-8px', marginRight: '-8px' } : {}}
-                    onClick={(e) => { e.stopPropagation(); tab.onActivate(); }}
-                    onMouseDown={(e) => e.stopPropagation()}
-                    onMouseEnter={() => {
-                      if (isLeftOfActive && activeTab) {
-                        const circle = document.getElementById(`circle-left-${activeTab.id}`)
-                        if (circle) circle.style.backgroundColor = '#383838'
-                      }
-                      if (isRightOfActive && activeTab) {
-                        const circle = document.getElementById(`circle-right-${activeTab.id}`)
-                        if (circle) circle.style.backgroundColor = '#383838'
-                      }
-                    }}
-                    onMouseLeave={() => {
-                      if (isLeftOfActive && activeTab) {
-                        const circle = document.getElementById(`circle-left-${activeTab.id}`)
-                        if (circle) circle.style.backgroundColor = '#2D2D2D'
-                      }
-                      if (isRightOfActive && activeTab) {
-                        const circle = document.getElementById(`circle-right-${activeTab.id}`)
-                        if (circle) circle.style.backgroundColor = '#2D2D2D'
-                      }
-                    }}
-                  >
-                    {/* Left S-curve for active tab */}
-                    {tab.active && index > 0 && (
-                      <>
-                        <div 
-                          className="absolute bottom-0 -left-2 w-2 h-2 bg-[#1F1F1F]"
-                          style={{ pointerEvents: 'none' }}
-                        />
-                        <div 
-                          className="absolute bottom-0 -left-4 w-4 h-4 rounded-full bg-[#2D2D2D] z-10"
-                          style={{ pointerEvents: 'none' }}
-                          id={`circle-left-${tab.id}`}
-                        />
-                      </>
-                    )}
-                    {/* Right S-curve for active tab */}
-                    {tab.active && (
-                      <>
-                        <div 
-                          className="absolute bottom-0 -right-2 w-2 h-2 bg-[#1F1F1F]"
-                          style={{ pointerEvents: 'none' }}
-                        />
-                        <div 
-                          className="absolute bottom-0 -right-4 w-4 h-4 rounded-full bg-[#2D2D2D] z-10"
-                          style={{ pointerEvents: 'none' }}
-                          id={`circle-right-${tab.id}`}
-                        />
-                      </>
-                    )}
-                    <span className="truncate flex-1 z-20">{tab.title}</span>
-                    <button
-                      onClick={(e) => { e.stopPropagation(); tab.onClose(); }}
-                      className="ml-auto w-4 h-4 flex items-center z-20 justify-center rounded hover:bg-red-600/80 transition flex-shrink-0"
-                    >
-                      <svg className="w-2.5 h-2.5" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                        <path d="M6 6l12 12M6 18L18 6" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                      </svg>
-                    </button>
-                  </div>
-                )
-              })
-            })()
-          ) : (
-            // Show title only
-            <div className="flex items-center gap-2 min-w-0 ml-2 py-1">
-              <span className="text-xs text-gray-300 font-medium truncate">{title}</span>
-            </div>
-          )}
-        </div>
-
-        {/* Right: borderless nav buttons (Win11 style) */}
-        <div className="flex items-center gap-[0]">
-          <div className="flex items-center gap-[0] ml-[0]">
-            {/* Minimize */}
-            <button
-              type="button"
-              onClick={(e) => { e.stopPropagation(); handleMinimize() }}
-              aria-label="Minimize"
-              title="Minimize"
-              className="w-7 h-7 flex items-center justify-center hover:bg-slate-100/40 active:scale-95 transition"
-            >
-              <svg className="w-3 h-3 text-white" viewBox="0 0 24 24" fill="none">
-                <line x1="5" y1="12" x2="19" y2="12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-              </svg>
-            </button>
-
-            {/* Maximize */}
-            <button
-              type="button"
-              onClick={(e) => { e.stopPropagation(); toggleMaximize?.() }}
-              aria-pressed={isMaximized}
-              aria-label={isMaximized ? 'Restore' : 'Maximize'}
-              title={isMaximized ? 'Restore' : 'Maximize'}
-              className="w-7 h-7 flex items-center justify-center hover:bg-slate-100/40 active:scale-95 transition"
-            >
-              {isMaximized ? (
-                <svg className="w-3 h-3 text-white" viewBox="0 0 24 24" fill="none">
-<path xmlns="http://www.w3.org/2000/svg" fillRule="evenodd" clipRule="evenodd" d="M23 4C23 2.34315 21.6569 1 20 1H8C6.34315 1 5 2.34315 5 4V5H4C2.34315 5 1 6.34315 1 8V20C1 21.6569 2.34315 23 4 23H16C17.6569 23 19 21.6569 19 20V19H20C21.6569 19 23 17.6569 23 16V4ZM19 17H20C20.5523 17 21 16.5523 21 16V4C21 3.44772 20.5523 3 20 3H8C7.44772 3 7 3.44772 7 4V5H16C17.6569 5 19 6.34315 19 8V17ZM16 7C16.5523 7 17 7.44772 17 8V20C17 20.5523 16.5523 21 16 21H4C3.44772 21 3 20.5523 3 20V8C3 7.44772 3.44772 7 4 7H16Z" fill="white"/>                </svg>
-              ) : (
-                <svg className="w-3 h-3 text-white" viewBox="0 0 24 24" fill="none">
-                  <rect x="3.5" y="3.5" width="17" height="17" rx="2" stroke="currentColor" strokeWidth="1.6" />
-                </svg>
-              )}
-            </button>
-
-            {/* Close — closes entire window */}
-            <button
-              type="button"
-              onClick={(e) => { e.stopPropagation(); (tabs && tabs.length > 1 ? onCloseAll : onClose)?.() }}
-              aria-label="Close Window"
-              title="Close Window"
-              className="w-7 h-7 flex items-center text-white justify-center hover:bg-red-600/80 hover:text-white transition"
-            >
-              <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                <path d="M6 6l12 12M6 18L18 6" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
-            </button>
-          </div>
-        </div>
-      </div>
-
-      {/* Content area — glass sheet with subtle border */}
-      <div
-        className="bg-gray-700 flex-1 overflow-hidden"
-        style={{
-          borderBottomLeftRadius: isMaximized ? 0 : 5,
-          borderBottomRightRadius: isMaximized ? 0 : 5,
-          minHeight: 80
-        }}
-      >
-        {children}
-      </div>
-
-      {/* bottom-right diagonal resize affordance */}
-      {!isMaximized && !isTiled && (
-        <div
-          onMouseDown={(e) => {
-            e.preventDefault()
-            setIsResizing(true)
-            setResizeStart({
-              x: e.clientX,
-              y: e.clientY,
-              width: windowRef.current?.offsetWidth || 600,
-              height: windowRef.current?.offsetHeight || 400
-            })
-          }}
-          className="absolute right-1 bottom-1 w-3 h-3 cursor-se-resize opacity-60 hover:opacity-100 transition"
-          title="Resize"
+          onMouseDown={handleMouseDown}
           aria-hidden
         >
-          <svg className="w-3 h-3 text-slate-400" viewBox="0 0 10 10" fill="none">
-            <path d="M0 10 L10 0 M6 10 L10 6 M2 10 L10 2" stroke="none" strokeWidth="0.9" strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
+          {/* Left side: Tabs or Title */}
+          <div className="flex items-center min-w-0 flex-1 overflow-hidden">
+            {tabs && tabs.length > 1 ? (
+              // Show tabs with S-curve styling
+              (() => {
+                const activeIndex = tabs.findIndex(t => t.active)
+                const activeTab = tabs.find(t => t.active)
+
+                return tabs.map((tab, index) => {
+                  const isLeftOfActive = index === activeIndex - 1
+                  const isRightOfActive = index === activeIndex + 1
+
+                  return (
+                    <div
+                      key={tab.id}
+                      className={`group relative flex items-center w-[40%] gap-1 px-4 py-1.5 text-xs cursor-pointer
+                      ${tab.active
+                          ? 'bg-[#1F1F1F] text-white rounded-t-lg z-10'
+                          : 'text-gray-400 hover:text-gray-200 hover:bg-[#383838] transition-none'
+                        }`}
+                      style={tab.active ? { marginLeft: index === 0 ? '0' : '-8px', marginRight: '-8px' } : {}}
+                      onClick={(e) => { e.stopPropagation(); tab.onActivate(); }}
+                      onMouseDown={(e) => e.stopPropagation()}
+                      onMouseEnter={() => {
+                        if (isLeftOfActive && activeTab) {
+                          const circle = document.getElementById(`circle-left-${activeTab.id}`)
+                          if (circle) circle.style.backgroundColor = '#383838'
+                        }
+                        if (isRightOfActive && activeTab) {
+                          const circle = document.getElementById(`circle-right-${activeTab.id}`)
+                          if (circle) circle.style.backgroundColor = '#383838'
+                        }
+                      }}
+                      onMouseLeave={() => {
+                        if (isLeftOfActive && activeTab) {
+                          const circle = document.getElementById(`circle-left-${activeTab.id}`)
+                          if (circle) circle.style.backgroundColor = '#2D2D2D'
+                        }
+                        if (isRightOfActive && activeTab) {
+                          const circle = document.getElementById(`circle-right-${activeTab.id}`)
+                          if (circle) circle.style.backgroundColor = '#2D2D2D'
+                        }
+                      }}
+                    >
+                      {/* Left S-curve for active tab */}
+                      {tab.active && index > 0 && (
+                        <>
+                          <div
+                            className="absolute bottom-0 -left-2 w-2 h-2 bg-[#1F1F1F]"
+                            style={{ pointerEvents: 'none' }}
+                          />
+                          <div
+                            className="absolute bottom-0 -left-4 w-4 h-4 rounded-full bg-[#2D2D2D] z-10"
+                            style={{ pointerEvents: 'none' }}
+                            id={`circle-left-${tab.id}`}
+                          />
+                        </>
+                      )}
+                      {/* Right S-curve for active tab */}
+                      {tab.active && (
+                        <>
+                          <div
+                            className="absolute bottom-0 -right-2 w-2 h-2 bg-[#1F1F1F]"
+                            style={{ pointerEvents: 'none' }}
+                          />
+                          <div
+                            className="absolute bottom-0 -right-4 w-4 h-4 rounded-full bg-[#2D2D2D] z-10"
+                            style={{ pointerEvents: 'none' }}
+                            id={`circle-right-${tab.id}`}
+                          />
+                        </>
+                      )}
+                      <span className="truncate flex-1 z-20">{tab.title}</span>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); tab.onClose(); }}
+                        className="ml-auto w-4 h-4 flex items-center z-20 justify-center rounded hover:bg-red-600/80 transition flex-shrink-0"
+                      >
+                        <svg className="w-2.5 h-2.5" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                          <path d="M6 6l12 12M6 18L18 6" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                        </svg>
+                      </button>
+                    </div>
+                  )
+                })
+              })()
+            ) : (
+              // Show title only
+              <div className="flex items-center gap-2 min-w-0 ml-2 py-1">
+                <span className="text-xs text-gray-300 font-medium truncate">{title}</span>
+              </div>
+            )}
+          </div>
+
+          {/* Right: borderless nav buttons (Win11 style) */}
+          <div className="flex items-center gap-[0]">
+            <div className="flex items-center gap-[0] ml-[0]">
+              {/* Minimize */}
+              <button
+                type="button"
+                onClick={(e) => { e.stopPropagation(); handleMinimize() }}
+                aria-label="Minimize"
+                title="Minimize"
+                className="w-7 h-7 flex items-center justify-center hover:bg-slate-100/40 active:scale-95 transition"
+              >
+                <svg className="w-3 h-3 text-white" viewBox="0 0 24 24" fill="none">
+                  <line x1="5" y1="12" x2="19" y2="12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                </svg>
+              </button>
+
+              {/* Maximize */}
+              <button
+                type="button"
+                onClick={(e) => { e.stopPropagation(); toggleMaximize?.() }}
+                aria-pressed={isMaximized}
+                aria-label={isMaximized ? 'Restore' : 'Maximize'}
+                title={isMaximized ? 'Restore' : 'Maximize'}
+                className="w-7 h-7 flex items-center justify-center hover:bg-slate-100/40 active:scale-95 transition"
+              >
+                {isMaximized ? (
+                  <svg className="w-3 h-3 text-white" viewBox="0 0 24 24" fill="none">
+                    <path xmlns="http://www.w3.org/2000/svg" fillRule="evenodd" clipRule="evenodd" d="M23 4C23 2.34315 21.6569 1 20 1H8C6.34315 1 5 2.34315 5 4V5H4C2.34315 5 1 6.34315 1 8V20C1 21.6569 2.34315 23 4 23H16C17.6569 23 19 21.6569 19 20V19H20C21.6569 19 23 17.6569 23 16V4ZM19 17H20C20.5523 17 21 16.5523 21 16V4C21 3.44772 20.5523 3 20 3H8C7.44772 3 7 3.44772 7 4V5H16C17.6569 5 19 6.34315 19 8V17ZM16 7C16.5523 7 17 7.44772 17 8V20C17 20.5523 16.5523 21 16 21H4C3.44772 21 3 20.5523 3 20V8C3 7.44772 3.44772 7 4 7H16Z" fill="white" />                </svg>
+                ) : (
+                  <svg className="w-3 h-3 text-white" viewBox="0 0 24 24" fill="none">
+                    <rect x="3.5" y="3.5" width="17" height="17" rx="2" stroke="currentColor" strokeWidth="1.6" />
+                  </svg>
+                )}
+              </button>
+
+              {/* Close — closes entire window */}
+              <button
+                type="button"
+                onClick={(e) => { e.stopPropagation(); (tabs && tabs.length > 1 ? onCloseAll : onClose)?.() }}
+                aria-label="Close Window"
+                title="Close Window"
+                className="w-7 h-7 flex items-center text-white justify-center hover:bg-red-600/80 hover:text-white transition"
+              >
+                <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                  <path d="M6 6l12 12M6 18L18 6" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              </button>
+            </div>
+          </div>
         </div>
-      )}
+
+        {/* Content area — glass sheet with subtle border */}
+        <div
+          className="bg-gray-700 flex-1 overflow-hidden"
+          style={{
+            borderBottomLeftRadius: isMaximized ? 0 : 5,
+            borderBottomRightRadius: isMaximized ? 0 : 5,
+            minHeight: 80
+          }}
+        >
+          {children}
+        </div>
+
+        {/* bottom-right diagonal resize affordance */}
+        {!isMaximized && !isTiled && (
+          <div
+            onMouseDown={(e) => {
+              e.preventDefault()
+              setIsResizing(true)
+              setResizeStart({
+                x: e.clientX,
+                y: e.clientY,
+                width: windowRef.current?.offsetWidth || 600,
+                height: windowRef.current?.offsetHeight || 400
+              })
+            }}
+            className="absolute right-1 bottom-1 w-3 h-3 cursor-se-resize opacity-60 hover:opacity-100 transition"
+            title="Resize"
+            aria-hidden
+          >
+            <svg className="w-3 h-3 text-slate-400" viewBox="0 0 10 10" fill="none">
+              <path d="M0 10 L10 0 M6 10 L10 6 M2 10 L10 2" stroke="none" strokeWidth="0.9" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </div>
+        )}
       </div>
-      
+
       {/* Display Selector for cross-display window transfer */}
-      <DisplaySelector 
+      <DisplaySelector
         isVisible={showDisplaySelector}
         dragPosition={dragDisplayPosition}
         selectedDisplayId={selectedDisplayId}
