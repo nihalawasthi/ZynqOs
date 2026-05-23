@@ -1,5 +1,5 @@
 // Wednesday AI Assistant - ZynqOS AI Assistant App
-import React, { useState, useRef, useEffect } from 'react'
+import React, { useState, useRef, useEffect, useCallback } from 'react'
 import { terminalBridge, isTerminalCommand } from './terminalBridge'
 
 interface Message {
@@ -29,6 +29,70 @@ export default function WednesdayUI() {
   const [selectedModel, setSelectedModel] = useState(() => {
     return localStorage.getItem('wednesday_selected_model') || 'gemini'
   })
+  const [isListening, setIsListening] = useState(false)
+  const recognitionRef = useRef<any>(null)
+
+  // Initialize and manage Web Speech API
+  const startListening = useCallback(() => {
+    const SpeechRecognition =
+      (window as any).SpeechRecognition ||
+      (window as any).webkitSpeechRecognition
+
+    if (!SpeechRecognition) {
+      const errMsg: Message = {
+        id: Date.now().toString(),
+        type: 'system',
+        content: '⚠️ Speech recognition is not supported in this browser. Please use Chrome or Edge.',
+        timestamp: new Date(),
+      }
+      setMessages(prev => [...prev, errMsg])
+      return
+    }
+
+    if (isListening) {
+      recognitionRef.current?.stop()
+      return
+    }
+
+    const recognition = new SpeechRecognition()
+    recognition.lang = 'en-US'
+    recognition.interimResults = false
+    recognition.maxAlternatives = 1
+    recognition.continuous = false
+
+    recognition.onstart = () => setIsListening(true)
+
+    recognition.onresult = (event: any) => {
+      const transcript = event.results[0][0].transcript
+      setCommand(prev => (prev ? prev + ' ' + transcript : transcript))
+    }
+
+    recognition.onerror = (event: any) => {
+      console.error('[SpeechRecognition] error:', event.error)
+      if (event.error === 'not-allowed') {
+        const errMsg: Message = {
+          id: Date.now().toString(),
+          type: 'system',
+          content: '🎙️ Microphone access denied. Please allow microphone permissions in your browser settings.',
+          timestamp: new Date(),
+        }
+        setMessages(prev => [...prev, errMsg])
+      }
+      setIsListening(false)
+    }
+
+    recognition.onend = () => setIsListening(false)
+
+    recognitionRef.current = recognition
+    recognition.start()
+  }, [isListening])
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      recognitionRef.current?.stop()
+    }
+  }, [])
 
   const inputRef = useRef<HTMLInputElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -257,8 +321,21 @@ export default function WednesdayUI() {
               <button className='p-1 hover:bg-zinc-700 rounded' type='button' onClick={() => setShowSettings(true)}>
                 <i className='fa fa-cog text-zinc-500 hover:text-blue-400 transition-colors' />
               </button>
-              <button className='p-1 hover:bg-zinc-700 rounded' type='button'>
-                <i className='fa fa-microphone text-zinc-500 hover:text-zinc-300' />
+              <button
+                className={`p-1 rounded transition-colors ${
+                  isListening
+                    ? 'bg-red-600/30 hover:bg-red-600/50'
+                    : 'hover:bg-zinc-700'
+                }`}
+                type='button'
+                title={isListening ? 'Stop listening' : 'Start voice input'}
+                onClick={startListening}
+              >
+                <i
+                  className={`fa fa-microphone transition-colors ${
+                    isListening ? 'text-red-400 animate-pulse' : 'text-zinc-500 hover:text-zinc-300'
+                  }`}
+                />
               </button>
               <button className='p-1 hover:bg-zinc-700 rounded' type='button' onClick={insertAtSign}>
                 <i className='fa fa-at text-zinc-500 hover:text-zinc-300' />
