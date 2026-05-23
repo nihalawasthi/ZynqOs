@@ -5,6 +5,20 @@ A browser-hosted "micro-OS" shell that runs two kinds of sandboxed WASM apps:
 1. **wasm-bindgen modules** (UI-integrated apps like Calculator) - JS-callable WebAssembly
 2. **WASI modules** (command-line programs) - Standalone binaries running under `@bjorn3/browser_wasi_shim`
 
+## 🌐 Live Demo
+
+> **Try ZynqOS instantly in your browser — no installation required!**
+
+[![Live Demo](https://img.shields.io/badge/Live%20Demo-zynqos.vercel.app-blue?style=for-the-badge&logo=vercel&logoColor=white)](https://zynqos.vercel.app)
+
+🔗 **[https://zynqos.vercel.app](https://zynqos.vercel.app)**
+
+- Open the link in any modern browser (Chrome, Edge, Firefox)
+- No sign-up or login required to explore the desktop environment
+- Microphone and file-system features may prompt for browser permissions
+
+> **Note:** For the best experience, use a Chromium-based browser (Chrome / Edge) as some WASM and Web Speech API features have broader support there.
+
 ## Features
 
 - 🪟 **Window Manager** with draggable windows
