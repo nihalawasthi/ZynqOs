@@ -66,52 +66,52 @@ export default function Taskbar() {
   }
 
   return (
-    <div style={{ display: isMaximized ? 'none' : 'flex' }} className="fixed bottom-0 left-0 w-[100%] h-16 max-w-[100vw] p-0 bg-none flex items-center justify-center gap-2 z-40">
+    <div style={{ display: isMaximized ? 'none' : 'flex' }} className="fixed bottom-0 left-0 w-full h-16 max-w-[100vw] p-0 bg-none flex items-center justify-center gap-2 z-40 overflow-hidden">
       <div className="mr-auto ml-4">
         {/* future components */}
       </div>
-      <div className="absolute bottom-1 left-1/2 transform -translate-x-1/2 w-[calc(60%-48px)] max-w-[980px] px-4 py-2 bg-[#1A1A1A] backdrop-blur-md border border-white/10 rounded-full shadow-2xl flex items-center gap-2">
+      <div className="absolute bottom-1 left-1/2 transform -translate-x-1/2 w-[calc(100%-16px)] sm:w-[calc(80%-24px)] md:w-[calc(60%-48px)] max-w-[980px] px-2 sm:px-4 py-2 bg-[#1A1A1A] backdrop-blur-md border border-white/10 rounded-full shadow-2xl flex items-center gap-1 sm:gap-2 overflow-hidden">
         <StartMenu />
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1 sm:gap-2">
           <button
             onClick={() => handleAppClick('file-browser', 'File Browser', window.__FILE_BROWSER_UI__ ?? <div>Loading...</div>)}
             title={isAppMinimized('file-browser') ? 'Restore File Browser' : 'File Browser'}
-            className={`flex items-center gap-2 px-3 py-1 rounded-[2px] transition text-white border border-gray-300/20 ${isAppMinimized('file-browser') ? 'bg-gray-600/50 opacity-75' : 'bg-transparent hover:bg-gray-200/30'}`}
+            className={`flex items-center gap-2 px-2 sm:px-3 py-1 rounded-[2px] transition text-white border border-gray-300/20 ${isAppMinimized('file-browser') ? 'bg-gray-600/50 opacity-75' : 'bg-transparent hover:bg-gray-200/30'}`}
           >
-            <span className="text-lg"><i className="fas fa-folder"></i></span>
+            <span className="text-base sm:text-lg"><i className="fas fa-folder"></i></span>
             {isAppMinimized('file-browser')}
           </button>
           <button
             onClick={() => handleAppClick('store', 'App Store', window.__STORE_UI__ ?? <div>Loading...</div>)}
             title={isAppMinimized('store') ? 'Restore Store' : 'Store'}
-            className={`flex items-center gap-2 px-3 py-1 rounded-[2px] transition text-white border border-gray-300/20 ${isAppMinimized('store') ? 'bg-gray-600/50 opacity-75' : 'bg-transparent hover:bg-gray-200/30'}`}
+            className={`hidden sm:flex items-center gap-2 px-2 sm:px-3 py-1 rounded-[2px] transition text-white border border-gray-300/20 ${isAppMinimized('store') ? 'bg-gray-600/50 opacity-75' : 'bg-transparent hover:bg-gray-200/30'}`}
           >
-            <span className="text-lg"><i className="fa-solid fa-store"></i></span>
+            <span className="text-base sm:text-lg"><i className="fa-solid fa-store"></i></span>
             {isAppMinimized('store')}
           </button>
           <button
             onClick={() => handleAppClick('phantomsurf', 'Phantom Surf', window.__PHANTOMSURF_UI__ ?? <div>Loading...</div>)}
             title={isAppMinimized('phantomsurf') ? 'Restore Phantom Surf' : 'Phantom Surf'}
-            className={`flex items-center gap-2 px-3 py-1 rounded-[2px] transition text-white border border-gray-300/20 ${isAppMinimized('phantomsurf') ? 'bg-gray-600/50 opacity-75' : 'bg-transparent hover:bg-gray-200/30'}`}
+            className={`flex items-center gap-2 px-2 sm:px-3 py-1 rounded-[2px] transition text-white border border-gray-300/20 ${isAppMinimized('phantomsurf') ? 'bg-gray-600/50 opacity-75' : 'bg-transparent hover:bg-gray-200/30'}`}
           >
-            <span className="text-lg"><i className="fas fa-globe"></i></span>
+            <span className="text-base sm:text-lg"><i className="fas fa-globe"></i></span>
             {isAppMinimized('phantomsurf')}
           </button>
           <button
             onClick={() => handleAppClick('terminal', 'Terminal', window.__TERMINAL_UI__ ?? <div>Loading Terminal...</div>)}
             title={isAppMinimized('terminal') ? 'Restore Terminal' : 'Terminal'}
-            className={`flex items-center gap-2 px-3 py-1 rounded-[2px] transition text-white border border-gray-300/20 ${isAppMinimized('terminal') ? 'bg-gray-600/50 opacity-75' : 'bg-transparent hover:bg-gray-200/30'}`}
+            className={`flex items-center gap-2 px-2 sm:px-3 py-1 rounded-[2px] transition text-white border border-gray-300/20 ${isAppMinimized('terminal') ? 'bg-gray-600/50 opacity-75' : 'bg-transparent hover:bg-gray-200/30'}`}
           >
-            <span className="text-lg"><i className="fa fa-terminal"></i></span>
+            <span className="text-base sm:text-lg"><i className="fa fa-terminal"></i></span>
             {isAppMinimized('terminal')}
           </button>
           <button
             onClick={() => handleAppClick('wednesday', 'Wednesday AI', window.__WEDNESDAY_UI__ ?? <div>Loading Wednesday...</div>)}
             title={isAppMinimized('wednesday') ? 'Restore Wednesday' : 'Wednesday'}
-            className={`flex items-center gap-2 px-3 py-1 rounded-[2px] transition text-white border border-gray-300/20 ${isAppMinimized('wednesday') ? 'bg-gray-600/50 opacity-75' : 'bg-transparent hover:bg-gray-200/30'}`}
+            className={`flex items-center gap-2 px-2 sm:px-3 py-1 rounded-[2px] transition text-white border border-gray-300/20 ${isAppMinimized('wednesday') ? 'bg-gray-600/50 opacity-75' : 'bg-transparent hover:bg-gray-200/30'}`}
           >
-            <span className="text-lg font-thin"><i className="scale-90 fa-solid fa-wand-magic-sparkles"></i></span>
+            <span className="text-base sm:text-lg font-thin"><i className="scale-90 fa-solid fa-wand-magic-sparkles"></i></span>
             {isAppMinimized('wednesday')}
           </button>
         </div>
@@ -133,12 +133,14 @@ export default function Taskbar() {
           </div>
         )}
 
-        <div className="ml-auto flex items-center gap-2">
+        <div className="ml-auto flex items-center gap-1 sm:gap-2 shrink-0">
           <Clock />
         </div>
       </div>
-      <div className="ml-auto mr-4 flex items-center gap-2">
-        <SessionTimerBadge />
+      <div className="ml-auto mr-2 sm:mr-4 flex items-center gap-1 sm:gap-2 shrink-0">
+        <span className="hidden md:block">
+          <SessionTimerBadge />
+        </span>
         <MultiWindowIndicator />
       </div>
     </div>
@@ -179,8 +181,9 @@ function Clock() {
   }, [])
 
   return (
-    <div className="text-sm text-gray-200 font-mono bg-gray-800/40 px-3 py-1 mr-2 rounded-full border border-gray-700/30">
-      {now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+    <div className="text-xs sm:text-sm text-gray-200 font-mono bg-gray-800/40 px-2 sm:px-3 py-1 mr-1 sm:mr-2 rounded-full border border-gray-700/30 whitespace-nowrap">
+      <span className="hidden sm:inline">{now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</span>
+      <span className="sm:hidden">{now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
     </div>
   )
 }

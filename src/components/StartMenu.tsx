@@ -462,7 +462,7 @@ export default function StartMenu() {
 
                     <div
                         ref={menuRef}
-                        className="flex fixed bottom-20 left-1/2 -translate-x-1/2 min-w-[calc(60%-48px)] max-w-[980px] gap-1 z-50"
+                        className="flex fixed bottom-20 left-1/2 -translate-x-1/2 w-[calc(100%-16px)] sm:min-w-[calc(60%-48px)] max-w-[980px] gap-1 z-50"
                     >
                         {/* Hidden file input for imports */}
                         <input
@@ -474,7 +474,7 @@ export default function StartMenu() {
                         />
 
                         {/* Main Menu */}
-                        <div className="w-[420px] bg-black backdrop-blur-xl border border-[#333] rounded-xl shadow-2xl overflow-hidden">
+                        <div className="w-full sm:w-[420px] bg-black backdrop-blur-xl border border-[#333] rounded-xl shadow-2xl overflow-hidden">
                             {/* Search bar */}
                             <div className="px-5 py-4">
                                 <div className="relative">
