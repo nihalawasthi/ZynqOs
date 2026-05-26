@@ -41,6 +41,7 @@ import './apps/python/ui'
 import './apps/phantomsurf/ui'
 import './apps/settings/ui'
 import './apps/zynqchat/ui'
+import './apps/wallpaper-changer/ui'
 
 // Auth helpers and redirect bootstrap
 import { bootstrapAuthRedirect } from './auth/init'

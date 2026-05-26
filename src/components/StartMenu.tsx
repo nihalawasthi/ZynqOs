@@ -378,6 +378,13 @@ export default function StartMenu() {
 
     const systemApps: App[] = [
         {
+            id: 'wallpaper-changer',
+            name: 'Wallpaper',
+            icon: <i className="fas fa-image"></i>,
+            description: 'Change desktop wallpaper',
+            openFn: () => (window as any).ZynqOS_openWindow?.('Wallpaper Changer', window.__WALLPAPER_CHANGER_UI__ ?? <div>Loading...</div>, 'wallpaper-changer'),
+        },
+        {
             id: 'settings',
             name: 'Settings',
             icon: <i className="fas fa-cog"></i>,
@@ -1005,6 +1012,7 @@ export default function StartMenu() {
                                 'mapp-importer': window.__MAPP_IMPORTER_UI__ ?? <div>Loading...</div>,
                                 'phantomsurf': window.__PHANTOMSURF_UI__ ?? <div>Loading PhantomSurf...</div>,
                                 'zynqchat': window.__ZYNQCHAT_UI__ ?? <div>Loading ZynqChat...</div>,
+                                'wallpaper-changer': window.__WALLPAPER_CHANGER_UI__ ?? <div>Loading...</div>,
                             }
 
                             const appTitleMap: Record<string, string> = {
@@ -1017,6 +1025,7 @@ export default function StartMenu() {
                                 'mapp-importer': 'Import Package',
                                 'phantomsurf': 'PhantomSurf',
                                 'zynqchat': 'ZynqChat',
+                                'wallpaper-changer': 'Wallpaper Changer',
                             }
 
                             if (contextMenu.app.id === 'zynqchat' && !window.__ZYNQCHAT_UI__) {

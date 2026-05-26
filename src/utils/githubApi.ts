@@ -3,7 +3,7 @@
  * Eliminates duplicate fetch calls across sync services
  */
 
-import { base64ToUint8Array, uint8ArrayToBase64, stringToBase64Legacy } from './encoding'
+import { base64ToUint8Array, uint8ArrayToBase64, stringToBase64Legacy, base64ToString } from './encoding'
 
 export type GitHubFileResponse = {
   content?: string
@@ -82,7 +82,7 @@ export async function downloadGitHubFile(
   
   const content = isBinary
     ? base64ToUint8Array(response.content)
-    : atob(response.content)
+    : base64ToString(response.content)
 
   return {
     content,

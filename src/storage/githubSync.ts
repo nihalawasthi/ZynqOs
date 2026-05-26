@@ -303,37 +303,32 @@ class GitHubSyncService {
       for (const change of pendingChanges) {
         // Sanitize and convert VFS path to GitHub path
         const githubPath = vfsToGitHubPath(change.path);
-        // Ensure content is valid Base64, support binary files
-        let base64Content = change.content;
-        function isBase64(str) {
-          if (typeof str !== 'string') return false;
-          try { atob(str); return true; } catch { return false; }
-        }
-        if (typeof base64Content !== 'string' || !isBase64(base64Content)) {
-          // Use centralized encoding utility
-          if (typeof change.content === 'string') {
-            base64Content = toBase64(change.content);
-          } else if (change.content instanceof Uint8Array) {
-            base64Content = uint8ArrayToBase64(change.content);
+        
+        // Recover the raw content (Uint8Array for binary, string for text)
+        let rawContent: string | Uint8Array;
+        if (change.isBinary) {
+          if (change.content instanceof Uint8Array) {
+            rawContent = change.content;
           } else if (Array.isArray(change.content)) {
-            base64Content = uint8ArrayToBase64(Uint8Array.from(change.content));
+            rawContent = new Uint8Array(change.content);
+          } else if (change.content && typeof change.content === 'object' && 'buffer' in change.content) {
+            rawContent = new Uint8Array(change.content as any);
           } else {
-            base64Content = toBase64(String(change.content || ''));
+            rawContent = new Uint8Array();
           }
+        } else {
+          rawContent = typeof change.content === 'string' ? change.content : String(change.content || '');
         }
-        // Ensure content is always a valid base64 string (even if empty file)
-        if (!base64Content) {
-          base64Content = toBase64('');
-        }
+
         // Fetch latest SHA for the file (required for update, 404 means new file)
         const sha = await fetchGitHubFileSha(owner, repo, githubPath);
         
-        // Upload using centralized API
+        // Upload using centralized API (which will handle base64 encoding once)
         await uploadGitHubFile({
           owner,
           repo,
           path: githubPath,
-          content: base64Content,
+          content: rawContent,
           message: `Sync ${githubPath}`,
           sha: sha || undefined
         });

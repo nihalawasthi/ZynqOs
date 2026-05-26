@@ -73,10 +73,9 @@ export async function writeFile(path: string, data: Uint8Array | string) {
   // Track for sync - all files including imports are tracked for changes
   try {
     const { githubSync } = await import('../storage/githubSync');
-    const contentStr = typeof value === 'string' ? value : Buffer.from(value).toString('base64');
     // Path should not have 'files/' prefix - githubSync will add it when pushing
     const cleanPath = path.replace(/^\//, '');
-    await githubSync.trackChange(cleanPath, contentStr);
+    await githubSync.trackChange(cleanPath, data);
   } catch (e) {
     console.error('Failed to track file change:', e);
   }
