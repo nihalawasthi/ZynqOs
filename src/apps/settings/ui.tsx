@@ -4,6 +4,7 @@ import { getStorageStatus, disconnectStorage, type StorageStatus, connectGitHubR
 import { githubSync } from '../../storage/githubSync'
 import { auditSync, type AuditEntry as AuditSyncEntry } from '../../utils/auditSync'
 import { readFile, writeFile, removeFile, readdir } from '../../vfs/fs'
+import { useTheme } from '../../hooks/useTheme'
 
 type TabType = 'display' | 'storage' | 'security' | 'system' | 'about'
 
@@ -120,6 +121,8 @@ export default function SettingsUI() {
     const [showSyncedLogs, setShowSyncedLogs] = useState(false)
     const [syncedAuditEntries, setSyncedAuditEntries] = useState<AuditSyncEntry[]>([])
 
+    const { isLightMode, toggleTheme } = useTheme()
+
     const mergeSettings = (loaded: Partial<UserSettings>): UserSettings => ({
         ...DEFAULT_SETTINGS,
         ...loaded,
@@ -198,10 +201,13 @@ export default function SettingsUI() {
             const root = document.querySelector('.h-screen')
             if (root && root instanceof HTMLElement) {
                 const wp = loadedSettings.display.wallpaper
-                root.style.backgroundImage = `url('${wp.source}')`
-                root.style.backgroundSize = wp.size
-                root.style.backgroundRepeat = wp.repeat
-                root.style.backgroundPosition = wp.position
+                // Only apply if it's different from the current global CSS var to avoid overriding the light/dark theme switch unless the user explicitly set a custom one
+                if (wp.source !== DEFAULT_SETTINGS.display.wallpaper.source) {
+                    root.style.backgroundImage = `url('${wp.source}')`
+                    root.style.backgroundSize = wp.size
+                    root.style.backgroundRepeat = wp.repeat
+                    root.style.backgroundPosition = wp.position
+                }
             }
         })
 
@@ -262,7 +268,7 @@ export default function SettingsUI() {
                                 (window as any).ZynqOS_startGitHubAuth?.()
                             }
                         }}
-                        className="px-3 py-1 text-sm bg-blue-600 rounded hover:bg-blue-700"
+                        className="px-3 py-1 text-sm bg-blue-600 rounded hover:bg-blue-700 text-white"
                     >
                         Login
                     </button>
@@ -602,7 +608,8 @@ export default function SettingsUI() {
                     'zynqos_installed_apps',
                     'zynqos_wallpaper_source',
                     'zynqos_background_size',
-                    'zynqos_session_timer'
+                    'zynqos_session_timer',
+                    'os-theme' // Keep theme setting
                 ]
 
                 const keysToDelete: string[] = []
@@ -629,7 +636,7 @@ export default function SettingsUI() {
                         toast({ title: 'Partial Success', description: 'Failed to clear some cache items, but cleared what was possible', variant: 'warning' })
                     }
                 }}
-                className="px-3 py-1 text-sm bg-red-600 rounded hover:bg-red-700"
+                className="px-3 py-1 text-sm bg-red-600 text-white rounded hover:bg-red-700 transition"
             >
                 Clear
             </button>
@@ -654,7 +661,7 @@ export default function SettingsUI() {
                             toast({ title: 'Error', description: 'Failed to disconnect', variant: 'destructive' })
                         }
                     }}
-                    className="px-3 py-1 text-sm bg-red-600 rounded hover:bg-red-700"
+                    className="px-3 py-1 text-sm bg-red-600 text-white rounded hover:bg-red-700 transition"
                 >
                     Disconnect
                 </button>
@@ -765,7 +772,7 @@ export default function SettingsUI() {
     const handleResetWallpaper = () => {
         const { dismiss } = toast({
             title: 'Reset Wallpaper?',
-            description: 'This will restore the default wallpaper.',
+            description: 'This will restore the default wallpaper and re-enable dynamic theme backgrounds.',
             variant: 'default',
             action: (
                 <button
@@ -779,10 +786,19 @@ export default function SettingsUI() {
                             }
                         }
                         await saveSettings(newSettings)
-                        applyWallpaper(newSettings.display.wallpaper)
+                        
+                        // Remove the inline style so the CSS variables take over again
+                        const root = document.querySelector('.h-screen')
+                        if (root && root instanceof HTMLElement) {
+                            root.style.removeProperty('background-image')
+                            root.style.removeProperty('background-size')
+                            root.style.removeProperty('background-repeat')
+                            root.style.removeProperty('background-position')
+                        }
+                        
                         toast({ title: 'Success', description: 'Wallpaper reset to default', variant: 'success' })
                     }}
-                    className="px-3 py-1 text-sm bg-blue-600 rounded hover:bg-blue-700"
+                    className="px-3 py-1 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 transition"
                 >
                     Reset
                 </button>
@@ -921,34 +937,63 @@ export default function SettingsUI() {
 
     const displayTabContent = () => (
         <div className="space-y-6">
+            
+            {/* Theme Settings */}
+            <div className="border border-[var(--border-color)] rounded-lg p-4 bg-[var(--taskbar-bg)] shadow-sm">
+                <h3 className="text-[var(--text-color)] font-semibold mb-3 flex items-center gap-2">
+                    <i className="fas fa-palette text-blue-500"></i>
+                    Theme & Appearance
+                </h3>
+                <div className="space-y-2">
+                    <div className="flex items-center justify-between p-3 rounded bg-[var(--bg-color)] border border-[var(--border-color)]">
+                        <div>
+                            <p className="text-[var(--text-color)] text-sm font-semibold">Light Mode</p>
+                            <p className="text-[var(--text-color)] opacity-60 text-xs">Switch the entire OS between dark and light themes</p>
+                        </div>
+                        <button
+                            onClick={toggleTheme}
+                            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                                isLightMode ? 'bg-blue-600' : 'bg-gray-600'
+                            }`}
+                        >
+                            <span
+                                className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                                    isLightMode ? 'translate-x-6' : 'translate-x-1'
+                                }`}
+                            />
+                        </button>
+                    </div>
+                </div>
+            </div>
+
             {/* Wallpaper Settings */}
-            <div className="border border-[#333] rounded-lg p-4 bg-[#1a1a1a]">
+            <div className="border border-[var(--border-color)] rounded-lg p-4 bg-[var(--taskbar-bg)] shadow-sm">
                 <div className='w-full flex items-center justify-between mb-3'>
-                    <h3 className="text-white font-semibold flex items-center gap-2">
-                        <i className="fas fa-image"></i>
-                        Wallpaper
+                    <h3 className="text-[var(--text-color)] font-semibold flex items-center gap-2">
+                        <i className="fas fa-image text-blue-500"></i>
+                        Custom Wallpaper
                     </h3>
 
                     {/* Reset Button */}
                     {settings.display.wallpaper.source !== DEFAULT_SETTINGS.display.wallpaper.source && (
                         <button
                             onClick={handleResetWallpaper}
-                            className="transition text-gray-400 hover:text-gray-200 ml-auto"
-                            title="Restart"
+                            className="transition text-[var(--text-color)] opacity-60 hover:opacity-100 hover:text-red-500 ml-auto flex items-center gap-1 bg-red-500/10 px-2 py-1 rounded"
+                            title="Reset to Default Theme Wallpaper"
                         >
                             <i className="fas fa-redo text-xs"></i>
+                            <span className="text-xs font-semibold">Reset</span>
                         </button>
                     )}
                 </div>
                 <div className="space-y-4">
                     {/* All Wallpaper Controls - Single Line */}
-                    <div className="bg-black/50 rounded p-3">
+                    <div className="bg-[var(--bg-color)] border border-[var(--border-color)] rounded p-3">
                         <div className="flex gap-2 items-center">
-                            <input type="text" value={settings.display.wallpaper.source || ''} onChange={(e) => handleWallpaperInputChange(e.target.value)} className="flex-1 bg-gray-900 text-gray-300 px-3 py-2 rounded text-xs border border-gray-700 focus:border-blue-500 focus:outline-none" placeholder="Wallpaper URL" />
+                            <input type="text" value={settings.display.wallpaper.source || ''} onChange={(e) => handleWallpaperInputChange(e.target.value)} className="flex-1 bg-[var(--taskbar-bg)] text-[var(--text-color)] px-3 py-2 rounded text-xs border border-[var(--border-color)] focus:border-blue-500 focus:outline-none" placeholder="Wallpaper URL" />
                             <input type="file" id="wallpaper-upload" accept="image/*" onChange={handleWallpaperUpload} disabled={wallpaperLoading} className="hidden" />
-                            <button onClick={() => document.getElementById('wallpaper-upload')?.click()} disabled={wallpaperLoading} className="px-3 py-2 bg-blue-600/80 hover:bg-blue-700/80 disabled:bg-gray-600 text-white text-xs rounded transition whitespace-nowrap">{wallpaperLoading ? 'Uploading...' : <i className="fa-solid fa-upload"></i>}</button>
-                            {/* <button onClick={handleWallpaperUrl} className="px-3 py-2 bg-blue-600/80 hover:bg-blue-700/80 text-white text-xs rounded transition whitespace-nowrap">🔗 URL</button> */}
-                            <select value={settings.display.wallpaper.size || '60%'} onChange={(e) => handleBackgroundSizeChange(e.target.value)} className="bg-gray-900 text-gray-300 p-2 rounded text-xs border border-gray-700 focus:border-blue-500 focus:outline-none cursor-pointer">
+                            <button onClick={() => document.getElementById('wallpaper-upload')?.click()} disabled={wallpaperLoading} className="px-3 py-2 bg-blue-600 hover:bg-blue-500 disabled:bg-gray-600 text-white text-xs rounded transition whitespace-nowrap">{wallpaperLoading ? 'Uploading...' : <i className="fa-solid fa-upload"></i>}</button>
+                            <select value={settings.display.wallpaper.size || '60%'} onChange={(e) => handleBackgroundSizeChange(e.target.value)} className="bg-[var(--taskbar-bg)] text-[var(--text-color)] p-2 rounded text-xs border border-[var(--border-color)] focus:border-blue-500 focus:outline-none cursor-pointer">
                                 <option value="100% 100%">Full</option>
                                 <option value="cover">Cover</option>
                                 <option value="contain">Contain</option>
@@ -957,40 +1002,23 @@ export default function SettingsUI() {
                         </div>
                     </div>
                 </div>
-                <span className="text-gray-400 text-xs"> <i className="fas fa-info-circle text-xs"></i> Enter image URL or upload an image. Supported formats: JPG, PNG, GIF. Large images may impact performance.</span>
+                <span className="text-[var(--text-color)] opacity-60 text-xs mt-2 block"> <i className="fas fa-info-circle text-xs"></i> Setting a custom wallpaper overrides the automatic Light/Dark mode backgrounds. Reset to restore dynamic backgrounds.</span>
             </div>
 
-            {/* Theme Settings */}
-            {/* <div className="border border-[#333] rounded-lg p-4 bg-[#1a1a1a]">
-                <h3 className="text-white font-semibold mb-3 flex items-center gap-2">
-                    <i className="fas fa-palette"></i>
-                    Theme
-                </h3>
-                <div className="space-y-2">
-                    <label className="flex items-center gap-3 p-2 rounded hover:bg-[#2a2a2a] cursor-pointer">
-                        <input type="radio" name="theme" value="dark" defaultChecked className="w-4 h-4" />
-                        <span className="text-gray-300">Dark Mode (Default)</span>
-                    </label>
-                    <p className="text-gray-400 text-xs px-2 py-1">
-                        Theme customization coming soon. Currently using dark theme throughout the system.
-                    </p>
-                </div>
-            </div> */}
-
             {/* Window Settings */}
-            <div className="border border-[#333] rounded-lg p-4 bg-[#1a1a1a]">
-                <h3 className="text-white font-semibold mb-3 flex items-center gap-2">
-                    <i className="fas fa-window-maximize"></i>
+            <div className="border border-[var(--border-color)] rounded-lg p-4 bg-[var(--taskbar-bg)] shadow-sm">
+                <h3 className="text-[var(--text-color)] font-semibold mb-3 flex items-center gap-2">
+                    <i className="fas fa-window-maximize text-blue-500"></i>
                     Window Management
                 </h3>
-                <div className="space-y-3 text-gray-300 text-sm">
-                    <div className="bg-black/50 rounded p-3">
-                        <p className="font-semibold mb-2">Window Snapping</p>
-                        <ul className="list-disc list-inside space-y-1 text-gray-400 text-xs">
-                            <li><code className="bg-black px-1 py-0.5 rounded text-xs">Ctrl+Left</code> - Snap left</li>
-                            <li><code className="bg-black px-1 py-0.5 rounded text-xs">Ctrl+Right</code> - Snap right</li>
-                            <li><code className="bg-black px-1 py-0.5 rounded text-xs">Ctrl+Up</code> - Maximize</li>
-                            <li><code className="bg-black px-1 py-0.5 rounded text-xs">Ctrl+Down</code> - Restore</li>
+                <div className="space-y-3 text-[var(--text-color)] opacity-80 text-sm">
+                    <div className="bg-[var(--bg-color)] border border-[var(--border-color)] rounded p-3">
+                        <p className="font-semibold mb-2 text-[var(--text-color)]">Window Snapping</p>
+                        <ul className="list-disc list-inside space-y-2 text-[var(--text-color)] opacity-70 text-xs">
+                            <li><code className="bg-[var(--taskbar-bg)] border border-[var(--border-color)] px-1.5 py-0.5 rounded text-xs text-[var(--text-color)]">Ctrl+Left</code> - Snap left</li>
+                            <li><code className="bg-[var(--taskbar-bg)] border border-[var(--border-color)] px-1.5 py-0.5 rounded text-xs text-[var(--text-color)]">Ctrl+Right</code> - Snap right</li>
+                            <li><code className="bg-[var(--taskbar-bg)] border border-[var(--border-color)] px-1.5 py-0.5 rounded text-xs text-[var(--text-color)]">Ctrl+Up</code> - Maximize</li>
+                            <li><code className="bg-[var(--taskbar-bg)] border border-[var(--border-color)] px-1.5 py-0.5 rounded text-xs text-[var(--text-color)]">Ctrl+Down</code> - Restore</li>
                             <li>Drag near screen edges to snap windows</li>
                         </ul>
                     </div>
@@ -1002,27 +1030,27 @@ export default function SettingsUI() {
     const storageTabContent = () => (
         <div className="space-y-6">
             {/* Cloud Storage */}
-            <div className="border border-[#333] rounded-lg p-4 bg-[#1a1a1a]">
-                <h3 className="text-white font-semibold mb-3 flex items-center gap-2">
-                    <i className="fas fa-cloud"></i>
+            <div className="border border-[var(--border-color)] rounded-lg p-4 bg-[var(--taskbar-bg)] shadow-sm">
+                <h3 className="text-[var(--text-color)] font-semibold mb-3 flex items-center gap-2">
+                    <i className="fas fa-cloud text-blue-500"></i>
                     Cloud Storage
                 </h3>
                 <div className="space-y-3">
                     {storageStatus.connected ? (
                         <>
-                                <div className="bg-green-900/20 border border-green-700/50 rounded p-3">
+                                <div className="bg-green-500/10 border border-green-500/30 rounded p-3">
                                 <div className="flex items-center justify-between">
                                     <div className="flex items-center gap-3">
                                         {profile?.profile?.avatar_url && (
                                             <img src={profile.profile.avatar_url} alt="Avatar" className="w-8 h-8 rounded-full" />
                                         )}
                                         <div>
-                                            <p className="text-green-300 font-semibold">{profile?.profile?.name || 'Connected'}</p>
+                                            <p className="text-green-600 dark:text-green-400 font-semibold">{profile?.profile?.name || 'Connected'}</p>
                                             {profile?.profile?.email && (
-                                                <p className="text-green-400/70 text-sm">{profile.profile.email}</p>
+                                                <p className="text-green-600/70 dark:text-green-400/70 text-sm">{profile.profile.email}</p>
                                             )}
                                             {profile?.provider && (
-                                                <p className="text-green-400/70 text-sm">
+                                                <p className="text-green-600/70 dark:text-green-400/70 text-sm">
                                                     Provider: <span className="capitalize">{profile.provider}</span> (Storage Enabled)
                                                 </p>
                                             )}
@@ -1033,13 +1061,13 @@ export default function SettingsUI() {
                                             href={(import.meta as any).env?.VITE_GITHUB_APP_INSTALL_URL || 'https://github.com/apps/zynq-os/installations/new'}
                                             target="_blank"
                                             rel="noreferrer"
-                                            className="px-3 py-1 bg-green-700 hover:bg-green-800 text-white text-sm rounded transition"
+                                            className="px-3 py-1 bg-green-600 hover:bg-green-700 text-white text-sm rounded transition"
                                         >
-                                            Configure GitHub App
+                                            Configure App
                                         </a>
                                         <button
                                             onClick={handleDisconnectStorage}
-                                            className="px-3 py-1 bg-gray-700 hover:bg-gray-800 text-white text-sm rounded transition"
+                                            className="px-3 py-1 bg-[var(--bg-color)] border border-[var(--border-color)] hover:bg-gray-500/20 text-[var(--text-color)] text-sm rounded transition"
                                         >
                                             Disconnect
                                         </button>
@@ -1049,19 +1077,19 @@ export default function SettingsUI() {
                         </>
                     ) : storageStatus.authenticated ? (
                         <>
-                            <div className="bg-blue-900/20 border border-blue-700/50 rounded p-3">
+                            <div className="bg-blue-500/10 border border-blue-500/30 rounded p-3">
                                 <div className="flex items-center justify-between">
                                     <div className="flex items-center gap-3">
                                         {profile?.profile?.avatar_url && (
                                             <img src={profile.profile.avatar_url} alt="Avatar" className="w-8 h-8 rounded-full" />
                                         )}
                                         <div>
-                                            <p className="text-blue-300 font-semibold">{profile?.profile?.name || 'Authenticated'}</p>
+                                            <p className="text-blue-600 dark:text-blue-400 font-semibold">{profile?.profile?.name || 'Authenticated'}</p>
                                             {profile?.profile?.email && (
-                                                <p className="text-blue-400/70 text-sm">{profile.profile.email}</p>
+                                                <p className="text-blue-600/70 dark:text-blue-400/70 text-sm">{profile.profile.email}</p>
                                             )}
                                             {profile?.provider && (
-                                                <p className="text-blue-400/70 text-sm">
+                                                <p className="text-blue-600/70 dark:text-blue-400/70 text-sm">
                                                     Signed in with <span className="capitalize">{profile.provider}</span>
                                                 </p>
                                             )}
@@ -1069,22 +1097,22 @@ export default function SettingsUI() {
                                     </div>
                                     <button
                                         onClick={handleDisconnectStorage}
-                                        className="px-3 py-1 bg-gray-700 hover:bg-gray-800 text-white text-sm rounded transition"
+                                        className="px-3 py-1 bg-[var(--bg-color)] border border-[var(--border-color)] hover:bg-gray-500/20 text-[var(--text-color)] text-sm rounded transition"
                                     >
                                         Sign Out
                                     </button>
                                 </div>
                             </div>
-                            <div className="bg-black/40 rounded p-3 space-y-2">
-                                <p className="text-gray-200 text-sm font-semibold">Enable Decentralized Storage</p>
-                                <p className="text-gray-300 text-xs">
+                            <div className="bg-[var(--bg-color)] border border-[var(--border-color)] rounded p-3 space-y-2">
+                                <p className="text-[var(--text-color)] text-sm font-semibold">Enable Decentralized Storage</p>
+                                <p className="text-[var(--text-color)] opacity-70 text-xs">
                                     You're signed in! Now set up decentralized storage to sync your files and settings across devices using your own GitHub repo.
                                 </p>
                                 <div className="flex gap-2 items-center mt-3">
                                     <a
                                         href={(import.meta as any).env?.VITE_GITHUB_APP_INSTALL_URL || 'https://github.com/apps/zynq-os/installations/new'}
                                         rel="noreferrer"
-                                        className="px-4 py-2 bg-green-600/80 hover:bg-green-700/80 text-white text-sm rounded transition font-semibold"
+                                        className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white text-sm rounded transition font-semibold"
                                     >
                                         Install GitHub App
                                     </a>
@@ -1092,26 +1120,26 @@ export default function SettingsUI() {
                             </div>
                         </>
                     ) : (
-                        <div className="bg-gray-900/50 border border-gray-700/50 rounded p-3 space-y-3">
-                            <div className="bg-black/40 rounded p-3 space-y-2">
-                                <p className="text-gray-200 text-sm font-semibold">Connect GitHub Repo</p>
-                                <ol className="list-decimal list-inside text-gray-400 text-xs space-y-1">
+                        <div className="bg-gray-500/10 border border-[var(--border-color)] rounded p-3 space-y-3">
+                            <div className="bg-[var(--bg-color)] border border-[var(--border-color)] rounded p-3 space-y-2">
+                                <p className="text-[var(--text-color)] text-sm font-semibold">Connect GitHub Repo</p>
+                                <ol className="list-decimal list-inside text-[var(--text-color)] opacity-70 text-xs space-y-1">
                                     <li>Create a new private [recommended] repo on GitHub for your ZynqOS data</li>
                                     <li>Click "Install App" to authorize ZynqOS</li>
                                     <li>Select the repo during installation and authorize</li>
                                     <li>You'll be redirected back to ZynqOS with your data connected</li>
                                 </ol>
-                                <p className="text-gray-300 text-xs mt-2">
+                                <p className="text-[var(--text-color)] opacity-70 text-xs mt-2">
                                     Your files, settings, and audit logs will be synced to your repo and accessible across all devices signed in with your GitHub account. All data stays in your control—ZynqOS cannot access your repo without your authorization.
                                     <br />
-                                    <span className="text-gray-400">Default storage repo: /your-username/.zynqos_storage</span>
+                                    <span className="opacity-50 mt-1 block">Default storage repo: /your-username/.zynqos_storage</span>
                                 </p>
                                 <div className="flex gap-2 items-center mt-3">
                                     <a
                                         href={(import.meta as any).env?.VITE_GITHUB_APP_INSTALL_URL || 'https://github.com/apps/zynq-os/installations/new'}
                                         target="_blank"
                                         rel="noreferrer"
-                                        className="px-4 py-2 bg-green-600/80 hover:bg-green-700/80 text-white text-sm rounded transition font-semibold"
+                                        className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white text-sm rounded transition font-semibold"
                                     >
                                         Install App
                                     </a>
@@ -1123,27 +1151,27 @@ export default function SettingsUI() {
             </div>
 
             {/* Local Storage */}
-            <div className="border border-[#333] rounded-lg p-4 bg-[#1a1a1a]">
-                <h3 className="text-white font-semibold mb-3 flex items-center gap-2">
-                    <i className="fas fa-database"></i>
+            <div className="border border-[var(--border-color)] rounded-lg p-4 bg-[var(--taskbar-bg)] shadow-sm">
+                <h3 className="text-[var(--text-color)] font-semibold mb-3 flex items-center gap-2">
+                    <i className="fas fa-database text-blue-500"></i>
                     Local Storage
                 </h3>
                 <div className="space-y-3">
-                    <div className="bg-black/50 rounded p-3">
+                    <div className="bg-[var(--bg-color)] border border-[var(--border-color)] rounded p-3">
                         <div className="flex items-center justify-between mb-2">
-                            <span className="text-gray-300">Cache Usage</span>
-                            <span className="text-blue-400 font-mono text-sm">{cacheSize}</span>
+                            <span className="text-[var(--text-color)] opacity-80">Cache Usage</span>
+                            <span className="text-blue-500 font-mono text-sm font-semibold">{cacheSize}</span>
                         </div>
-                        <div className="w-full bg-gray-700 rounded-full h-2">
+                        <div className="w-full bg-gray-500/20 border border-[var(--border-color)] rounded-full h-2">
                             <div className="bg-blue-500 h-2 rounded-full" style={{ width: `${cacheRatio}%` }}></div>
                         </div>
-                        <p className="text-gray-500 text-xs mt-2">
+                        <p className="text-[var(--text-color)] opacity-50 text-xs mt-2">
                             Includes temporary files, images, and app data.
                         </p>
                     </div>
                     <button
                         onClick={handleClearCache}
-                        className="w-full px-3 py-2 bg-gray-700 hover:bg-gray-800 text-white text-sm rounded transition"
+                        className="w-full px-3 py-2 bg-red-600/10 hover:bg-red-600/20 text-red-500 border border-red-500/30 text-sm rounded transition font-semibold"
                     >
                         Clear Cache
                     </button>
@@ -1151,36 +1179,36 @@ export default function SettingsUI() {
             </div>
 
             {/* Sync Status */}
-            <div className="border border-[#333] rounded-lg p-4 bg-[#1a1a1a]">
-                <h3 className="text-white font-semibold mb-3 flex items-center gap-2">
-                    <i className="fas fa-sync"></i>
+            <div className="border border-[var(--border-color)] rounded-lg p-4 bg-[var(--taskbar-bg)] shadow-sm">
+                <h3 className="text-[var(--text-color)] font-semibold mb-3 flex items-center gap-2">
+                    <i className="fas fa-sync text-blue-500"></i>
                     GitHub Sync
                 </h3>
                 
                 {!storageStatus.authenticated ? (
-                    <div className="bg-black/50 rounded p-3">
-                        <p className="text-gray-400 text-sm">
+                    <div className="bg-[var(--bg-color)] border border-[var(--border-color)] rounded p-3">
+                        <p className="text-[var(--text-color)] opacity-60 text-sm">
                             Sign in with GitHub to enable peer-to-peer sync
                         </p>
                     </div>
                 ) : (
                     <div className="space-y-3">
                         {/* Sync Status Display */}
-                        <div className="bg-black/50 rounded p-3 space-y-2">
+                        <div className="bg-[var(--bg-color)] border border-[var(--border-color)] rounded p-3 space-y-2">
                             <div className="flex items-center justify-between">
-                                <span className="text-gray-400">Last Sync</span>
-                                <span className={`text-sm ${syncStatus.lastSyncTime ? 'text-green-400' : 'text-gray-500'}`}>
+                                <span className="text-[var(--text-color)] opacity-70 text-sm">Last Sync</span>
+                                <span className={`text-sm font-medium ${syncStatus.lastSyncTime ? 'text-green-500' : 'text-[var(--text-color)] opacity-50'}`}>
                                     {formatLastSyncTime(syncStatus.lastSyncTime)}
                                 </span>
                             </div>
                             <div className="flex items-center justify-between">
-                                <span className="text-gray-400">Pending Changes</span>
-                                <span className={`text-sm font-mono ${syncStatus.pendingChanges > 0 ? 'text-yellow-400' : 'text-gray-500'}`}>
+                                <span className="text-[var(--text-color)] opacity-70 text-sm">Pending Changes</span>
+                                <span className={`text-sm font-mono font-bold ${syncStatus.pendingChanges > 0 ? 'text-orange-500' : 'text-[var(--text-color)] opacity-50'}`}>
                                     {syncStatus.pendingChanges}
                                 </span>
                             </div>
                             {syncStatus.error && (
-                                <div className="text-red-400 text-xs mt-2">
+                                <div className="text-red-500 text-xs mt-2 bg-red-500/10 p-2 rounded">
                                     Error: {syncStatus.error}
                                 </div>
                             )}
@@ -1191,20 +1219,20 @@ export default function SettingsUI() {
                             <button
                                 onClick={handleSyncNow}
                                 disabled={syncStatus.syncing}
-                                className={`w-full px-4 py-2 rounded text-sm font-semibold transition ${
+                                className={`w-full px-4 py-2 rounded text-sm font-semibold transition flex items-center justify-center gap-2 border ${
                                     syncStatus.syncing
-                                        ? 'bg-gray-700 text-gray-400 cursor-not-allowed'
-                                        : 'bg-blue-600 hover:bg-blue-700 text-white'
+                                        ? 'bg-[var(--bg-color)] border-[var(--border-color)] text-[var(--text-color)] opacity-50 cursor-not-allowed'
+                                        : 'bg-blue-600 hover:bg-blue-500 border-blue-600 text-white shadow-md'
                                 }`}
                             >
                                 {syncStatus.syncing ? (
                                     <>
-                                        <i className="fas fa-spinner fa-spin mr-2"></i>
+                                        <i className="fas fa-spinner fa-spin"></i>
                                         Push…
                                     </>
                                 ) : (
                                     <>
-                                        <i className="fas fa-cloud-upload-alt mr-2"></i>
+                                        <i className="fas fa-cloud-upload-alt"></i>
                                         Push Now
                                     </>
                                 )}
@@ -1219,28 +1247,28 @@ export default function SettingsUI() {
                                     }
                                 }}
                                 disabled={syncStatus.syncing}
-                                className={`w-full px-4 py-2 rounded text-sm font-semibold transition ${
+                                className={`w-full px-4 py-2 rounded text-sm font-semibold transition flex items-center justify-center gap-2 border ${
                                     syncStatus.syncing
-                                        ? 'bg-gray-700 text-gray-400 cursor-not-allowed'
-                                        : 'bg-gray-700 hover:bg-gray-600 text-white'
+                                        ? 'bg-[var(--bg-color)] border-[var(--border-color)] text-[var(--text-color)] opacity-50 cursor-not-allowed'
+                                        : 'bg-[var(--bg-color)] hover:bg-gray-500/10 border-[var(--border-color)] text-[var(--text-color)]'
                                 }`}
                             >
-                                <i className="fas fa-cloud-download-alt mr-2"></i>
+                                <i className="fas fa-cloud-download-alt"></i>
                                 Pull Now
                             </button>
                         </div>
 
                         {/* Auto-sync Settings */}
-                        <div className="bg-black/40 rounded p-3 space-y-3">
+                        <div className="bg-[var(--bg-color)] border border-[var(--border-color)] rounded p-3 space-y-3">
                             <div className="flex items-center justify-between">
-                                <div className="flex items-center gap-2">
-                                    <span className="text-gray-300 text-sm">Auto-sync</span>
-                                    <span className="text-gray-500 text-xs">Background sync</span>
+                                <div className="flex flex-col">
+                                    <span className="text-[var(--text-color)] text-sm font-medium">Auto-sync</span>
+                                    <span className="text-[var(--text-color)] opacity-50 text-xs">Background sync</span>
                                 </div>
                                 <button
                                     onClick={handleAutoSyncToggle}
                                     className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                                        autoSyncEnabled ? 'bg-blue-600' : 'bg-gray-600'
+                                        autoSyncEnabled ? 'bg-blue-600' : 'bg-gray-500'
                                     }`}
                                 >
                                     <span
@@ -1252,12 +1280,12 @@ export default function SettingsUI() {
                             </div>
 
                             {autoSyncEnabled && (
-                                <div className="space-y-2">
-                                    <label className="text-gray-400 text-sm">Sync interval</label>
+                                <div className="space-y-2 pt-2 border-t border-[var(--border-color)]">
+                                    <label className="text-[var(--text-color)] opacity-70 text-xs font-semibold uppercase">Sync interval</label>
                                     <select
                                         value={autoSyncInterval}
                                         onChange={(e) => handleAutoSyncIntervalChange(Number(e.target.value))}
-                                        className="w-full bg-gray-900 text-gray-300 px-3 py-2 rounded text-sm border border-gray-700 focus:border-blue-500 focus:outline-none"
+                                        className="w-full bg-[var(--taskbar-bg)] text-[var(--text-color)] px-3 py-2 rounded text-sm border border-[var(--border-color)] focus:border-blue-500 focus:outline-none"
                                     >
                                         <option value={5}>Every 5 minutes</option>
                                         <option value={15}>Every 15 minutes</option>
@@ -1269,8 +1297,9 @@ export default function SettingsUI() {
                             )}
                         </div>
 
-                        <p className="text-gray-500 text-xs">
-                            Your data is synced to your own GitHub repo: .zynqos_storage. All files, settings, and logs stay under your control.
+                        <p className="text-[var(--text-color)] opacity-50 text-xs bg-blue-500/10 border border-blue-500/20 p-2 rounded">
+                            <i className="fas fa-info-circle mr-1 text-blue-500"></i>
+                            Your data is synced to your own GitHub repo: <strong>.zynqos_storage</strong>. All files, settings, and logs stay under your control.
                         </p>
                     </div>
                 )}
@@ -1281,64 +1310,64 @@ export default function SettingsUI() {
     const systemTabContent = () => (
         <div className="space-y-6">
             {/* Session Time */}
-            <div className="border border-[#333] rounded-lg p-4 bg-[#1a1a1a]">
-                <h3 className="text-white font-semibold mb-3 flex items-center gap-2">
-                    <i className="fas fa-hourglass-half"></i>
+            <div className="border border-[var(--border-color)] rounded-lg p-4 bg-[var(--taskbar-bg)] shadow-sm">
+                <h3 className="text-[var(--text-color)] font-semibold mb-3 flex items-center gap-2">
+                    <i className="fas fa-hourglass-half text-blue-500"></i>
                     Session Activity
                 </h3>
-                <div className="bg-black/50 rounded p-4 space-y-3">
+                <div className="bg-[var(--bg-color)] border border-[var(--border-color)] rounded p-4 space-y-3">
                     <div className="flex items-center justify-between">
-                        <span className="text-gray-300">Total Active Time</span>
-                        <span className="text-blue-400 font-mono text-lg font-bold">{sessionTime}</span>
+                        <span className="text-[var(--text-color)] opacity-80 font-medium">Total Active Time</span>
+                        <span className="text-blue-500 font-mono text-lg font-bold">{sessionTime}</span>
                     </div>
-                    <p className="text-gray-500 text-xs">
+                    <p className="text-[var(--text-color)] opacity-50 text-xs">
                         Tracks time spent actively using this application. Pauses during idle periods (1 minute threshold).
                     </p>
                 </div>
             </div>
 
             {/* System Information */}
-            <div className="border border-[#333] rounded-lg p-4 bg-[#1a1a1a]">
-                <h3 className="text-white font-semibold mb-3 flex items-center gap-2">
-                    <i className="fas fa-info-circle"></i>
+            <div className="border border-[var(--border-color)] rounded-lg p-4 bg-[var(--taskbar-bg)] shadow-sm">
+                <h3 className="text-[var(--text-color)] font-semibold mb-3 flex items-center gap-2">
+                    <i className="fas fa-info-circle text-blue-500"></i>
                     System Information
                 </h3>
                 <div className="space-y-2 text-sm">
-                    <div className="bg-black/50 rounded p-3 flex items-center justify-between">
-                        <span className="text-gray-400">OS</span>
-                        <span className="text-gray-200">ZynqOS (Web-based)</span>
+                    <div className="bg-[var(--bg-color)] border border-[var(--border-color)] rounded p-3 flex items-center justify-between">
+                        <span className="text-[var(--text-color)] opacity-70">OS</span>
+                        <span className="text-[var(--text-color)] font-medium">ZynqOS (Web-based)</span>
                     </div>
-                    <div className="bg-black/50 rounded p-3 flex items-center justify-between">
-                        <span className="text-gray-400">Browser</span>
-                        <span className="text-gray-200">{getBrowserInfoLocal()}</span>
+                    <div className="bg-[var(--bg-color)] border border-[var(--border-color)] rounded p-3 flex items-center justify-between">
+                        <span className="text-[var(--text-color)] opacity-70">Browser</span>
+                        <span className="text-[var(--text-color)] font-medium">{getBrowserInfoLocal()}</span>
                     </div>
-                    <div className="bg-black/50 rounded p-3 flex items-center justify-between">
-                        <span className="text-gray-400">Platform</span>
-                        <span className="text-gray-200">{getPlatformInfoLocal()}</span>
+                    <div className="bg-[var(--bg-color)] border border-[var(--border-color)] rounded p-3 flex items-center justify-between">
+                        <span className="text-[var(--text-color)] opacity-70">Platform</span>
+                        <span className="text-[var(--text-color)] font-medium">{getPlatformInfoLocal()}</span>
                     </div>
-                    <div className="bg-black/50 rounded p-3 flex items-center justify-between">
-                        <span className="text-gray-400">Runtime</span>
-                        <span className="text-gray-200">WASI + WebAssembly</span>
+                    <div className="bg-[var(--bg-color)] border border-[var(--border-color)] rounded p-3 flex items-center justify-between">
+                        <span className="text-[var(--text-color)] opacity-70">Runtime</span>
+                        <span className="text-[var(--text-color)] font-medium">WASI + WebAssembly</span>
                     </div>
                 </div>
             </div>
 
             {/* Remote Python Runtime */}
-            <div className="border border-[#333] rounded-lg p-4 bg-[#1a1a1a]">
-                <h3 className="text-white font-semibold mb-3 flex items-center gap-2">
-                    <i className="fas fa-terminal"></i>
+            <div className="border border-[var(--border-color)] rounded-lg p-4 bg-[var(--taskbar-bg)] shadow-sm">
+                <h3 className="text-[var(--text-color)] font-semibold mb-3 flex items-center gap-2">
+                    <i className="fas fa-terminal text-blue-500"></i>
                     Remote Python Runtime
                 </h3>
                 <div className="space-y-3">
-                    <div className="flex items-center justify-between">
-                        <div>
-                            <p className="text-gray-300 text-sm">Enable Remote Runtime</p>
-                            <p className="text-gray-500 text-xs">Optional: only set this if you run your own server-side runtime.</p>
+                    <div className="flex items-center justify-between bg-[var(--bg-color)] border border-[var(--border-color)] rounded p-3">
+                        <div className="flex flex-col">
+                            <p className="text-[var(--text-color)] text-sm font-semibold">Enable Remote Runtime</p>
+                            <p className="text-[var(--text-color)] opacity-50 text-xs">Optional: only set this if you run your own server-side runtime.</p>
                         </div>
                         <button
                             onClick={() => setRemotePythonEnabled(prev => !prev)}
                             className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                                remotePythonEnabled ? 'bg-blue-600' : 'bg-gray-600'
+                                remotePythonEnabled ? 'bg-blue-600' : 'bg-gray-500'
                             }`}
                         >
                             <span
@@ -1351,48 +1380,48 @@ export default function SettingsUI() {
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                         <div>
-                            <label className="text-gray-400 text-xs">Base URL</label>
+                            <label className="text-[var(--text-color)] opacity-70 text-xs font-semibold uppercase">Base URL</label>
                             <input
                                 value={remotePythonBaseUrl}
                                 onChange={(e) => setRemotePythonBaseUrl(e.target.value)}
                                 placeholder="ec2-xxx-xxx-xxx-xxx.yy-yyyyy.compute.amazonaws.com:8000"
-                                className="w-full mt-1 bg-[#151515] border border-[#333] rounded px-3 py-2 text-sm text-gray-200"
+                                className="w-full mt-1 bg-[var(--bg-color)] border border-[var(--border-color)] rounded px-3 py-2 text-sm text-[var(--text-color)] focus:border-blue-500 outline-none"
                             />
-                            <p className="text-gray-500 text-[11px] mt-1">Leave empty to keep local Pyodide runtime.</p>
+                            <p className="text-[var(--text-color)] opacity-50 text-[11px] mt-1">Leave empty to keep local Pyodide runtime.</p>
                         </div>
                         <div>
-                            <label className="text-gray-400 text-xs">User ID</label>
+                            <label className="text-[var(--text-color)] opacity-70 text-xs font-semibold uppercase">User ID</label>
                             <input
                                 value={remotePythonUserId}
                                 onChange={(e) => setRemotePythonUserId(e.target.value)}
                                 placeholder="user"
-                                className="w-full mt-1 bg-[#151515] border border-[#333] rounded px-3 py-2 text-sm text-gray-200"
+                                className="w-full mt-1 bg-[var(--bg-color)] border border-[var(--border-color)] rounded px-3 py-2 text-sm text-[var(--text-color)] focus:border-blue-500 outline-none"
                             />
-                            <p className="text-gray-500 text-[11px] mt-1">Used to isolate /home on the remote server.</p>
+                            <p className="text-[var(--text-color)] opacity-50 text-[11px] mt-1">Used to isolate /home on the remote server.</p>
                         </div>
                     </div>
 
                     <div>
-                        <label className="text-gray-400 text-xs">API Key (stored locally only)</label>
+                        <label className="text-[var(--text-color)] opacity-70 text-xs font-semibold uppercase">API Key (stored locally only)</label>
                         <input
                             type="password"
                             value={remotePythonApiKey}
                             onChange={(e) => setRemotePythonApiKey(e.target.value)}
                             placeholder="Same as in EC2 .env - If no api key set leave this blank"
-                            className="w-full mt-1 bg-[#151515] border border-[#333] rounded px-3 py-2 text-sm text-gray-200"
+                            className="w-full mt-1 bg-[var(--bg-color)] border border-[var(--border-color)] rounded px-3 py-2 text-sm text-[var(--text-color)] focus:border-blue-500 outline-none"
                         />
                     </div>
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                        <div className="flex items-center justify-between bg-black/40 border border-[#333] rounded px-3 py-2">
+                        <div className="flex items-center justify-between bg-[var(--bg-color)] border border-[var(--border-color)] rounded px-3 py-2">
                             <div>
-                                <p className="text-gray-300 text-sm">Overwrite on Pull</p>
-                                <p className="text-gray-500 text-xs">Replace local files when remote differs.</p>
+                                <p className="text-[var(--text-color)] text-sm font-semibold">Overwrite on Pull</p>
+                                <p className="text-[var(--text-color)] opacity-50 text-xs">Replace local files when remote differs.</p>
                             </div>
                             <button
                                 onClick={() => setRemotePythonOverwriteOnPull(prev => !prev)}
-                                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                                    remotePythonOverwriteOnPull ? 'bg-blue-600' : 'bg-gray-600'
+                                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors shrink-0 ${
+                                    remotePythonOverwriteOnPull ? 'bg-blue-600' : 'bg-gray-500'
                                 }`}
                             >
                                 <span
@@ -1402,8 +1431,8 @@ export default function SettingsUI() {
                                 />
                             </button>
                         </div>
-                        <div>
-                            <label className="text-gray-400 text-xs">Pull Interval (seconds)</label>
+                        <div className="bg-[var(--bg-color)] border border-[var(--border-color)] rounded px-3 py-2">
+                            <label className="text-[var(--text-color)] opacity-70 text-xs font-semibold uppercase">Pull Interval (seconds)</label>
                             <input
                                 type="number"
                                 min={15}
@@ -1413,63 +1442,63 @@ export default function SettingsUI() {
                                     const val = Number((e.target as HTMLInputElement).value || 60)
                                     setRemotePythonPullIntervalSec(Number.isNaN(val) ? 60 : val)
                                 }}
-                                className="w-full mt-1 bg-[#151515] border border-[#333] rounded px-3 py-2 text-sm text-gray-200"
+                                className="w-full mt-1 bg-[var(--taskbar-bg)] border border-[var(--border-color)] rounded px-2 py-1 text-sm text-[var(--text-color)] focus:border-blue-500 outline-none"
                             />
                         </div>
                     </div>
 
-                    <div className="flex flex-wrap gap-2">
+                    <div className="flex flex-wrap gap-2 pt-2">
                         <button
                             onClick={handleSaveRemotePython}
-                            className="px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded transition"
+                            className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white font-semibold text-sm rounded transition shadow-sm"
                         >
                             Save Settings
                         </button>
                         <button
                             onClick={handleTestRemotePython}
-                            className="px-3 py-2 bg-gray-700 hover:bg-gray-600 text-white text-sm rounded transition"
+                            className="px-4 py-2 bg-[var(--bg-color)] border border-[var(--border-color)] hover:bg-gray-500/10 text-[var(--text-color)] font-semibold text-sm rounded transition"
                         >
                             Test Connection
                         </button>
                     </div>
 
-                    <div className="border border-[#333] rounded bg-black/40 p-3">
+                    <div className="border border-[var(--border-color)] rounded bg-[var(--bg-color)] p-3 mt-4">
                         <div className="flex items-center justify-between mb-2">
-                            <p className="text-gray-300 text-sm">Conflict Viewer</p>
+                            <p className="text-[var(--text-color)] font-semibold text-sm">Conflict Viewer</p>
                             <button
                                 onClick={refreshRemoteConflicts}
-                                className="text-xs text-gray-300 hover:text-white"
+                                className="text-xs text-blue-500 hover:text-blue-400 font-semibold"
                             >
-                                Refresh
+                                <i className="fas fa-sync-alt mr-1"></i> Refresh
                             </button>
                         </div>
                         {remoteConflictLoading && (
-                            <p className="text-xs text-gray-400">Loading conflicts...</p>
+                            <p className="text-xs text-[var(--text-color)] opacity-50 py-2">Loading conflicts...</p>
                         )}
                         {remoteConflictError && !remoteConflictLoading && (
-                            <p className="text-xs text-red-400">{remoteConflictError}</p>
+                            <p className="text-xs text-red-500 bg-red-500/10 p-2 rounded">{remoteConflictError}</p>
                         )}
                         {!remoteConflictLoading && !remoteConflictError && remoteConflictFiles.length === 0 && (
-                            <p className="text-xs text-gray-500">No conflicts detected.</p>
+                            <p className="text-xs text-[var(--text-color)] opacity-50 py-2 text-center bg-[var(--taskbar-bg)] rounded border border-dashed border-[var(--border-color)]">No conflicts detected.</p>
                         )}
                         {!remoteConflictLoading && !remoteConflictError && remoteConflictFiles.length > 0 && (
                             <div className="space-y-2">
                                 {remoteConflictFiles.map((path) => {
                                     const basePath = path.replace(/\.remote-\d{14}$/, '')
                                     return (
-                                        <div key={path} className="bg-[#151515] border border-[#333] rounded px-3 py-2">
-                                            <div className="text-xs text-gray-300 break-all">{path}</div>
-                                            <div className="text-[11px] text-gray-500">Original: {basePath}</div>
-                                            <div className="flex gap-2 mt-2">
+                                        <div key={path} className="bg-[var(--taskbar-bg)] border border-orange-500/30 rounded p-3">
+                                            <div className="text-xs text-[var(--text-color)] font-mono break-all font-semibold">{path}</div>
+                                            <div className="text-[11px] text-[var(--text-color)] opacity-60 mt-1">Original: {basePath}</div>
+                                            <div className="flex gap-2 mt-3">
                                                 <button
                                                     onClick={() => resolveConflictUseRemote(path)}
-                                                    className="px-2 py-1 text-xs bg-blue-600 hover:bg-blue-700 text-white rounded"
+                                                    className="flex-1 py-1.5 text-xs font-semibold bg-blue-600 hover:bg-blue-500 text-white rounded transition"
                                                 >
                                                     Use Remote
                                                 </button>
                                                 <button
                                                     onClick={() => resolveConflictKeepLocal(path)}
-                                                    className="px-2 py-1 text-xs bg-gray-700 hover:bg-gray-600 text-white rounded"
+                                                    className="flex-1 py-1.5 text-xs font-semibold bg-[var(--bg-color)] border border-[var(--border-color)] hover:bg-gray-500/20 text-[var(--text-color)] rounded transition"
                                                 >
                                                     Keep Local
                                                 </button>
@@ -1482,179 +1511,180 @@ export default function SettingsUI() {
                     </div>
                 </div>
             </div>
-
-            {/* Storage Usage */}
-            <div className="border border-[#333] rounded-lg p-4 bg-[#1a1a1a]">
-                <h3 className="text-white font-semibold mb-3 flex items-center gap-2">
-                    <i className="fas fa-chart-pie"></i>
-                    Storage Usage
-                </h3>
-                <div className="bg-black/50 rounded p-3 space-y-3">
-                    <div>
-                        <div className="flex items-center justify-between mb-1">
-                            <span className="text-gray-400 text-sm">IndexedDB</span>
-                            <span className="text-gray-300 text-sm">{cacheSize}</span>
-                        </div>
-                        <div className="w-full bg-gray-700 rounded-full h-2">
-                            <div className="bg-green-500 h-2 rounded-full" style={{ width: `${cacheRatio}%` }}></div>
-                        </div>
-                    </div>
-                    <p className="text-gray-500 text-xs">
-                        Files, apps, and VFS data stored in browser IndexedDB.
-                    </p>
-                </div>
-            </div>
         </div>
     )
 
     const securityTabContent = () => (
         <div className="space-y-6">
-            <div className="border border-[#333] rounded-lg p-4 bg-[#1a1a1a]">
-                <div className="flex items-center justify-between mb-3">
+            <div className="border border-[var(--border-color)] rounded-lg p-4 bg-[var(--taskbar-bg)] shadow-sm">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-4 gap-2">
                     <div className="flex items-center gap-2">
-                        <i className="fas fa-shield-alt text-blue-400"></i>
-                        <h3 className="text-white font-semibold">Audit Log</h3>
+                        <i className="fas fa-shield-alt text-blue-500 text-lg"></i>
+                        <h3 className="text-[var(--text-color)] font-bold text-lg">Audit Log</h3>
                     </div>
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-3">
+                        <span className="text-xs text-[var(--text-color)] opacity-60 font-medium bg-[var(--bg-color)] border border-[var(--border-color)] px-2 py-1 rounded">Last {auditEntries.length} events</span>
                         <button
                             onClick={fetchAuditLog}
-                            className="px-3 py-1 bg-gray-800 hover:bg-gray-700 text-white text-sm rounded transition"
+                            className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white text-sm font-semibold rounded transition shadow-sm flex items-center gap-2"
                         >
-                            Refresh
+                            <i className="fas fa-sync-alt text-xs"></i> Refresh
                         </button>
-                        <span className="text-xs text-gray-500">Last {auditEntries.length} events</span>
                     </div>
                 </div>
-                <p className="text-gray-400 text-sm mb-3">
+                <p className="text-[var(--text-color)] opacity-60 text-sm mb-4">
                     Auth events are captured server-side (in-memory ring buffer). Data resets on cold starts and never includes tokens.
                 </p>
-                <div className="bg-black/40 rounded border border-[#333] divide-y divide-[#222]">
-                    <div className="grid grid-cols-5 gap-2 text-xs text-gray-400 px-3 py-2">
+                <div className="bg-[var(--bg-color)] rounded-lg border border-[var(--border-color)] overflow-hidden">
+                    <div className="grid grid-cols-5 gap-2 text-xs font-bold text-[var(--text-color)] opacity-70 uppercase tracking-wider px-4 py-3 bg-gray-500/10 border-b border-[var(--border-color)]">
                         <span>Time</span>
                         <span>Event</span>
                         <span>Status</span>
                         <span>Provider</span>
                         <span>IP</span>
                     </div>
-                    {auditLoading && (
-                        <div className="px-3 py-3 text-sm text-gray-300">Loading audit log...</div>
-                    )}
-                    {auditError && !auditLoading && (
-                        <div className="px-3 py-3 text-sm text-red-400">{auditError}</div>
-                    )}
-                    {!auditLoading && !auditError && auditEntries.length === 0 && (
-                        <div className="px-3 py-3 text-sm text-gray-400">No audit events recorded yet.</div>
-                    )}
-                    {!auditLoading && !auditError && auditEntries.map(entry => (
-                        <div key={`local-${entry.id}`} className="grid grid-cols-5 gap-2 px-3 py-2 text-xs text-gray-200">
-                            <span className="text-gray-400">{formatTimestamp(entry.ts)}</span>
-                            <span className="font-mono text-[11px] text-gray-100">{entry.event}</span>
-                            <span className={entry.status === 'success' ? 'text-green-400' : 'text-red-400'}>{entry.status}</span>
-                            <span className="capitalize text-gray-300">{entry.provider || '—'}</span>
-                            <span className="text-gray-400 truncate" title={entry.ip}>{entry.ip === '::1' ? 'localhost' : entry.ip}</span>
-                            {entry.message && (
-                                <span className="col-span-5 text-gray-400 text-[11px]">{entry.message}</span>
-                            )}
-                        </div>
-                    ))}
+                    <div className="divide-y divide-[var(--border-color)] max-h-80 overflow-y-auto scrollbar">
+                        {auditLoading && (
+                            <div className="px-4 py-6 text-center text-sm text-[var(--text-color)] opacity-50">
+                                <i className="fas fa-spinner fa-spin mr-2"></i> Loading audit log...
+                            </div>
+                        )}
+                        {auditError && !auditLoading && (
+                            <div className="px-4 py-6 text-center text-sm text-red-500 bg-red-500/5">{auditError}</div>
+                        )}
+                        {!auditLoading && !auditError && auditEntries.length === 0 && (
+                            <div className="px-4 py-8 text-center text-sm text-[var(--text-color)] opacity-50 flex flex-col items-center gap-2">
+                                <i className="fas fa-clipboard-list text-2xl opacity-50"></i>
+                                No audit events recorded yet.
+                            </div>
+                        )}
+                        {!auditLoading && !auditError && auditEntries.map(entry => (
+                            <div key={`local-${entry.id}`} className="grid grid-cols-5 gap-2 px-4 py-3 text-xs text-[var(--text-color)] hover:bg-gray-500/5 transition-colors">
+                                <span className="opacity-70 whitespace-nowrap">{formatTimestamp(entry.ts)}</span>
+                                <span className="font-mono text-[11px] font-semibold text-blue-500">{entry.event}</span>
+                                <div>
+                                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide border ${entry.status === 'success' ? 'bg-green-500/10 text-green-600 dark:text-green-400 border-green-500/20' : 'bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/20'}`}>
+                                        {entry.status}
+                                    </span>
+                                </div>
+                                <span className="capitalize opacity-80">{entry.provider || '—'}</span>
+                                <span className="opacity-60 font-mono truncate" title={entry.ip}>{entry.ip === '::1' ? 'localhost' : entry.ip}</span>
+                                {entry.message && (
+                                    <span className="col-span-5 text-[var(--text-color)] opacity-50 text-[11px] mt-1 pl-1 border-l-2 border-gray-500/30">{entry.message}</span>
+                                )}
+                            </div>
+                        ))}
+                    </div>
                 </div>
-                <div className="text-xs text-gray-500 mt-3">
+                <div className="text-xs text-[var(--text-color)] opacity-50 mt-4 flex items-start gap-2 bg-blue-500/5 p-3 rounded border border-blue-500/10">
+                    <i className="fas fa-info-circle text-blue-500 mt-0.5"></i>
                     Rate limiting is enabled server-side to protect auth endpoints; burst limits can be tuned via env vars.
                 </div>
             </div>
 
             {/* Audit Sync to GitHub */}
             {storageStatus.connected && (storageStatus.provider === 'github' || storageStatus.provider === 'github-app') && (
-                <div className="border border-[#333] rounded-lg p-4 bg-[#1a1a1a]">
-                    <div className="flex items-center justify-between mb-3">
+                <div className="border border-[var(--border-color)] rounded-lg p-4 bg-[var(--taskbar-bg)] shadow-sm">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-4 gap-2">
                         <div className="flex items-center gap-2">
-                            <i className="fas fa-cloud-upload-alt text-blue-400"></i>
-                            <h3 className="text-white font-semibold">Audit Log Sync</h3>
+                            <i className="fas fa-cloud-upload-alt text-blue-500 text-lg"></i>
+                            <h3 className="text-[var(--text-color)] font-bold text-lg">Audit Log Sync</h3>
                         </div>
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-3">
                             {auditSyncStatus.syncing && (
-                                <span className="text-xs text-blue-400">Syncing...</span>
+                                <span className="text-xs font-semibold text-blue-500 flex items-center gap-1"><i className="fas fa-spinner fa-spin"></i> Syncing...</span>
                             )}
                             {!auditSyncStatus.syncing && auditSyncStatus.pendingCount > 0 && (
-                                <span className="text-xs text-yellow-400">{auditSyncStatus.pendingCount} pending</span>
+                                <span className="text-xs font-semibold text-orange-500 bg-orange-500/10 px-2 py-1 rounded border border-orange-500/20">{auditSyncStatus.pendingCount} pending</span>
                             )}
                             {auditSyncStatus.lastSyncTime && (
-                                <span className="text-xs text-gray-500">
+                                <span className="text-xs text-[var(--text-color)] opacity-60 bg-[var(--bg-color)] border border-[var(--border-color)] px-2 py-1 rounded">
                                     Last sync: {new Date(auditSyncStatus.lastSyncTime).toLocaleTimeString()}
                                 </span>
                             )}
                         </div>
                     </div>
-                    <p className="text-gray-400 text-sm mb-3">
+                    <p className="text-[var(--text-color)] opacity-70 text-sm mb-4">
                         Automatically sync audit logs to your GitHub storage repository for cross-device access and long-term retention.
                     </p>
-                    <div className="flex gap-2">
+                    <div className="flex flex-wrap gap-3">
                         <button
                             onClick={syncAuditToGitHub}
                             disabled={auditSyncStatus.syncing}
-                            className="px-3 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-700 disabled:cursor-not-allowed text-white text-sm rounded transition flex items-center gap-2"
+                            className="px-4 py-2 bg-blue-600 hover:bg-blue-500 disabled:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-semibold rounded transition shadow-sm flex items-center gap-2"
                         >
                             <i className="fas fa-sync-alt"></i>
-                            Sync Now
+                            Force Sync Now
                         </button>
                         <button
                             onClick={loadSyncedAuditLogs}
                             disabled={auditLoading}
-                            className="px-3 py-2 bg-gray-700 hover:bg-gray-600 disabled:bg-gray-800 disabled:cursor-not-allowed text-white text-sm rounded transition flex items-center gap-2"
+                            className="px-4 py-2 bg-[var(--bg-color)] border border-[var(--border-color)] hover:bg-gray-500/10 disabled:opacity-50 disabled:cursor-not-allowed text-[var(--text-color)] text-sm font-semibold rounded transition flex items-center gap-2"
                         >
-                            <i className="fas fa-history"></i>
-                            View History (30 days)
+                            <i className="fas fa-history text-blue-500"></i>
+                            View Cloud History (30 days)
                         </button>
                     </div>
-                    <div className="mt-3 flex items-center gap-2">
-                        <input
-                            type="checkbox"
-                            id="autoAuditSync"
-                            checked={auditSyncStatus.autoSync}
-                            onChange={(e) => auditSync.setAutoSync(e.target.checked)}
-                            className="rounded border-gray-600 bg-gray-700 text-blue-500 focus:ring-blue-500"
-                        />
-                        <label htmlFor="autoAuditSync" className="text-sm text-gray-300">
-                            Enable automatic sync (debounced 5s after changes)
+                    <div className="mt-5 flex items-center gap-3 bg-[var(--bg-color)] p-3 rounded-lg border border-[var(--border-color)]">
+                        <div className="relative flex items-center">
+                            <input
+                                type="checkbox"
+                                id="autoAuditSync"
+                                checked={auditSyncStatus.autoSync}
+                                onChange={(e) => auditSync.setAutoSync(e.target.checked)}
+                                className="peer sr-only"
+                            />
+                            <div className="block h-6 w-11 rounded-full bg-gray-500 peer-checked:bg-blue-600 transition-colors"></div>
+                            <div className="absolute left-1 top-1 h-4 w-4 rounded-full bg-white transition-transform peer-checked:translate-x-5"></div>
+                        </div>
+                        <label htmlFor="autoAuditSync" className="text-sm font-medium text-[var(--text-color)] cursor-pointer">
+                            Enable automatic background sync <span className="opacity-50 font-normal">(debounced 5s after changes)</span>
                         </label>
                     </div>
+
+                    {/* Synced Logs Modal/Overlay */}
                     {showSyncedLogs && syncedAuditEntries.length > 0 && (
-                        <div className="mt-4">
-                            <div className="flex items-center justify-between mb-2">
-                                <h4 className="text-sm font-semibold text-white">Synced History</h4>
+                        <div className="mt-6 border-t border-[var(--border-color)] pt-4">
+                            <div className="flex items-center justify-between mb-3">
+                                <h4 className="text-base font-bold text-[var(--text-color)] flex items-center gap-2">
+                                    <i className="fas fa-cloud text-blue-500"></i> Cloud History
+                                </h4>
                                 <button
                                     onClick={() => setShowSyncedLogs(false)}
-                                    className="text-xs text-gray-400 hover:text-gray-300"
+                                    className="text-xs font-semibold px-2 py-1 bg-red-500/10 text-red-500 hover:bg-red-500/20 rounded transition"
                                 >
-                                    <i className="fas fa-times"></i> Close
+                                    <i className="fas fa-times"></i> Close View
                                 </button>
                             </div>
-                            <div className="bg-black/40 rounded border border-[#333] divide-y divide-[#222] max-h-60 overflow-y-auto scrollbar">
-                                <div className="grid grid-cols-5 gap-2 text-xs text-gray-400 px-3 py-2 sticky top-0 bg-black/60">
+                            <div className="bg-[var(--bg-color)] rounded-lg border border-[var(--border-color)] overflow-hidden">
+                                <div className="grid grid-cols-5 gap-2 text-xs font-bold text-[var(--text-color)] opacity-70 uppercase tracking-wider px-4 py-3 bg-gray-500/10 border-b border-[var(--border-color)]">
                                     <span>Time</span>
                                     <span>Event</span>
                                     <span>Status</span>
                                     <span>Provider</span>
                                     <span>IP</span>
                                 </div>
-                                {syncedAuditEntries.map(entry => (
-                                    <div key={`synced-${entry.id}`} className="grid grid-cols-5 gap-2 px-3 py-2 text-xs text-gray-200">
-                                        <span className="text-gray-400">{formatTimestamp(entry.ts)}</span>
-                                        <span className="font-mono text-[11px] text-gray-100">{entry.event}</span>
-                                        <span className={entry.status === 'success' ? 'text-green-400' : 'text-red-400'}>{entry.status}</span>
-                                        <span className="capitalize text-gray-300">{entry.provider || '—'}</span>
-                                        <span className="text-gray-400 truncate" title={entry.ip}>{entry.ip === '::1' ? 'localhost' : entry.ip}</span>
-                                        {entry.message && (
-                                            <span className="col-span-5 text-gray-400 text-[11px]">{entry.message}</span>
-                                        )}
-                                    </div>
-                                ))}
+                                <div className="divide-y divide-[var(--border-color)] max-h-80 overflow-y-auto scrollbar">
+                                    {syncedAuditEntries.map(entry => (
+                                        <div key={`synced-${entry.id}`} className="grid grid-cols-5 gap-2 px-4 py-3 text-xs text-[var(--text-color)] hover:bg-gray-500/5 transition-colors">
+                                            <span className="opacity-70 whitespace-nowrap">{formatTimestamp(entry.ts)}</span>
+                                            <span className="font-mono text-[11px] font-semibold text-blue-500">{entry.event}</span>
+                                            <div>
+                                                <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide border ${entry.status === 'success' ? 'bg-green-500/10 text-green-600 dark:text-green-400 border-green-500/20' : 'bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/20'}`}>
+                                                    {entry.status}
+                                                </span>
+                                            </div>
+                                            <span className="capitalize opacity-80">{entry.provider || '—'}</span>
+                                            <span className="opacity-60 font-mono truncate" title={entry.ip}>{entry.ip === '::1' ? 'localhost' : entry.ip}</span>
+                                            {entry.message && (
+                                                <span className="col-span-5 text-[var(--text-color)] opacity-50 text-[11px] mt-1 pl-1 border-l-2 border-gray-500/30">{entry.message}</span>
+                                            )}
+                                        </div>
+                                    ))}
+                                </div>
                             </div>
                         </div>
                     )}
-                    <p className="text-xs text-gray-500 mt-3">
-                        Logs are stored in your .zynqos_storage repo under logs/YYYY-MM-DD.json for easy access across devices.
-                    </p>
                 </div>
             )}
         </div>
@@ -1663,81 +1693,118 @@ export default function SettingsUI() {
     const aboutTabContent = () => (
         <div className="space-y-6">
             {/* Logo and Title */}
-            <div className="flex flex-col items-center py-6">
-                <img src="/assets/logo.png" alt="ZynqOS" className="w-24 h-24 mb-4" />
-                <h2 className="text-2xl font-bold text-white mb-2">ZynqOS</h2>
-                <p className="text-blue-400 text-sm">Browser Micro-Runtime v0.5</p>
+            <div className="flex flex-col items-center py-8">
+                <div className="bg-[var(--bg-color)] border border-[var(--border-color)] p-4 rounded-2xl shadow-lg mb-6">
+                    <img src="/assets/logo.png" alt="ZynqOS" className="w-24 h-24 object-contain" />
+                </div>
+                <h2 className="text-3xl font-black text-[var(--text-color)] tracking-tight mb-2">ZynqOS</h2>
+                <div className="bg-blue-500/10 border border-blue-500/20 px-3 py-1 rounded-full">
+                    <p className="text-blue-600 dark:text-blue-400 font-bold text-sm tracking-wide">Browser Micro-Runtime v0.5</p>
+                </div>
             </div>
 
             {/* Description */}
-            <div className="border border-[#333] rounded-lg p-4 bg-[#1a1a1a]">
-                <h3 className="text-white font-semibold mb-3">About</h3>
-                <p className="text-gray-300 text-sm leading-relaxed">
-                    ZynqOS is a web-based operating system experience that brings together a comprehensive suite of applications and utilities in a single, interconnected environment. It leverages modern web technologies to provide a desktop-like experience entirely in your browser.
+            <div className="border border-[var(--border-color)] rounded-xl p-5 bg-[var(--taskbar-bg)] shadow-sm text-center max-w-2xl mx-auto">
+                <p className="text-[var(--text-color)] opacity-80 text-base leading-relaxed">
+                    ZynqOS is a web-based operating system experience that brings together a comprehensive suite of applications and utilities in a single, interconnected environment. It leverages modern web technologies to provide a desktop-like experience entirely within your browser.
                 </p>
             </div>
 
-            {/* Features */}
-            <div className="border border-[#333] rounded-lg p-4 bg-[#1a1a1a]">
-                <h3 className="text-white font-semibold mb-3 flex items-center gap-2">
-                    <i className="fas fa-microchip"></i>
-                    Core Capabilities
-                </h3>
-                <ul className="space-y-2 text-gray-300 text-sm">
-                    <li className="flex items-start gap-2">
-                        <i className="fas fa-check text-blue-500 mt-1"></i>
-                        <span>WASI-based command-line utilities compiled to WebAssembly</span>
-                    </li>
-                    <li className="flex items-start gap-2">
-                        <i className="fas fa-check text-blue-500 mt-1"></i>
-                        <span>Full-stack Python environment powered by Pyodide runtime</span>
-                    </li>
-                    <li className="flex items-start gap-2">
-                        <i className="fas fa-check text-blue-500 mt-1"></i>
-                        <span>Multi-window system with cross-window cursor synchronization</span>
-                    </li>
-                    <li className="flex items-start gap-2">
-                        <i className="fas fa-check text-blue-500 mt-1"></i>
-                        <span>OAuth-secured cloud sync with Google Drive and GitHub repos</span>
-                    </li>
-                    <li className="flex items-start gap-2">
-                        <i className="fas fa-check text-blue-500 mt-1"></i>
-                        <span>Persistent VFS backed by IndexedDB with WASI interop</span>
-                    </li>
-                    <li className="flex items-start gap-2">
-                        <i className="fas fa-check text-blue-500 mt-1"></i>
-                        <span>Window snapping engine with keyboard shortcuts and drag zones</span>
-                    </li>
-                </ul>
-            </div>
+            {/* Features & Tech Stack Grid */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 max-w-5xl mx-auto">
+                {/* Features */}
+                <div className="border border-[var(--border-color)] rounded-xl overflow-hidden bg-[var(--taskbar-bg)] shadow-sm flex flex-col">
+                    <div className="bg-[var(--bg-color)] border-b border-[var(--border-color)] px-5 py-4 flex items-center gap-3">
+                        <div className="bg-purple-500/20 p-2 rounded-lg text-purple-500">
+                            <i className="fas fa-microchip text-lg"></i>
+                        </div>
+                        <h3 className="text-[var(--text-color)] font-bold text-lg">Core Capabilities</h3>
+                    </div>
+                    <ul className="p-5 space-y-4 text-[var(--text-color)] opacity-80 text-sm flex-1">
+                        <li className="flex items-start gap-3">
+                            <div className="mt-0.5 bg-green-500/20 rounded-full p-1 text-green-500 shrink-0">
+                                <i className="fas fa-check text-[10px]"></i>
+                            </div>
+                            <span className="leading-snug">WASI-based command-line utilities compiled to WebAssembly</span>
+                        </li>
+                        <li className="flex items-start gap-3">
+                            <div className="mt-0.5 bg-green-500/20 rounded-full p-1 text-green-500 shrink-0">
+                                <i className="fas fa-check text-[10px]"></i>
+                            </div>
+                            <span className="leading-snug">Full-stack Python environment powered by Pyodide runtime</span>
+                        </li>
+                        <li className="flex items-start gap-3">
+                            <div className="mt-0.5 bg-green-500/20 rounded-full p-1 text-green-500 shrink-0">
+                                <i className="fas fa-check text-[10px]"></i>
+                            </div>
+                            <span className="leading-snug">Multi-window system with cross-window cursor synchronization</span>
+                        </li>
+                        <li className="flex items-start gap-3">
+                            <div className="mt-0.5 bg-green-500/20 rounded-full p-1 text-green-500 shrink-0">
+                                <i className="fas fa-check text-[10px]"></i>
+                            </div>
+                            <span className="leading-snug">OAuth-secured cloud sync with Google Drive and GitHub repos</span>
+                        </li>
+                        <li className="flex items-start gap-3">
+                            <div className="mt-0.5 bg-green-500/20 rounded-full p-1 text-green-500 shrink-0">
+                                <i className="fas fa-check text-[10px]"></i>
+                            </div>
+                            <span className="leading-snug">Persistent VFS backed by IndexedDB with WASI interop</span>
+                        </li>
+                        <li className="flex items-start gap-3">
+                            <div className="mt-0.5 bg-green-500/20 rounded-full p-1 text-green-500 shrink-0">
+                                <i className="fas fa-check text-[10px]"></i>
+                            </div>
+                            <span className="leading-snug">Window snapping engine with keyboard shortcuts and drag zones</span>
+                        </li>
+                    </ul>
+                </div>
 
-            {/* Technology Stack */}
-            <div className="border border-[#333] rounded-lg p-4 bg-[#1a1a1a]">
-                <h3 className="text-white font-semibold mb-3">Technology</h3>
-                <div className="grid grid-cols-2 gap-2 text-sm">
-                    <div className="bg-black/50 rounded p-2">
-                        <p className="text-gray-400 text-xs">Frontend</p>
-                        <p className="text-gray-200">React + TypeScript</p>
+                {/* Technology Stack */}
+                <div className="border border-[var(--border-color)] rounded-xl overflow-hidden bg-[var(--taskbar-bg)] shadow-sm flex flex-col">
+                    <div className="bg-[var(--bg-color)] border-b border-[var(--border-color)] px-5 py-4 flex items-center gap-3">
+                        <div className="bg-blue-500/20 p-2 rounded-lg text-blue-500">
+                            <i className="fas fa-code text-lg"></i>
+                        </div>
+                        <h3 className="text-[var(--text-color)] font-bold text-lg">Technology Stack</h3>
                     </div>
-                    <div className="bg-black/50 rounded p-2">
-                        <p className="text-gray-400 text-xs">Styling</p>
-                        <p className="text-gray-200">Tailwind CSS</p>
-                    </div>
-                    <div className="bg-black/50 rounded p-2">
-                        <p className="text-gray-400 text-xs">Storage</p>
-                        <p className="text-gray-200">IndexedDB</p>
-                    </div>
-                    <div className="bg-black/50 rounded p-2">
-                        <p className="text-gray-400 text-xs">Runtime</p>
-                        <p className="text-gray-200">WebAssembly</p>
+                    <div className="p-5 grid grid-cols-2 gap-4 flex-1">
+                        <div className="bg-[var(--bg-color)] border border-[var(--border-color)] rounded-xl p-4 hover:border-blue-500/50 transition-colors group">
+                            <div className="text-blue-500 mb-2 group-hover:scale-110 transition-transform origin-left">
+                                <i className="fab fa-react text-2xl"></i>
+                            </div>
+                            <p className="text-[var(--text-color)] opacity-50 text-[10px] font-bold uppercase tracking-wider mb-1">Frontend</p>
+                            <p className="text-[var(--text-color)] font-semibold text-sm">React + TypeScript</p>
+                        </div>
+                        <div className="bg-[var(--bg-color)] border border-[var(--border-color)] rounded-xl p-4 hover:border-teal-500/50 transition-colors group">
+                            <div className="text-teal-500 mb-2 group-hover:scale-110 transition-transform origin-left">
+                                <i className="fas fa-paint-brush text-2xl"></i>
+                            </div>
+                            <p className="text-[var(--text-color)] opacity-50 text-[10px] font-bold uppercase tracking-wider mb-1">Styling</p>
+                            <p className="text-[var(--text-color)] font-semibold text-sm">Tailwind CSS</p>
+                        </div>
+                        <div className="bg-[var(--bg-color)] border border-[var(--border-color)] rounded-xl p-4 hover:border-yellow-500/50 transition-colors group">
+                            <div className="text-yellow-500 mb-2 group-hover:scale-110 transition-transform origin-left">
+                                <i className="fas fa-database text-2xl"></i>
+                            </div>
+                            <p className="text-[var(--text-color)] opacity-50 text-[10px] font-bold uppercase tracking-wider mb-1">Storage</p>
+                            <p className="text-[var(--text-color)] font-semibold text-sm">IndexedDB</p>
+                        </div>
+                        <div className="bg-[var(--bg-color)] border border-[var(--border-color)] rounded-xl p-4 hover:border-purple-500/50 transition-colors group">
+                            <div className="text-purple-500 mb-2 group-hover:scale-110 transition-transform origin-left">
+                                <i className="fas fa-cog text-2xl"></i>
+                            </div>
+                            <p className="text-[var(--text-color)] opacity-50 text-[10px] font-bold uppercase tracking-wider mb-1">Runtime</p>
+                            <p className="text-[var(--text-color)] font-semibold text-sm">WebAssembly</p>
+                        </div>
                     </div>
                 </div>
             </div>
 
             {/* Footer */}
-            <div className="text-center py-4">
-                <p className="text-gray-500 text-xs">
-                    A comprehensive desktop-like OS for the web, powered by WASI & WebAssembly
+            <div className="text-center py-6 mt-4">
+                <p className="text-[var(--text-color)] opacity-40 font-mono text-xs font-semibold tracking-widest uppercase">
+                    Designed & Built for the Web
                 </p>
             </div>
         </div>
@@ -1764,49 +1831,58 @@ export default function SettingsUI() {
     }
 
     return (
-        <div className="h-full bg-black text-white flex flex-col scrollbar">
-            {/* Header */}
-            <div className="border-b border-[#333] p-6">
-                <h1 className="text-2xl font-bold">System Settings</h1>
+        <div className="h-full bg-[var(--bg-color)] text-[var(--text-color)] flex flex-col scrollbar relative overflow-hidden">
+            {/* Header Area */}
+            <div className="border-b border-[var(--border-color)] bg-[var(--taskbar-bg)] px-8 py-6 shrink-0 relative z-10">
+                <div className="flex items-center gap-4">
+                    <div className="bg-blue-600 text-white p-3 rounded-xl shadow-lg shadow-blue-600/20">
+                        <i className="fas fa-sliders-h text-xl"></i>
+                    </div>
+                    <div>
+                        <h1 className="text-2xl font-bold tracking-tight">System Settings</h1>
+                        <p className="text-[var(--text-color)] opacity-60 text-sm font-medium mt-0.5">Manage preferences, storage, and security</p>
+                    </div>
+                </div>
             </div>
 
             {/* Tab Navigation */}
-            <div className="border-b border-[#333] flex relative">
-                {(['about', 'display', 'storage', 'security', 'system'] as const).map((tab, index) => (
+            <div className="border-b border-[var(--border-color)] flex relative bg-[var(--taskbar-bg)] px-4 shrink-0 z-10 overflow-x-auto no-scrollbar">
+                {(['about', 'display', 'storage', 'security', 'system'] as const).map((tab) => (
                     <button
                         key={tab}
                         onClick={() => setActiveTab(tab)}
-                        className={`flex-1 px-4 py-3 font-semibold text-sm uppercase tracking-wide transition-colors duration-500 ${activeTab === tab
-                            ? 'text-blue-400'
-                            : 'text-gray-400 hover:text-gray-300'
+                        className={`flex items-center gap-2 px-6 py-4 font-bold text-sm tracking-wide transition-all duration-300 relative whitespace-nowrap ${activeTab === tab
+                            ? 'text-blue-500'
+                            : 'text-[var(--text-color)] opacity-60 hover:opacity-100 hover:bg-gray-500/5'
                             }`}
                     >
-                        {tab === 'about' && <i className="fas fa-info-circle mr-2"></i>}
-                        {tab === 'display' && <i className="fas fa-palette mr-2"></i>}
-                        {tab === 'storage' && <i className="fas fa-cloud mr-2"></i>}
-                        {tab === 'security' && <i className="fas fa-shield-alt mr-2"></i>}
-                        {tab === 'system' && <i className="fas fa-cog mr-2"></i>}
+                        <i className={`fas fa-${
+                            tab === 'about' ? 'info-circle' :
+                            tab === 'display' ? 'palette' :
+                            tab === 'storage' ? 'cloud' :
+                            tab === 'security' ? 'shield-alt' :
+                            'cog'
+                        } ${activeTab === tab ? 'text-blue-500' : 'opacity-70'}`}></i>
                         {tab.charAt(0).toUpperCase() + tab.slice(1)}
+                        
+                        {/* Active Indicator */}
+                        {activeTab === tab && (
+                            <div className="absolute bottom-0 left-0 w-full h-0.5 bg-blue-500 rounded-t-full shadow-[0_-2px_10px_rgba(59,130,246,0.5)]"></div>
+                        )}
                     </button>
                 ))}
-                {/* Sliding indicator */}
-                <div 
-                    className="absolute bottom-0 h-0.5 bg-blue-500 transition-all duration-500 ease-out"
-                    style={{
-                        width: '20%',
-                        left: `${['about', 'display', 'storage', 'security', 'system'].indexOf(activeTab) * 20}%`
-                    }}
-                ></div>
             </div>
 
-            {/* Content */}
-            <div className="flex-1 overflow-y-auto p-6 scrollbar">
-                <div className="tab-slide-enter" key={activeTab}>
-                    {activeTab === 'display' && displayTabContent()}
-                    {activeTab === 'storage' && storageTabContent()}
-                    {activeTab === 'security' && securityTabContent()}
-                    {activeTab === 'system' && systemTabContent()}
-                    {activeTab === 'about' && aboutTabContent()}
+            {/* Content Area */}
+            <div className="flex-1 overflow-y-auto p-4 md:p-8 scrollbar bg-[var(--bg-color)] relative z-0">
+                <div className="max-w-5xl mx-auto w-full transition-opacity duration-300">
+                    <div className="tab-slide-enter" key={activeTab}>
+                        {activeTab === 'display' && displayTabContent()}
+                        {activeTab === 'storage' && storageTabContent()}
+                        {activeTab === 'security' && securityTabContent()}
+                        {activeTab === 'system' && systemTabContent()}
+                        {activeTab === 'about' && aboutTabContent()}
+                    </div>
                 </div>
             </div>
         </div>

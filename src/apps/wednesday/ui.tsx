@@ -165,22 +165,22 @@ export default function WednesdayUI() {
   }
 
   return (
-    <div className='h-full bg-black text-white flex flex-col font-mono overflow-hidden relative'>
+    <div className='h-full bg-[var(--bg-color)] text-[var(--text-color)] flex flex-col font-mono overflow-hidden relative'>
       {showSettings && (
-        <div className='absolute inset-0 bg-black/80 z-50 flex items-center justify-center p-4 backdrop-blur-sm'>
-          <div className='bg-zinc-900 border border-zinc-700 rounded-lg p-6 w-full max-w-md shadow-2xl space-y-4'>
-            <div className='flex justify-between items-center border-b border-zinc-800 pb-2'>
-              <h2 className='text-lg font-bold text-white flex items-center gap-2'><i className='fa fa-cog text-blue-400'></i> AI Settings</h2>
-              <button onClick={() => setShowSettings(false)} className='text-zinc-400 hover:text-white'><i className='fa fa-times'></i></button>
+        <div className='absolute inset-0 bg-black/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm'>
+          <div className='bg-[var(--bg-color)] border border-[var(--border-color)] rounded-lg p-6 w-full max-w-md shadow-2xl space-y-4'>
+            <div className='flex justify-between items-center border-b border-[var(--border-color)] pb-2'>
+              <h2 className='text-lg font-bold text-[var(--text-color)] flex items-center gap-2'><i className='fa fa-cog text-blue-500'></i> AI Settings</h2>
+              <button onClick={() => setShowSettings(false)} className='text-[var(--text-color)] opacity-50 hover:opacity-100'><i className='fa fa-times'></i></button>
             </div>
             
             <div className='space-y-3'>
               <div>
-                <label className='block text-xs text-zinc-400 mb-1'>Primary Model</label>
+                <label className='block text-xs text-[var(--text-color)] opacity-70 mb-1'>Primary Model</label>
                 <select 
                   value={selectedModel} 
                   onChange={e => setSelectedModel(e.target.value)}
-                  className='w-full bg-zinc-800 border border-zinc-700 rounded p-2 text-sm text-white outline-none focus:border-blue-500'
+                  className='w-full bg-[var(--taskbar-bg)] border border-[var(--border-color)] rounded p-2 text-sm text-[var(--text-color)] outline-none focus:border-blue-500'
                 >
                   <option value='gemini'>Google Gemini</option>
                   <option value='openai'>OpenAI</option>
@@ -192,53 +192,60 @@ export default function WednesdayUI() {
 
               {selectedModel === 'openai' && (
                 <div>
-                  <label className='block text-xs text-zinc-400 mb-1'>OpenAI API Key</label>
-                  <input type='password' value={apiKeys.openai} onChange={e => setApiKeys({...apiKeys, openai: e.target.value})} className='w-full bg-zinc-800 border border-zinc-700 rounded p-2 text-sm text-white outline-none focus:border-blue-500' placeholder='sk-...' />
+                  <label className='block text-xs text-[var(--text-color)] opacity-70 mb-1'>OpenAI API Key</label>
+                  <input type='password' value={apiKeys.openai} onChange={e => setApiKeys({...apiKeys, openai: e.target.value})} className='w-full bg-[var(--taskbar-bg)] border border-[var(--border-color)] rounded p-2 text-sm text-[var(--text-color)] outline-none focus:border-blue-500' placeholder='sk-...' />
                 </div>
               )}
 
               {selectedModel === 'gemini' && (
                 <div>
-                  <label className='block text-xs text-zinc-400 mb-1'>Gemini API Key</label>
-                  <input type='password' value={apiKeys.gemini} onChange={e => setApiKeys({...apiKeys, gemini: e.target.value})} className='w-full bg-zinc-800 border border-zinc-700 rounded p-2 text-sm text-white outline-none focus:border-blue-500' placeholder='AIza...' />
+                  <label className='block text-xs text-[var(--text-color)] opacity-70 mb-1'>Gemini API Key</label>
+                  <input type='password' value={apiKeys.gemini} onChange={e => setApiKeys({...apiKeys, gemini: e.target.value})} className='w-full bg-[var(--taskbar-bg)] border border-[var(--border-color)] rounded p-2 text-sm text-[var(--text-color)] outline-none focus:border-blue-500' placeholder='AIza...' />
                 </div>
               )}
               
               {selectedModel === 'anthropic' && (
                 <div>
-                  <label className='block text-xs text-zinc-400 mb-1'>Anthropic API Key</label>
-                  <input type='password' value={apiKeys.anthropic} onChange={e => setApiKeys({...apiKeys, anthropic: e.target.value})} className='w-full bg-zinc-800 border border-zinc-700 rounded p-2 text-sm text-white outline-none focus:border-blue-500' placeholder='sk-ant-...' />
+                  <label className='block text-xs text-[var(--text-color)] opacity-70 mb-1'>Anthropic API Key</label>
+                  <input type='password' value={apiKeys.anthropic} onChange={e => setApiKeys({...apiKeys, anthropic: e.target.value})} className='w-full bg-[var(--taskbar-bg)] border border-[var(--border-color)] rounded p-2 text-sm text-[var(--text-color)] outline-none focus:border-blue-500' placeholder='sk-ant-...' />
                 </div>
               )}
 
               {selectedModel === 'groq' && (
                 <div>
-                  <label className='block text-xs text-zinc-400 mb-1'>Groq API Key</label>
-                  <input type='password' value={apiKeys.groq} onChange={e => setApiKeys({...apiKeys, groq: e.target.value})} className='w-full bg-zinc-800 border border-zinc-700 rounded p-2 text-sm text-white outline-none focus:border-blue-500' placeholder='gsk_...' />
+                  <label className='block text-xs text-[var(--text-color)] opacity-70 mb-1'>Groq API Key</label>
+                  <input type='password' value={apiKeys.groq} onChange={e => setApiKeys({...apiKeys, groq: e.target.value})} className='w-full bg-[var(--taskbar-bg)] border border-[var(--border-color)] rounded p-2 text-sm text-[var(--text-color)] outline-none focus:border-blue-500' placeholder='gsk_...' />
                 </div>
               )}
 
               {selectedModel === 'ollama' && (
                 <div>
-                  <label className='block text-xs text-zinc-400 mb-1'>Ollama Base URL</label>
-                  <input type='text' value={apiKeys.ollamaUrl} onChange={e => setApiKeys({...apiKeys, ollamaUrl: e.target.value})} className='w-full bg-zinc-800 border border-zinc-700 rounded p-2 text-sm text-white outline-none focus:border-blue-500' placeholder='http://localhost:11434' />
+                  <label className='block text-xs text-[var(--text-color)] opacity-70 mb-1'>Ollama Base URL</label>
+                  <input type='text' value={apiKeys.ollamaUrl} onChange={e => setApiKeys({...apiKeys, ollamaUrl: e.target.value})} className='w-full bg-[var(--taskbar-bg)] border border-[var(--border-color)] rounded p-2 text-sm text-[var(--text-color)] outline-none focus:border-blue-500' placeholder='http://localhost:11434' />
                 </div>
               )}
             </div>
 
             <div className='flex justify-end gap-2 pt-2'>
-              <button onClick={() => setShowSettings(false)} className='px-4 py-2 text-sm rounded bg-zinc-800 text-zinc-300 hover:bg-zinc-700 transition-colors'>Cancel</button>
+              <button onClick={() => setShowSettings(false)} className='px-4 py-2 text-sm rounded bg-transparent border border-[var(--border-color)] text-[var(--text-color)] hover:bg-gray-500/20 transition-colors'>Cancel</button>
               <button onClick={() => saveSettings(apiKeys, selectedModel)} className='px-4 py-2 text-sm rounded bg-blue-600 text-white hover:bg-blue-500 transition-colors'>Save Settings</button>
             </div>
           </div>
         </div>
       )}
       <div className='flex-1 flex flex-col relative overflow-hidden'>
-        <div className='absolute inset-0 bg-gradient-to-br from-purple-900/20 via-black to-blue-900/20 z-0' />
+        {/* Adjusted gradient to use var variables to adapt dynamically if needed */}
+        <div className='absolute inset-0 bg-gradient-to-br from-blue-500/5 via-[var(--bg-color)] to-purple-500/5 z-0' />
         <div className='scrollbar flex-1 overflow-y-auto z-10 p-4 space-y-4'>
           {messages.map(m => (
             <div key={m.id} className={`flex ${m.type === 'user' ? 'justify-end' : 'justify-start'}`}>
-              <div className={`max-w-[80%] rounded-lg p-3 ${m.type === 'user' ? 'bg-blue-600 text-white' : m.type === 'system' ? 'bg-zinc-800 text-zinc-300 text-sm' : 'bg-zinc-900 text-white border border-zinc-700'}`}>
+              <div className={`max-w-[80%] rounded-lg p-3 ${
+                  m.type === 'user' 
+                    ? 'bg-blue-600 text-white' 
+                    : m.type === 'system' 
+                      ? 'bg-[var(--taskbar-bg)] border border-[var(--border-color)] text-[var(--text-color)] opacity-80 text-sm' 
+                      : 'bg-[var(--bg-color)] border border-[var(--border-color)] text-[var(--text-color)]'
+                }`}>
                 <div className='whitespace-pre-wrap break-words'>{m.content}</div>
                 <div className='text-xs opacity-50 mt-1'>{m.timestamp.toLocaleTimeString()}</div>
               </div>
@@ -247,24 +254,24 @@ export default function WednesdayUI() {
           <div ref={messagesEndRef} />
         </div>
       </div>
-      <div className='bg-zinc-900 border-t border-zinc-800 p-4 pt-2 z-10' onClick={focusInput}>
+      <div className='bg-[var(--bg-color)] border-t border-[var(--border-color)] p-4 pt-2 z-10' onClick={focusInput}>
         <div className='flex flex-col'>
           <div className='flex items-center gap-3 mb-3'>
-            <i className='fa fa-folder-open text-zinc-400' />
-            <span className='text-sm text-zinc-300'>{currentDir}</span>
-            <span className='text-xs px-2 py-0.5 rounded bg-zinc-800 text-zinc-400 border border-zinc-700'>{isTerminalCommand(command) ? 'command' : 'chat'}</span>
+            <i className='fa fa-folder-open text-[var(--text-color)] opacity-60' />
+            <span className='text-sm text-[var(--text-color)]'>{currentDir}</span>
+            <span className='text-xs px-2 py-0.5 rounded bg-[var(--taskbar-bg)] text-[var(--text-color)] opacity-80 border border-[var(--border-color)]'>{isTerminalCommand(command) ? 'command' : 'chat'}</span>
             <div className='flex items-center gap-2 ml-auto'>
-              <button className='p-1 hover:bg-zinc-700 rounded' type='button' onClick={() => setShowSettings(true)}>
-                <i className='fa fa-cog text-zinc-500 hover:text-blue-400 transition-colors' />
+              <button className='p-1 hover:bg-gray-500/20 rounded' type='button' onClick={() => setShowSettings(true)}>
+                <i className='fa fa-cog text-[var(--text-color)] opacity-60 hover:opacity-100 hover:text-blue-500 transition-colors' />
               </button>
-              <button className='p-1 hover:bg-zinc-700 rounded' type='button'>
-                <i className='fa fa-microphone text-zinc-500 hover:text-zinc-300' />
+              <button className='p-1 hover:bg-gray-500/20 rounded' type='button'>
+                <i className='fa fa-microphone text-[var(--text-color)] opacity-60 hover:opacity-100 transition-colors' />
               </button>
-              <button className='p-1 hover:bg-zinc-700 rounded' type='button' onClick={insertAtSign}>
-                <i className='fa fa-at text-zinc-500 hover:text-zinc-300' />
+              <button className='p-1 hover:bg-gray-500/20 rounded' type='button' onClick={insertAtSign}>
+                <i className='fa fa-at text-[var(--text-color)] opacity-60 hover:opacity-100 transition-colors' />
               </button>
-              <button className='p-1 hover:bg-zinc-700 rounded' type='button' onClick={handleImageClick}>
-                <i className='fa fa-image text-zinc-500 hover:text-zinc-300' />
+              <button className='p-1 hover:bg-gray-500/20 rounded' type='button' onClick={handleImageClick}>
+                <i className='fa fa-image text-[var(--text-color)] opacity-60 hover:opacity-100 transition-colors' />
                 <input ref={fileInputRef} type='file' className='hidden' onChange={handleFileChange} accept='image/*' />
               </button>
             </div>
@@ -277,10 +284,10 @@ export default function WednesdayUI() {
               onChange={e => setCommand(e.target.value)}
               onKeyDown={handleKeyDown}
               placeholder='Ask Wednesday or run terminal commands...'
-              className='flex-1 bg-transparent text-white text-sm outline-none placeholder-zinc-500'
+              className='flex-1 bg-transparent text-[var(--text-color)] text-sm outline-none placeholder-gray-500'
             />
             {command && (
-              <button type='submit' className='p-1 hover:bg-zinc-700 rounded text-zinc-400 hover:text-white'>
+              <button type='submit' className='p-1 hover:bg-gray-500/20 rounded text-[var(--text-color)] opacity-60 hover:opacity-100'>
                 <i className='fa fa-paper-plane' />
               </button>
             )}
@@ -292,4 +299,4 @@ export default function WednesdayUI() {
 }
 
 // Attach UI for StartMenu to open
-window.__WEDNESDAY_UI__ = WednesdayUI
+; (window as any).__WEDNESDAY_UI__ = WednesdayUI

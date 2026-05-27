@@ -2,11 +2,15 @@ import React, { useEffect, useState } from 'react'
 import StartMenu from './StartMenu'
 import MultiWindowIndicator from './MultiWindowIndicator'
 import { formatDuration, useSessionTimer, SESSION_IDLE_THRESHOLD_MS } from '../utils/SessionTimer'
+import { useTheme } from '../hooks/useTheme' // <-- Imported the theme hook
 
 export default function Taskbar() {
   const [isMaximized, setIsMaximized] = useState(false)
   const [minimizedWindows, setMinimizedWindows] = useState<Array<{ id: string; title: string; appType: string }>>([])
   const [openedWindows, setOpenedWindows] = useState<Array<{ id: string; title: string; appType: string }>>([])
+  
+  // Initialize our theme logic
+  const { isLightMode, toggleTheme } = useTheme()
 
   useEffect(() => {
     const checkMaximized = () => {
@@ -77,7 +81,7 @@ export default function Taskbar() {
           <button
             onClick={() => handleAppClick('file-browser', 'File Browser', window.__FILE_BROWSER_UI__ ?? <div>Loading...</div>)}
             title={isAppMinimized('file-browser') ? 'Restore File Browser' : 'File Browser'}
-            className={`flex items-center gap-2 px-3 py-1 rounded-[2px] transition text-white border border-gray-300/20 ${isAppMinimized('file-browser') ? 'bg-gray-600/50 opacity-75' : 'bg-transparent hover:bg-gray-200/30'}`}
+            className={`flex items-center gap-2 px-3 py-1 rounded-[2px] transition text-[var(--text-color)] border border-gray-300/20 ${isAppMinimized('file-browser') ? 'bg-gray-600/50 opacity-75' : 'bg-transparent hover:bg-gray-200/30'}`}
           >
             <span className="text-lg"><i className="fas fa-folder"></i></span>
             {isAppMinimized('file-browser')}
@@ -85,7 +89,7 @@ export default function Taskbar() {
           <button
             onClick={() => handleAppClick('store', 'App Store', window.__STORE_UI__ ?? <div>Loading...</div>)}
             title={isAppMinimized('store') ? 'Restore Store' : 'Store'}
-            className={`flex items-center gap-2 px-3 py-1 rounded-[2px] transition text-white border border-gray-300/20 ${isAppMinimized('store') ? 'bg-gray-600/50 opacity-75' : 'bg-transparent hover:bg-gray-200/30'}`}
+            className={`flex items-center gap-2 px-3 py-1 rounded-[2px] transition text-[var(--text-color)] border border-gray-300/20 ${isAppMinimized('store') ? 'bg-gray-600/50 opacity-75' : 'bg-transparent hover:bg-gray-200/30'}`}
           >
             <span className="text-lg"><i className="fa-solid fa-store"></i></span>
             {isAppMinimized('store')}
@@ -93,7 +97,7 @@ export default function Taskbar() {
           <button
             onClick={() => handleAppClick('phantomsurf', 'Phantom Surf', window.__PHANTOMSURF_UI__ ?? <div>Loading...</div>)}
             title={isAppMinimized('phantomsurf') ? 'Restore Phantom Surf' : 'Phantom Surf'}
-            className={`flex items-center gap-2 px-3 py-1 rounded-[2px] transition text-white border border-gray-300/20 ${isAppMinimized('phantomsurf') ? 'bg-gray-600/50 opacity-75' : 'bg-transparent hover:bg-gray-200/30'}`}
+            className={`flex items-center gap-2 px-3 py-1 rounded-[2px] transition text-[var(--text-color)] border border-gray-300/20 ${isAppMinimized('phantomsurf') ? 'bg-gray-600/50 opacity-75' : 'bg-transparent hover:bg-gray-200/30'}`}
           >
             <span className="text-lg"><i className="fas fa-globe"></i></span>
             {isAppMinimized('phantomsurf')}
@@ -101,7 +105,7 @@ export default function Taskbar() {
           <button
             onClick={() => handleAppClick('terminal', 'Terminal', window.__TERMINAL_UI__ ?? <div>Loading Terminal...</div>)}
             title={isAppMinimized('terminal') ? 'Restore Terminal' : 'Terminal'}
-            className={`flex items-center gap-2 px-3 py-1 rounded-[2px] transition text-white border border-gray-300/20 ${isAppMinimized('terminal') ? 'bg-gray-600/50 opacity-75' : 'bg-transparent hover:bg-gray-200/30'}`}
+            className={`flex items-center gap-2 px-3 py-1 rounded-[2px] transition text-[var(--text-color)] border border-gray-300/20 ${isAppMinimized('terminal') ? 'bg-gray-600/50 opacity-75' : 'bg-transparent hover:bg-gray-200/30'}`}
           >
             <span className="text-lg"><i className="fa fa-terminal"></i></span>
             {isAppMinimized('terminal')}
@@ -109,7 +113,7 @@ export default function Taskbar() {
           <button
             onClick={() => handleAppClick('wednesday', 'Wednesday AI', window.__WEDNESDAY_UI__ ?? <div>Loading Wednesday...</div>)}
             title={isAppMinimized('wednesday') ? 'Restore Wednesday' : 'Wednesday'}
-            className={`flex items-center gap-2 px-3 py-1 rounded-[2px] transition text-white border border-gray-300/20 ${isAppMinimized('wednesday') ? 'bg-gray-600/50 opacity-75' : 'bg-transparent hover:bg-gray-200/30'}`}
+            className={`flex items-center gap-2 px-3 py-1 rounded-[2px] transition text-[var(--text-color)] border border-gray-300/20 ${isAppMinimized('wednesday') ? 'bg-gray-600/50 opacity-75' : 'bg-transparent hover:bg-gray-200/30'}`}
           >
             <span className="text-lg font-thin"><i className="scale-90 fa-solid fa-wand-magic-sparkles"></i></span>
             {isAppMinimized('wednesday')}
@@ -124,7 +128,7 @@ export default function Taskbar() {
                 key={app.id}
                 onClick={() => handleAppClick(app.appType, app.title)}
                 title={isAppMinimized(app.appType) ? `Restore ${app.title}` : app.title}
-                className={`flex items-center gap-2 px-3 py-1 rounded-[2px] transition text-white border border-gray-300/20 ${isAppMinimized(app.appType) ? 'bg-gray-600/50 opacity-75' : 'bg-transparent hover:bg-gray-200/30'}`}
+                className={`flex items-center gap-2 px-3 py-1 rounded-[2px] transition text-[var(--text-color)] border border-gray-300/20 ${isAppMinimized(app.appType) ? 'bg-gray-600/50 opacity-75' : 'bg-transparent hover:bg-gray-200/30'}`}
               >
                 <span className="text-lg"><i className={getIconForAppType(app.appType)}></i></span>
                 {isAppMinimized(app.appType)}
@@ -134,6 +138,19 @@ export default function Taskbar() {
         )}
 
         <div className="ml-auto flex items-center gap-2">
+          {/* THE NEW THEME TOGGLE BUTTON */}
+          <button 
+            onClick={toggleTheme} 
+            className="text-[var(--text-color)] hover:bg-gray-500/20 p-2 rounded-full transition-colors flex items-center justify-center w-8 h-8"
+            title={isLightMode ? "Switch to Dark Mode" : "Switch to Light Mode"}
+          >
+            {isLightMode ? (
+              <i className="fa-solid fa-moon"></i> // Dark moon icon for light mode
+            ) : (
+              <i className="fa-solid fa-sun"></i> // Sun icon for dark mode
+            )}
+          </button>
+          
           <Clock />
         </div>
       </div>
@@ -162,7 +179,7 @@ function SessionTimerBadge() {
   return (
     <div
       title="Total active time across this session"
-      className="text-xs text-gray-100 bg-gray-800/40 px-3 py-1 rounded-full border border-gray-700/30 flex items-center gap-2"
+      className="text-xs text-[var(--text-color)] bg-[var(--taskbar-bg)] px-3 py-1 rounded-full border border-[var(--border-color)] flex items-center gap-2 backdrop-blur-md"
     >
       <span className="opacity-70">Active</span>
       <span className="font-mono">{formatDuration(liveMs)}</span>
@@ -179,7 +196,7 @@ function Clock() {
   }, [])
 
   return (
-    <div className="text-sm text-gray-200 font-mono bg-gray-800/40 px-3 py-1 mr-2 rounded-full border border-gray-700/30">
+    <div className="text-sm text-[var(--text-color)] font-mono bg-[var(--taskbar-bg)] px-3 py-1 mr-2 rounded-full border border-[var(--border-color)] backdrop-blur-md">
       {now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
     </div>
   )

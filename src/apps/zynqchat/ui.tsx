@@ -825,34 +825,35 @@ export default function ZynqChatUI() {
     }
 
     return (
-        <div className="h-full w-full bg-[#0b0c0f] text-slate-100 flex overflow-hidden">
-            <div className="w-72 min-w-[280px] border-r border-[#1f242c] bg-[#0d1117] flex flex-col">
-                <div className="px-4 py-3 border-b border-[#1f242c] flex items-center gap-2">
-                    <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-cyan-500/30 via-blue-600/30 to-indigo-600/30 flex items-center justify-center border border-cyan-500/30">
-                        <i className="fa-solid fa-comments text-cyan-200"></i>
+        <div className="h-full w-full bg-[var(--bg-color)] text-[var(--text-color)] flex overflow-hidden transition-colors duration-300">
+            {/* Sidebar */}
+            <div className="w-72 min-w-[280px] border-r border-[var(--border-color)] bg-[var(--taskbar-bg)] flex flex-col">
+                <div className="px-4 py-3 border-b border-[var(--border-color)] flex items-center gap-2">
+                    <div className="w-9 h-9 rounded-lg bg-blue-600/20 flex items-center justify-center border border-blue-500/20">
+                        <i className="fa-solid fa-comments text-blue-500"></i>
                     </div>
                     <div>
                         <div className="text-sm font-semibold">ZynqChat</div>
                     </div>
                     <div className="ml-auto flex flex-col items-end gap-1">
-                        <div className="text-[16px] text-slate-400">@{resolvedHandle || 'you'}
-                            <button className="text-slate-500 hover:text-slate-200" onClick={handleSetHandle}>&nbsp;<i className="fas fa-edit"></i></button></div>
+                        <div className="text-[16px] opacity-70">@{resolvedHandle || 'you'}
+                            <button className="opacity-50 hover:opacity-100 transition" onClick={handleSetHandle}>&nbsp;<i className="fas fa-edit"></i></button></div>
                     </div>
                 </div>
 
                 <div className="px-4 py-3">
                     <div className="flex items-center gap-2">
                         <div className="relative flex-1">
-                            <i className="fa fa-search text-slate-500 absolute left-3 top-1/2 -translate-y-1/2"></i>
+                            <i className="fa fa-search opacity-50 absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-color)]"></i>
                             <input
                                 value={search}
                                 onChange={(e) => setSearch(e.target.value)}
                                 placeholder="Search chats"
-                                className="w-full bg-[#0b0f15] border border-[#1f242c] rounded-lg text-sm pl-9 pr-3 py-2 text-slate-200 placeholder-slate-500 focus:outline-none focus:border-cyan-500/50"
+                                className="w-full bg-[var(--bg-color)] border border-[var(--border-color)] rounded-lg text-sm pl-9 pr-3 py-2 text-[var(--text-color)] placeholder-gray-500 focus:outline-none focus:border-blue-500/50"
                             />
                         </div>
                         <button
-                            className="h-9 w-9 flex items-center justify-center rounded-md border border-[#1f242c] text-slate-500 hover:text-slate-200 hover:border-cyan-500/50"
+                            className="h-9 w-9 flex items-center justify-center rounded-md border border-[var(--border-color)] opacity-70 hover:opacity-100 text-[var(--text-color)] hover:border-blue-500/50 transition"
                             onClick={handleNewChat}
                             title="New chat"
                         >
@@ -862,106 +863,106 @@ export default function ZynqChatUI() {
                 </div>
 
                 <div className="flex-1 overflow-y-auto scrollbar px-2 pb-4">
-                    <div className="px-2 pt-2 pb-1 text-xs uppercase tracking-wider text-slate-500">Direct</div>
+                    <div className="px-2 pt-2 pb-1 text-xs uppercase tracking-wider text-[var(--text-color)] opacity-50">Direct</div>
                     <div className="space-y-1">
                         {directChats.map(chat => (
                             <button
                                 key={chat.id}
                                 onClick={() => handleSelectChat(chat.id)}
-                                className={`w-full text-left px-3 py-2 rounded-lg border ${activeChatId === chat.id ? 'bg-[#131a24] border-cyan-500/30' : 'border-transparent hover:bg-[#11161f]'}`}
+                                className={`w-full text-left px-3 py-2 rounded-lg border transition ${activeChatId === chat.id ? 'bg-blue-500/10 border-blue-500/30' : 'border-transparent hover:bg-gray-500/10'}`}
                             >
                                 <div className="flex items-center gap-2">
                                     {renderPresence(chat.presence)}
                                     <div className="text-sm font-medium">@{chat.name}</div>
                                     {chat.unreadCount ? (
-                                        <span className="ml-auto text-xs bg-cyan-600/30 text-cyan-200 px-2 py-0.5 rounded-full">{chat.unreadCount}</span>
+                                        <span className="ml-auto text-xs bg-blue-600/80 text-white px-2 py-0.5 rounded-full">{chat.unreadCount}</span>
                                     ) : null}
                                 </div>
-                                <div className="text-xs text-slate-500 truncate">{chat.lastMessage || 'No messages yet'}</div>
+                                <div className="text-xs opacity-60 truncate">{chat.lastMessage || 'No messages yet'}</div>
                             </button>
                         ))}
                         {!directChats.length && (
-                            <div className="px-3 py-3 text-xs text-slate-500">No direct chats yet.</div>
+                            <div className="px-3 py-3 text-xs opacity-50">No direct chats yet.</div>
                         )}
                     </div>
 
-                    <div className="px-2 pt-4 pb-1 text-xs uppercase tracking-wider text-slate-500">Groups</div>
+                    <div className="px-2 pt-4 pb-1 text-xs uppercase tracking-wider text-[var(--text-color)] opacity-50">Groups</div>
                     <div className="space-y-1">
                         {groupChats.map(chat => (
                             <button
                                 key={chat.id}
                                 onClick={() => handleSelectChat(chat.id)}
-                                className={`w-full text-left px-3 py-2 rounded-lg border ${activeChatId === chat.id ? 'bg-[#131a24] border-cyan-500/30' : 'border-transparent hover:bg-[#11161f]'}`}
+                                className={`w-full text-left px-3 py-2 rounded-lg border transition ${activeChatId === chat.id ? 'bg-blue-500/10 border-blue-500/30' : 'border-transparent hover:bg-gray-500/10'}`}
                             >
                                 <div className="flex items-center gap-2">
-                                    <i className="fa-solid fa-user-group text-slate-500"></i>
+                                    <i className="fa-solid fa-user-group opacity-60"></i>
                                     <div className="text-sm font-medium">{chat.name}</div>
                                     {chat.members ? (
-                                        <span className="ml-auto text-xs text-slate-500">{chat.members}</span>
+                                        <span className="ml-auto text-xs opacity-50">{chat.members}</span>
                                     ) : null}
                                 </div>
-                                <div className="text-xs text-slate-500 truncate">{chat.lastMessage || 'No messages yet'}</div>
+                                <div className="text-xs opacity-60 truncate">{chat.lastMessage || 'No messages yet'}</div>
                             </button>
                         ))}
                         {!groupChats.length && (
-                            <div className="px-3 py-3 text-xs text-slate-500">No group chats yet.</div>
+                            <div className="px-3 py-3 text-xs opacity-50">No group chats yet.</div>
                         )}
                     </div>
                 </div>
             </div>
 
             <div className="flex-1 flex flex-col min-w-0">
-                <div className="px-5 py-4 border-b border-[#1f242c] flex items-center gap-3 bg-[#0e1218]">
-                    <div className="w-10 h-10 rounded-lg bg-[#151b24] border border-[#1f242c] flex items-center justify-center">
+                <div className="px-5 py-4 border-b border-[var(--border-color)] flex items-center gap-3 bg-[var(--bg-color)]">
+                    <div className="w-10 h-10 rounded-lg bg-[var(--taskbar-bg)] border border-[var(--border-color)] flex items-center justify-center">
                         {activeChat?.kind === 'group' ? (
-                            <i className="fa-solid fa-user-group text-slate-300"></i>
+                            <i className="fa-solid fa-user-group opacity-70 text-[var(--text-color)]"></i>
                         ) : (
-                            <i className="fa-solid fa-user text-slate-300"></i>
+                            <i className="fa-solid fa-user opacity-70 text-[var(--text-color)]"></i>
                         )}
                     </div>
                     <div className="flex-1 min-w-0">
                         <div className="text-sm font-semibold truncate">{activeChat ? (activeChat.kind === 'dm' ? `@${activeChat.name}` : activeChat.name) : 'Select a chat'}</div>
-                        <div className="text-xs text-slate-500 flex items-center gap-2">
+                        <div className="text-xs opacity-60 flex items-center gap-2">
                             <span>
                                 {activeChat?.kind === 'dm' ? `Status: ${activeChat.presence || 'offline'}` : `${activeChat?.members || 0} members`}
                             </span>
-                            <span className={`text-[10px] px-2 py-0.5 rounded-full border ${realtimeStatus === 'open' ? 'border-emerald-500/30 text-emerald-300' : realtimeStatus === 'connecting' ? 'border-amber-500/30 text-amber-300' : 'border-rose-500/30 text-rose-300'}`}>
+                            <span className={`text-[10px] px-2 py-0.5 rounded-full border ${realtimeStatus === 'open' ? 'border-emerald-500/30 text-emerald-500' : realtimeStatus === 'connecting' ? 'border-amber-500/30 text-amber-500' : 'border-rose-500/30 text-rose-500'}`}>
                                 {realtimeStatus === 'open' ? 'Realtime' : realtimeStatus === 'connecting' ? 'Reconnecting' : 'Offline'}
                             </span>
                         </div>
                     </div>
-                    <div className="flex items-center gap-2 text-slate-400">
-                        <button className="p-2 rounded hover:bg-[#141b24]" title="Search">
+                    <div className="flex items-center gap-2 opacity-60">
+                        <button className="p-2 rounded hover:bg-gray-500/20 transition" title="Search">
                             <i className="fa fa-search"></i>
                         </button>
-                        <button className="p-2 rounded hover:bg-[#141b24]" title="Pin">
+                        <button className="p-2 rounded hover:bg-gray-500/20 transition" title="Pin">
                             <i className="fa fa-thumbtack"></i>
                         </button>
-                        <button className="p-2 rounded hover:bg-[#141b24]" title="Info">
+                        <button className="p-2 rounded hover:bg-gray-500/20 transition" title="Info">
                             <i className="fa fa-circle-info"></i>
                         </button>
                     </div>
                 </div>
 
-                <div className="flex-1 overflow-y-auto scrollbar px-6 py-5 space-y-4 bg-[#0b0f15]">
+                <div className="flex-1 overflow-y-auto scrollbar px-6 py-5 space-y-4 bg-[var(--bg-color)]">
                     {loading && (
-                        <div className="text-sm text-slate-400">Loading chat history...</div>
+                        <div className="text-sm opacity-50">Loading chat history...</div>
                     )}
                     {storeError && (
-                        <div className="text-xs text-amber-300 bg-amber-500/10 border border-amber-500/30 rounded-lg px-3 py-2">
+                        <div className="text-xs text-amber-500 bg-amber-500/10 border border-amber-500/30 rounded-lg px-3 py-2">
                             Storage warning: {storeError}
                         </div>
                     )}
                     {serverError && (
-                        <div className="text-xs text-amber-300 bg-amber-500/10 border border-amber-500/30 rounded-lg px-3 py-2">
+                        <div className="text-xs text-amber-500 bg-amber-500/10 border border-amber-500/30 rounded-lg px-3 py-2">
                             Server warning: {serverError}
                         </div>
                     )}
                     {isSyncing && (
-                        <div className="text-xs text-slate-500">Syncing with server...</div>
+                        <div className="text-xs opacity-50">Syncing with server...</div>
                     )}
                     {!activeChat && (
-                        <div className="text-sm text-slate-500">Start a chat to see messages here.</div>
+                        <div className="text-sm opacity-50">Start a chat to see messages here.</div>
                     )}
                     {activeMessages.map(message => {
                         const isMine = message.author === resolvedHandle || message.author === 'You'
@@ -979,16 +980,16 @@ export default function ZynqChatUI() {
                             : (isMine ? (message.status || 'sent') : (message.status || ''))
                         return (
                             <div key={message.id} className={`flex ${isMine ? 'justify-end' : 'justify-start'}`}>
-                                <div className={`max-w-[70%] rounded-2xl text-sm border group ${isMine ? 'bg-cyan-600/20 border-cyan-500/30' : 'bg-[#131a24] border-[#1f242c]'} ${isAttachmentOnly ? 'px-2 py-2 w-fit' : 'px-4 py-3'}`}>
+                                <div className={`max-w-[70%] rounded-2xl text-sm border group ${isMine ? 'bg-blue-600/20 border-blue-500/30' : 'bg-[var(--taskbar-bg)] border-[var(--border-color)]'} ${isAttachmentOnly ? 'px-2 py-2 w-fit' : 'px-4 py-3'}`}>
                                     <div className="flex items-center gap-2 mb-1">
                                         {!isMine ? (
-                                            <div className="text-xs text-slate-400">{formatHandle(message.author)}</div>
+                                            <div className="text-xs opacity-50">{formatHandle(message.author)}</div>
                                         ) : (
-                                            <div className="text-xs text-slate-400">You</div>
+                                            <div className="text-xs opacity-50">You</div>
                                         )}
                                         <div className="ml-auto relative">
                                             <button
-                                                className="px-2 py-1 rounded hover:bg-[#141b24] text-slate-400 hover:text-slate-200"
+                                                className="px-2 py-1 rounded hover:bg-gray-500/20 opacity-60 hover:opacity-100 transition"
                                                 onClick={(event) => {
                                                     event.stopPropagation()
                                                     setOpenActionMessageId(prev => (prev === message.id ? null : message.id))
@@ -999,44 +1000,44 @@ export default function ZynqChatUI() {
                                             </button>
                                             {openActionMessageId === message.id ? (
                                                 <div
-                                                    className={`absolute mt-2 w-45 rounded-lg border border-[#263040] bg-[#0e1218] shadow-lg text-xs text-slate-200 z-10 ${isMine ? 'right-0' : 'left-0'}`}
+                                                    className={`absolute mt-2 w-45 rounded-lg border border-[var(--border-color)] bg-[var(--bg-color)] shadow-lg text-xs text-[var(--text-color)] z-10 ${isMine ? 'right-0' : 'left-0'}`}
                                                     onClick={(event) => event.stopPropagation()}
                                                 >
                                                     <div className="flex gap-0 overflow-x">
-                                                        <button className="w-full text-left px-1 py-2 hover:bg-[#141b24]" onClick={() => handleReaction(message.id, '👍')}>👍</button>
-                                                        <button className="w-full text-left px-1 py-2 hover:bg-[#141b24]" onClick={() => handleReaction(message.id, '😂')}>😂</button>
-                                                        <button className="w-full text-left px-1 py-2 hover:bg-[#141b24]" onClick={() => handleReaction(message.id, '😝')}>😝</button>
-                                                        <button className="w-full text-left px-1 py-2 hover:bg-[#141b24]" onClick={() => handleReaction(message.id, '😭')}>😭</button>
-                                                        <button className="w-full text-left px-1 py-2 hover:bg-[#141b24]" onClick={() => handleReaction(message.id, '💓')}>💓</button>
-                                                        <button className="w-full text-left px-1 py-2 hover:bg-[#141b24]" onClick={() => handleReaction(message.id, '🥹')}>🥹</button>
-                                                        <button className="w-full text-left px-1 py-2 hover:bg-[#141b24]" onClick={() => handleReaction(message.id, '😨')}>😨</button>
+                                                        <button className="w-full text-left px-1 py-2 hover:bg-gray-500/20 transition" onClick={() => handleReaction(message.id, '👍')}>👍</button>
+                                                        <button className="w-full text-left px-1 py-2 hover:bg-gray-500/20 transition" onClick={() => handleReaction(message.id, '😂')}>😂</button>
+                                                        <button className="w-full text-left px-1 py-2 hover:bg-gray-500/20 transition" onClick={() => handleReaction(message.id, '😝')}>😝</button>
+                                                        <button className="w-full text-left px-1 py-2 hover:bg-gray-500/20 transition" onClick={() => handleReaction(message.id, '😭')}>😭</button>
+                                                        <button className="w-full text-left px-1 py-2 hover:bg-gray-500/20 transition" onClick={() => handleReaction(message.id, '💓')}>💓</button>
+                                                        <button className="w-full text-left px-1 py-2 hover:bg-gray-500/20 transition" onClick={() => handleReaction(message.id, '🥹')}>🥹</button>
+                                                        <button className="w-full text-left px-1 py-2 hover:bg-gray-500/20 transition" onClick={() => handleReaction(message.id, '😨')}>😨</button>
                                                     </div>
-                                                    <div className="border-b border-[#1f242c]" />
-                                                    <button className="w-full text-left px-3 py-2 hover:bg-[#141b24]" onClick={() => handleReply(message.id)}>Reply</button>
-                                                    <button className="w-full text-left px-3 py-2 hover:bg-[#141b24]" onClick={() => handleQuote(message.id)}>Quote</button>
+                                                    <div className="border-b border-[var(--border-color)]" />
+                                                    <button className="w-full text-left px-3 py-2 hover:bg-gray-500/20 transition" onClick={() => handleReply(message.id)}>Reply</button>
+                                                    <button className="w-full text-left px-3 py-2 hover:bg-gray-500/20 transition" onClick={() => handleQuote(message.id)}>Quote</button>
                                                     {isMine ? (
-                                                        <button className="w-full text-left px-3 py-2 hover:bg-[#141b24]" onClick={() => handleEdit(message.id, message.body)}>Edit</button>
+                                                        <button className="w-full text-left px-3 py-2 hover:bg-gray-500/20 transition" onClick={() => handleEdit(message.id, message.body)}>Edit</button>
                                                     ) : null}
                                                     {isMine ? (
-                                                        <button className="w-full text-left px-3 py-2 hover:bg-[#141b24]" onClick={() => handleDelete(message.id)}>Delete</button>
+                                                        <button className="w-full text-left px-3 py-2 hover:bg-gray-500/20 transition" onClick={() => handleDelete(message.id)}>Delete</button>
                                                     ) : null}
-                                                    <button className="w-full text-left px-3 py-2 hover:bg-[#141b24]" onClick={() => handleTogglePin(message.id)}>{message.pinned ? 'Unpin' : 'Pin'}</button>
+                                                    <button className="w-full text-left px-3 py-2 hover:bg-gray-500/20 transition" onClick={() => handleTogglePin(message.id)}>{message.pinned ? 'Unpin' : 'Pin'}</button>
                                                 </div>
                                             ) : null}
                                         </div>
                                     </div>
                                     {replyMessage && (
-                                        <div className="text-[11px] text-slate-400 border-l-2 border-cyan-500/40 pl-2 mb-2">
-                                            <span className="uppercase text-[10px] text-slate-500">Replying to {replyMessage.author}</span>
+                                        <div className="text-[11px] opacity-60 border-l-2 border-blue-500/40 pl-2 mb-2">
+                                            <span className="uppercase text-[10px] opacity-80">Replying to {replyMessage.author}</span>
                                             <div className="truncate">{replyMessage.body || 'Message deleted'}</div>
                                         </div>
                                     )}
                                     {isDeleted ? (
-                                        <div className="whitespace-pre-wrap break-words text-slate-500 italic">
+                                        <div className="whitespace-pre-wrap break-words opacity-50 italic">
                                             Message deleted
                                         </div>
                                     ) : (!isAttachmentOnly && message.body ? (
-                                        <div className="whitespace-pre-wrap break-words text-slate-100">
+                                        <div className="whitespace-pre-wrap break-words text-[var(--text-color)]">
                                             {message.body}
                                         </div>
                                     ) : null)}
@@ -1049,7 +1050,7 @@ export default function ZynqChatUI() {
                                                         return (
                                                             <button
                                                                 key={att.id}
-                                                                className="group relative overflow-hidden rounded-lg border border-[#263040] hover:border-cyan-500/50"
+                                                                className="group relative overflow-hidden rounded-lg border border-[var(--border-color)] hover:border-blue-500/50 transition"
                                                                 onClick={() => downloadAttachment(att)}
                                                                 title={att.name}
                                                             >
@@ -1061,11 +1062,11 @@ export default function ZynqChatUI() {
                                                                         loading="lazy"
                                                                     />
                                                                 ) : (
-                                                                    <div className={`${isAttachmentOnly ? 'h-32 w-56' : 'h-32 w-full'} flex items-center justify-center text-xs text-slate-400`}>
+                                                                    <div className={`${isAttachmentOnly ? 'h-32 w-56' : 'h-32 w-full'} flex items-center justify-center text-xs opacity-50`}>
                                                                         Loading image...
                                                                     </div>
                                                                 )}
-                                                                <div className="absolute inset-x-0 bottom-0 bg-black/50 text-[10px] text-slate-200 px-2 py-1 opacity-0 group-hover:opacity-100 transition">
+                                                                <div className="absolute inset-x-0 bottom-0 bg-black/50 text-[10px] text-white px-2 py-1 opacity-0 group-hover:opacity-100 transition">
                                                                     {att.name}
                                                                 </div>
                                                             </button>
@@ -1078,12 +1079,12 @@ export default function ZynqChatUI() {
                                                     {fileAttachments.map(att => (
                                                         <button
                                                             key={att.id}
-                                                            className="flex items-center gap-2 px-2 py-1 rounded border border-[#263040] text-xs text-slate-300 hover:border-cyan-500/50"
+                                                            className="flex items-center gap-2 px-2 py-1 rounded border border-[var(--border-color)] text-xs opacity-80 hover:border-blue-500/50 transition"
                                                             onClick={() => downloadAttachment(att)}
                                                         >
                                                             <i className="fa fa-paperclip"></i>
                                                             <span className="truncate max-w-[160px]">{att.name}</span>
-                                                            <span className="text-[10px] text-slate-500">{formatBytes(att.size)}</span>
+                                                            <span className="text-[10px] opacity-50">{formatBytes(att.size)}</span>
                                                         </button>
                                                     ))}
                                                 </div>
@@ -1098,21 +1099,21 @@ export default function ZynqChatUI() {
                                                     href={preview.url}
                                                     target="_blank"
                                                     rel="noreferrer"
-                                                    className="block border border-[#263040] rounded-lg overflow-hidden hover:border-cyan-500/50"
+                                                    className="block border border-[var(--border-color)] rounded-lg overflow-hidden hover:border-blue-500/50 transition"
                                                 >
                                                     {preview.image ? (
                                                         <img src={preview.image} alt={preview.title || preview.url} className="w-full max-h-40 object-cover" />
                                                     ) : null}
-                                                    <div className="p-3 bg-[#0e1218]">
-                                                        <div className="text-xs text-slate-400 truncate">{preview.url}</div>
-                                                        {preview.title ? <div className="text-sm text-slate-100 mt-1">{preview.title}</div> : null}
-                                                        {preview.description ? <div className="text-xs text-slate-500 mt-1">{preview.description}</div> : null}
+                                                    <div className="p-3 bg-[var(--bg-color)]">
+                                                        <div className="text-xs opacity-50 truncate">{preview.url}</div>
+                                                        {preview.title ? <div className="text-sm mt-1">{preview.title}</div> : null}
+                                                        {preview.description ? <div className="text-xs opacity-70 mt-1">{preview.description}</div> : null}
                                                     </div>
                                                 </a>
                                             ))}
                                         </div>
                                     ) : null}
-                                    <div className="text-[10px] text-slate-500 mt-2 flex flex-wrap items-center gap-2">
+                                    <div className="text-[10px] opacity-50 mt-2 flex flex-wrap items-center gap-2">
                                         <span>{timeLabel}</span>
                                         {message.editedAt ? <span>edited</span> : null}
                                         {message.pinned ? <span>pinned</span> : null}
@@ -1123,7 +1124,7 @@ export default function ZynqChatUI() {
                                                     <button
                                                         key={reaction}
                                                         onClick={() => handleReaction(message.id, reaction)}
-                                                        className={`text-[11px] px-2 py-0.5 rounded-full border ${users.includes('You') ? 'border-cyan-500/50 text-cyan-200' : 'border-[#263040] text-slate-400'}`}
+                                                        className={`text-[11px] px-2 py-0.5 rounded-full border ${users.includes('You') ? 'border-blue-500/50 text-blue-500' : 'border-[var(--border-color)] opacity-70'}`}
                                                     >
                                                         {reaction} {users.length}
                                                     </button>
@@ -1136,7 +1137,7 @@ export default function ZynqChatUI() {
                         )
                     })}
                     {typingByChat[activeChatId]?.length ? (
-                        <div className="text-xs text-slate-500">
+                        <div className="text-xs opacity-50">
                             {typingByChat[activeChatId]
                                 .slice(0, 2)
                                 .map(name => formatHandle(name || ''))
@@ -1146,14 +1147,14 @@ export default function ZynqChatUI() {
                     <div ref={messagesEndRef} />
                 </div>
 
-                <div className="border-t border-[#1f242c] bg-[#0e1218] px-5 py-4">
+                <div className="border-t border-[var(--border-color)] bg-[var(--bg-color)] px-5 py-4">
                     {(replyToId || editingMessageId) && (
-                        <div className="mb-2 text-xs text-slate-400 border border-[#1f242c] rounded-lg px-3 py-2 flex items-center gap-2">
+                        <div className="mb-2 text-xs opacity-70 border border-[var(--border-color)] rounded-lg px-3 py-2 flex items-center gap-2">
                             <span>
                                 {editingMessageId ? 'Editing message' : replyTarget ? `Replying to ${replyTarget.author}` : 'Replying'}
                             </span>
                             <button
-                                className="ml-auto text-slate-500 hover:text-slate-200"
+                                className="ml-auto opacity-70 hover:opacity-100 transition"
                                 onClick={() => {
                                     setReplyToId(null)
                                     setEditingMessageId(null)
@@ -1167,23 +1168,23 @@ export default function ZynqChatUI() {
                     {pendingAttachments.length > 0 && (
                         <div className="mb-2 flex flex-wrap gap-2">
                             {pendingAttachments.map(att => (
-                                <div key={att.id} className="flex items-center gap-2 px-2 py-1 rounded border border-[#263040] text-xs text-slate-300">
+                                <div key={att.id} className="flex items-center gap-2 px-2 py-1 rounded border border-[var(--border-color)] text-xs opacity-80">
                                     <i className={att.mimeType.startsWith('image/') ? 'fa fa-image' : 'fa fa-paperclip'}></i>
                                     <span className="truncate max-w-[160px]">{att.name}</span>
-                                    <span className="text-[10px] text-slate-500">{formatBytes(att.size)}</span>
-                                    <button className="text-slate-500 hover:text-slate-200" onClick={() => handleRemovePendingAttachment(att.id)}>
-                                        Remove
+                                    <span className="text-[10px] opacity-50">{formatBytes(att.size)}</span>
+                                    <button className="opacity-70 hover:opacity-100 transition ml-1 text-red-500" onClick={() => handleRemovePendingAttachment(att.id)}>
+                                        <i className="fas fa-times"></i>
                                     </button>
                                 </div>
                             ))}
                         </div>
                     )}
-                    <div className="zynqchat-message-box">
+                    <div className="zynqchat-message-box bg-[var(--taskbar-bg)] border-[var(--border-color)]">
                         <label className="zynqchat-file-upload" title="Attach">
                             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 337 337" aria-hidden="true">
-                                <circle strokeWidth="20" stroke="#6c6c6c" fill="none" r="158.5" cy="168.5" cx="168.5"></circle>
-                                <path strokeLinecap="round" strokeWidth="25" stroke="#6c6c6c" d="M167.759 79V259"></path>
-                                <path strokeLinecap="round" strokeWidth="25" stroke="#6c6c6c" d="M79 167.138H259"></path>
+                                <circle strokeWidth="20" stroke="currentColor" fill="none" r="158.5" cy="168.5" cx="168.5"></circle>
+                                <path strokeLinecap="round" strokeWidth="25" stroke="currentColor" d="M167.759 79V259"></path>
+                                <path strokeLinecap="round" strokeWidth="25" stroke="currentColor" d="M79 167.138H259"></path>
                             </svg>
                             <span className="zynqchat-tooltip">Add an image</span>
                             <input
@@ -1202,16 +1203,16 @@ export default function ZynqChatUI() {
                             placeholder="Message..."
                             rows={1}
                             disabled={!activeChat}
-                            className="zynqchat-message-input"
+                            className="zynqchat-message-input bg-transparent text-[var(--text-color)]"
                         />
                         <button
                             onClick={handleSend}
                             disabled={!activeChat || (!draft.trim() && pendingAttachments.length === 0)}
-                            className="zynqchat-send-button"
+                            className="zynqchat-send-button text-[var(--text-color)] opacity-70 hover:text-blue-500 hover:opacity-100 transition"
                         >
                             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 664 663" aria-hidden="true">
                                 <path fill="none" d="M646.293 331.888L17.7538 17.6187L155.245 331.888M646.293 331.888L17.753 646.157L155.245 331.888M646.293 331.888L318.735 330.228L155.245 331.888"></path>
-                                <path strokeLinejoin="round" strokeLinecap="round" strokeWidth="33.67" stroke="#6c6c6c" d="M646.293 331.888L17.7538 17.6187L155.245 331.888M646.293 331.888L17.753 646.157L155.245 331.888M646.293 331.888L318.735 330.228L155.245 331.888"></path>
+                                <path strokeLinejoin="round" strokeLinecap="round" strokeWidth="33.67" stroke="currentColor" d="M646.293 331.888L17.7538 17.6187L155.245 331.888M646.293 331.888L17.753 646.157L155.245 331.888M646.293 331.888L318.735 330.228L155.245 331.888"></path>
                             </svg>
                         </button>
                     </div>

@@ -90,7 +90,7 @@ function LineNumbers({ content, innerRef }: { content: string; innerRef?: React.
   return (
     <div
       ref={innerRef as any}
-      className="w-12 flex flex-col items-end pr-3 pt-4 text-slate-400 dark:text-[#4d6a8b] bg-slate-50 dark:bg-[#111a22] select-none border-r border-slate-200 dark:border-[#233648]/50 shrink-0 overflow-hidden h-full"
+      className="w-12 flex flex-col items-end pr-3 pt-4 text-[var(--text-color)] bg-[var(--bg-color)] select-none border-r border-[var(--border-color)] shrink-0 overflow-hidden h-full opacity-60"
     >
       {lines.map((_, idx) => (
         <div key={idx}>{idx + 1}</div>
@@ -166,11 +166,12 @@ function FileRow({
   return (
     <div className="space-y-0.5">
       <div
-        className={`group flex items-center justify-between gap-2 px-2 py-1.5 rounded-md hover:bg-slate-200 dark:hover:bg-[#233648] transition-colors ${isCurrent ? 'bg-primary/10 text-primary' : 'text-slate-700 dark:text-[#92adc9]'
-          }`}
+        className={`group flex items-center justify-between gap-2 px-2 py-1.5 rounded-md hover:bg-gray-500/20 transition-colors ${
+          isCurrent ? 'bg-blue-500/20 text-blue-400' : 'text-[var(--text-color)]'
+        }`}
         style={{ paddingLeft: padding + 8 }}
       >
-        <div className="flex items-center gap-2 min-w-0 cursor-pointer" onClick={handleClick}>
+        <div className="flex items-center gap-2 min-w-0 cursor-pointer opacity-90" onClick={handleClick}>
           <i className={`fa-solid ${iconClass} text-[18px]`}></i>
           <span className="text-sm truncate font-medium">{node.name}</span>
         </div>
@@ -183,7 +184,7 @@ function FileRow({
         </button>
       </div>
       {node.isDir && isExpanded(node.path) && node.children && node.children.length > 0 && (
-        <div className="border-l border-slate-200 dark:border-[#233648] ml-3.5">
+        <div className="border-l border-[var(--border-color)] ml-3.5">
           {node.children.map(child => (
             <FileRow
               key={child.path}
@@ -232,7 +233,7 @@ function Explorer({
 
   return (
     <div className="scrollbar flex-1 overflow-y-auto py-2 px-2 space-y-0.5">
-      {tree.length === 0 && <div className="text-sm text-slate-500 dark:text-[#92adc9] px-2 py-4">No files yet</div>}
+      {tree.length === 0 && <div className="text-sm text-[var(--text-color)] opacity-60 px-2 py-4">No files yet</div>}
       {tree.map(node => (
         <FileRow
           key={node.path}
@@ -276,19 +277,18 @@ function EditorPane(
 
   if (!path) {
     return (
-      <div className="absolute inset-0 bg-white dark:bg-[#111a22] flex flex-col items-center justify-center">
-        <div className="w-52 h-52 bg-slate-100 dark:bg-[#1a2632] rounded-full flex items-center justify-center mb-6">
-          <i className="fa-regular fa-file-lines text-[48px] text-slate-300 dark:text-[#344c63]"></i>
+      <div className="absolute inset-0 bg-[var(--bg-color)] flex flex-col items-center justify-center">
+        <div className="w-52 h-52 bg-gray-500/10 rounded-full flex items-center justify-center mb-6 border border-[var(--border-color)]">
+          <i className="fa-regular fa-file-lines text-[48px] text-[var(--text-color)] opacity-40"></i>
         </div>
-        <h3 className="text-lg font-bold text-slate-800 dark:text-white mb-2">No file selected</h3>
-        <p className="text-slate-500 dark:text-[#92adc9] max-w-sm text-center mb-6">Select a file from the explorer on the left to start editing code.</p>
+        <h3 className="text-lg font-bold text-[var(--text-color)] mb-2">No file selected</h3>
+        <p className="text-[var(--text-color)] opacity-60 max-w-sm text-center mb-6">Select a file from the explorer on the left to start editing code.</p>
       </div>
     )
   }
 
   const language = getLanguageFromPath(path)
 
-  // Show image/PDF preview if binary data exists
   if (binaryData && isPreviewableFile(path || '')) {
     const lower = path?.toLowerCase() || ''
     const isPdf = lower.endsWith('.pdf')
@@ -298,7 +298,7 @@ function EditorPane(
       const blob = new Blob([binaryData instanceof Uint8Array ? new Uint8Array(binaryData) : binaryData])
       const url = URL.createObjectURL(blob)
       return (
-        <div className="flex flex-1 overflow-hidden bg-white dark:bg-[#161f29]">
+        <div className="flex flex-1 overflow-hidden bg-[var(--bg-color)]">
           <div className="flex-1 flex items-center justify-center overflow-auto">
             <img src={url} alt={path} className="max-w-full max-h-full object-contain" />
           </div>
@@ -309,7 +309,7 @@ function EditorPane(
       const blob = new Blob([arr.buffer], { type: 'application/pdf' })
       const url = URL.createObjectURL(blob)
       return (
-        <div className="flex flex-1 overflow-hidden bg-slate-100 dark:bg-[#0a0a0a]">
+        <div className="flex flex-1 overflow-hidden bg-[var(--bg-color)]">
           <iframe
             src={url}
             className="w-full h-full border-none"
@@ -321,13 +321,13 @@ function EditorPane(
   }
 
   return (
-    <div className="flex flex-1 overflow-hidden font-mono text-sm leading-6 relative bg-white dark:bg-[#161f29]">
+    <div className="flex flex-1 overflow-hidden font-mono text-sm leading-6 relative bg-[var(--bg-color)]">
       <div ref={scrollContainerRef} className="flex h-full w-full overflow-hidden">
         {showLineNumbers && <LineNumbers content={content || '\n'} innerRef={lineNumbersRef} />}
         <div className="flex-1 h-full overflow-hidden">
           <textarea
             ref={actualTextareaRef}
-            className={`scrollbar w-full h-[100%] min-h-[74vh] p-4 bg-transparent outline-none resize-none font-mono text-sm whitespace-pre text-slate-800 dark:text-slate-300 language-${language}`}
+            className={`scrollbar w-full h-[100%] min-h-[74vh] p-4 bg-transparent outline-none resize-none font-mono text-sm whitespace-pre text-[var(--text-color)] language-${language}`}
             value={content}
             readOnly={readOnly}
             onChange={e => onChange(e.target.value)}
@@ -390,16 +390,13 @@ export default function Workspace() {
   useEffect(() => {
     refreshFiles().catch(console.error)
 
-    // Auto-refresh when sync status changes (especially after pull/push)
     const handleSyncStatusChange = (e: Event) => {
       const detail = (e as CustomEvent).detail
-      // Refresh after pull completes or when syncing stops (includes pull operations)
       if (detail && !detail.syncing && !detail.pulling) {
         refreshFiles().catch(console.error)
       }
     }
 
-    // Auto-refresh when VFS changes (file write/delete operations)
     const handleVfsChange = () => {
       refreshFiles().catch(console.error)
     }
@@ -430,10 +427,8 @@ export default function Workspace() {
         }
       }
       setSelectedPath(normalized)
-      // Debug: log data type and value
-      console.debug('[openFile] Data type:', typeof data, 'instanceof Uint8Array:', data instanceof Uint8Array, 'Array.isArray:', Array.isArray(data), 'value:', data)
+      
       if (data === undefined || data === null) {
-        console.warn('[openFile] File not found or undefined/null from VFS:', normalized, data)
         setFileContent('[File not found]')
         setLoadedContent('[File not found]')
         setReadOnly(true)
@@ -443,7 +438,6 @@ export default function Workspace() {
         setReadOnly(false)
         showStatus(`Opened ${normalized}`)
       } else if (data instanceof Uint8Array) {
-        // Try to decode as text using tryDecodeText
         const decoded = tryDecodeText(data)
         if (decoded !== null) {
           setFileContent(decoded)
@@ -452,7 +446,6 @@ export default function Workspace() {
           setReadOnly(false)
           showStatus(`Opened ${normalized} (${getFileTypeDescription(normalized)})`)
         } else if (isPreviewableFile(normalized)) {
-          // Store binary data for preview
           setBinaryData(data)
           setFileContent('')
           setLoadedContent('')
@@ -466,7 +459,6 @@ export default function Workspace() {
           showStatus('Binary preview - read only')
         }
       } else if (Array.isArray(data)) {
-        // Handle case where IndexedDB returns an array (should be Uint8Array)
         const arr = new Uint8Array(data)
         const decoded = tryDecodeText(arr)
         if (decoded !== null) {
@@ -476,7 +468,6 @@ export default function Workspace() {
           setReadOnly(false)
           showStatus(`Opened ${normalized} (${getFileTypeDescription(normalized)})`)
         } else if (isPreviewableFile(normalized)) {
-          // Store binary data for preview
           setBinaryData(arr)
           setFileContent('')
           setLoadedContent('')
@@ -490,15 +481,12 @@ export default function Workspace() {
           showStatus('Binary preview - read only')
         }
       } else {
-        // Debug: log unknown data type
-        console.error('[openFile] Unknown data type for file:', normalized, data)
         setFileContent('[File not found]')
         setLoadedContent('[File not found]')
         setReadOnly(true)
       }
       setExpanded(prev => new Set(prev).add(normalized.split('/').slice(0, -1).join('/') || '/'))
     } catch (err) {
-      console.error('[openFile] Exception:', err)
       showStatus('Unable to open file', 2500)
     } finally {
       setLoading(false)
@@ -519,7 +507,6 @@ export default function Workspace() {
     }
     const path = normalizePath(newFileName.trim())
     if (isFolderMode) {
-      // Create folder with a .gitkeep file
       await writeFile(path + '/.gitkeep', '')
       await refreshFiles()
       setNewFileName('')
@@ -561,7 +548,7 @@ export default function Workspace() {
                 try {
                   await removeFile(key)
                 } catch {
-                  // ignore individual delete errors
+                  // ignore
                 }
               }
 
@@ -608,20 +595,14 @@ export default function Workspace() {
       if (files && files.length > 0) {
         try {
           showStatus(`Uploading ${files.length} file(s)...`)
-
-          // Use the tracked currentDirectory
           const targetDir = currentDirectory || '/home'
-
-          // Use the centralized batch upload function
           await uploadFiles(files, targetDir, (current, total, fileName) => {
             showStatus(`Uploading ${current}/${total}: ${fileName}`)
           })
-
           await refreshFiles()
           showStatus(`✓ Uploaded ${files.length} file(s) to ${targetDir}`)
         } catch (error) {
           showStatus(`✗ Upload failed: ${error}`)
-          console.error('Upload error:', error)
         }
       }
     }
@@ -698,7 +679,6 @@ export default function Workspace() {
       showStatus(`Downloaded ${fileName}`)
     } catch (error) {
       showStatus(`Download failed: ${error}`)
-      console.error('Download error:', error)
     }
   }
 
@@ -706,7 +686,6 @@ export default function Workspace() {
     try {
       setIsSyncing(true)
       if (selectedPath) {
-        // Push only the currently opened file
         const content = await readFile(selectedPath)
         if (content !== undefined) {
           await githubSync.syncFileToGitHub(selectedPath, content)
@@ -714,7 +693,6 @@ export default function Workspace() {
           showStatus(`Pushed ${selectedPath} to GitHub`)
         }
       } else {
-        // Push all files
         await githubSync.syncToGitHub()
         toast({ title: 'Success', description: 'All files pushed to GitHub', variant: 'success' })
         showStatus('Pushed to GitHub')
@@ -732,7 +710,6 @@ export default function Workspace() {
     try {
       setIsSyncing(true)
       if (selectedPath) {
-        // Pull all files and reload the currently opened file
         await githubSync.pullFileFromGitHub(selectedPath)
         const fileName = selectedPath.split('/').pop()
         const content = await readFile(selectedPath)
@@ -747,12 +724,10 @@ export default function Workspace() {
         toast({ title: 'Success', description: `${fileName} pulled from GitHub`, variant: 'success' })
         showStatus(`Pulled ${selectedPath} from GitHub`)
       } else {
-        // Pull all files
         await githubSync.pullFromGitHub()
         toast({ title: 'Success', description: 'All files pulled from GitHub', variant: 'success' })
         showStatus('Pulled from GitHub')
       }
-      // Refresh the file list
       await refreshFiles()
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : 'Unknown error'
@@ -763,12 +738,10 @@ export default function Workspace() {
     }
   }
 
-  // Keyboard shortcut handler
   const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     const ctrl = e.ctrlKey
     const key = e.key.toLowerCase()
 
-    // Close menus on any keypress
     if (fileMenuOpen || editMenuOpen || viewMenuOpen) {
       setFileMenuOpen(false)
       setEditMenuOpen(false)
@@ -777,21 +750,21 @@ export default function Workspace() {
 
     if (ctrl) {
       switch (key) {
-        case 'o': // Open file
+        case 'o': 
           e.preventDefault()
           setIsFolderMode(false)
           newEntryInputRef.current?.focus()
           showStatus('Type file path to open')
           break
-        case 's': // Save
+        case 's': 
           e.preventDefault()
           saveFile()
           break
-        case 'f': // Find
+        case 'f': 
           e.preventDefault()
           document.querySelector<HTMLInputElement>('input[placeholder="Search files"]')?.focus()
           break
-        case 'g': // Go to line (placeholder for now)
+        case 'g': 
           e.preventDefault()
           const line = prompt('Go to line:')
           if (line && textareaRef.current) {
@@ -800,28 +773,28 @@ export default function Workspace() {
             const lines = fileContent.split('\n')
             let charCount = 0
             for (let i = 0; i < lineNum && i < lines.length; i++) {
-              charCount += lines[i].length + 1 // +1 for newline
+              charCount += lines[i].length + 1
             }
             textareaRef.current.focus()
             textareaRef.current.setSelectionRange(charCount, charCount)
           }
           break
-        case 'z': // Undo
+        case 'z': 
           e.preventDefault()
           document.execCommand('undo')
           break
-        case 'y': // Redo
+        case 'y': 
           e.preventDefault()
           document.execCommand('redo')
           break
-        case 'home': // Go to start of document
+        case 'home': 
           e.preventDefault()
           if (textareaRef.current) {
             textareaRef.current.setSelectionRange(0, 0)
             textareaRef.current.scrollTop = 0
           }
           break
-        case 'end': // Go to end of document
+        case 'end': 
           e.preventDefault()
           if (textareaRef.current) {
             const len = fileContent.length
@@ -834,13 +807,13 @@ export default function Workspace() {
   }, [fileContent, fileMenuOpen, editMenuOpen, viewMenuOpen, saveFile, showStatus])
 
   return (
-    <div className="bg-background-light dark:bg-background-dark font-display text-slate-900 dark:text-white overflow-hidden h-full flex flex-col">
-      <header className="flex items-center w-full justify-between whitespace-nowrap border-b border-solid border-slate-200 dark:border-[#233648] px-6 py-3 bg-white dark:bg-[#111a22] shrink-0 z-20">
+    <div className="bg-[var(--bg-color)] font-display text-[var(--text-color)] overflow-hidden h-full flex flex-col">
+      <header className="flex items-center w-full justify-between whitespace-nowrap border-b border-solid border-[var(--border-color)] px-6 py-3 bg-[var(--bg-color)] shrink-0 z-20">
         <div className="flex items-center gap-4">
           <button
             id='PsideBar'
             onClick={toggleSidebar}
-            className="flex items-center gap-2 text-sm text-slate-500 dark:text-[#92adc9] hover:text-primary transition-colors cursor-pointer"
+            className="flex items-center gap-2 text-sm text-[var(--text-color)] opacity-70 hover:opacity-100 transition-colors cursor-pointer"
             title="Toggle sidebar"
           >
             <i className={`fa-solid ${sidebarCollapsed ? 'fa-bars' : 'fa-folder-open'} text-[16px]`}></i>
@@ -849,11 +822,11 @@ export default function Workspace() {
         </div>
         <div className="flex flex-1 justify-center max-w-xl px-4">
           <label className="relative flex w-full">
-            <div className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none text-slate-400 dark:text-[#92adc9]">
+            <div className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none text-[var(--text-color)] opacity-50">
               <i className="fa-solid fa-magnifying-glass"></i>
             </div>
             <input
-              className="block w-full rounded-lg border-none bg-slate-100 dark:bg-[#233648] py-2 pl-10 pr-4 text-sm text-slate-900 dark:text-white placeholder-slate-500 dark:placeholder-[#92adc9] focus:ring-2 focus:ring-primary"
+              className="block w-full rounded-lg border border-[var(--border-color)] bg-[var(--bg-color)] py-2 pl-10 pr-4 text-sm text-[var(--text-color)] placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
               placeholder="Search files"
               value={searchQuery}
               onChange={e => setSearchQuery(e.target.value)}
@@ -863,104 +836,89 @@ export default function Workspace() {
         <div className="flex items-center gap-3">
           <button
             onClick={handleUpload}
-            className={`pointer flex items-center border-1 border-white gap-2 px-3 py-1.5 rounded font-medium transition-colors ${hasUnsavedChanges && !readOnly ? 'bg-primary text-white' : 'bg-slate-100 dark:bg-[#233648] text-slate-700 dark:text-white opacity-60 cursor-not-allowed'}`}
+            className={`pointer flex items-center border border-[var(--border-color)] gap-2 px-3 py-1.5 rounded font-medium transition-colors ${
+              hasUnsavedChanges && !readOnly 
+                ? 'bg-blue-600 text-white border-blue-600' 
+                : 'bg-transparent text-[var(--text-color)] opacity-60 hover:bg-gray-500/10'
+            }`}
             title="Upload file"
           >
-            <svg
-              width="20"
-              height="20"
-              xmlns="http://www.w3.org/2000/svg"
-              viewBox="0 0 340.531 419.116"
-              strokeLinejoin="round"
-              strokeLinecap="round"
-              strokeWidth="2"
-              stroke="#000000"
-            >
-              <g id="files-new" clipPath="url(#clip-files-new)">
-                <path
-                  id="Union_2"
-                  data-name="Union 2"
-                  d="M-2904.708-8.885A39.292,39.292,0,0,1-2944-48.177V-388.708A39.292,39.292,0,0,1-2904.708-428h209.558a13.1,13.1,0,0,1,9.3,3.8l78.584,78.584a13.1,13.1,0,0,1,3.8,9.3V-48.177a39.292,39.292,0,0,1-39.292,39.292Zm-13.1-379.823V-48.177a13.1,13.1,0,0,0,13.1,13.1h261.947a13.1,13.1,0,0,0,13.1-13.1V-323.221h-52.39a26.2,26.2,0,0,1-26.194-26.195v-52.39h-196.46A13.1,13.1,0,0,0-2917.805-388.708Zm146.5,241.621a14.269,14.269,0,0,1-7.883-12.758v-19.113h-68.841c-7.869,0-7.87-47.619,0-47.619h68.842v-18.8a14.271,14.271,0,0,1,7.882-12.758,14.239,14.239,0,0,1,14.925,1.354l57.019,42.764c.242.185.328.485.555.671a13.9,13.9,0,0,1,2.751,3.292,14.57,14.57,0,0,1,.984,1.454,14.114,14.114,0,0,1,1.411,5.987,14.006,14.006,0,0,1-1.411,5.973,14.653,14.653,0,0,1-.984,1.468,13.9,13.9,0,0,1-2.751,3.293c-.228.2-.313.485-.555.671l-57.019,42.764a14.26,14.26,0,0,1-8.558,2.847A14.326,14.326,0,0,1-2771.3-147.087Z"
-                  transform="translate(2944 428)"
-                  fill="#ffffff"
-                ></path>
-              </g>
-            </svg>
+            <i className="fa-solid fa-upload"></i>
             <span className="hidden sm:inline">Upload</span>
           </button>
-          <div className="hidden lg:flex items-center gap-2 text-sm font-medium text-slate-600 dark:text-[#92adc9] relative">
+          <div className="hidden lg:flex items-center gap-2 text-sm font-medium text-[var(--text-color)] relative">
             <div className="relative">
-              <button onClick={() => { setFileMenuOpen(!fileMenuOpen); setEditMenuOpen(false); setViewMenuOpen(false) }} className="px-2 py-1 hover:bg-gray-700 dark:hover:bg-[#233648] rounded transition-colors">File</button>
+              <button onClick={() => { setFileMenuOpen(!fileMenuOpen); setEditMenuOpen(false); setViewMenuOpen(false) }} className="px-2 py-1 hover:bg-gray-500/20 rounded transition-colors">File</button>
               {fileMenuOpen && (
-                <div className="absolute top-full left-0 mt-1 bg-gray-800 dark:bg-gray-800 border border-gray-600 shadow-lg py-1 min-w-[180px] z-50">
-                  <button onClick={() => { setFileMenuOpen(false); newEntryInputRef.current?.focus() }} className="w-full px-3 py-1 text-left text-white hover:bg-blue-600 flex justify-between text-sm">
-                    <span>Open</span><span className="text-gray-400">Ctrl+O</span>
+                <div className="absolute top-full left-0 mt-1 bg-[var(--bg-color)] border border-[var(--border-color)] shadow-lg py-1 min-w-[180px] z-50 rounded">
+                  <button onClick={() => { setFileMenuOpen(false); newEntryInputRef.current?.focus() }} className="w-full px-3 py-1 text-left text-[var(--text-color)] hover:bg-blue-500 hover:text-white flex justify-between text-sm transition-colors">
+                    <span>Open</span><span className="opacity-50">Ctrl+O</span>
                   </button>
-                  <button onClick={() => { saveFile(); setFileMenuOpen(false) }} className="w-full px-3 py-1 text-left text-white hover:bg-blue-600 flex justify-between text-sm" disabled={!selectedPath || readOnly}>
-                    <span>Save</span><span className="text-gray-400">Ctrl+S</span>
+                  <button onClick={() => { saveFile(); setFileMenuOpen(false) }} className="w-full px-3 py-1 text-left text-[var(--text-color)] hover:bg-blue-500 hover:text-white flex justify-between text-sm transition-colors" disabled={!selectedPath || readOnly}>
+                    <span>Save</span><span className="opacity-50">Ctrl+S</span>
                   </button>
-                  <button onClick={() => { saveFile(); setFileMenuOpen(false) }} className="w-full px-3 py-1 text-left text-white hover:bg-blue-600 text-sm">
+                  <button onClick={() => { saveFile(); setFileMenuOpen(false) }} className="w-full px-3 py-1 text-left text-[var(--text-color)] hover:bg-blue-500 hover:text-white text-sm transition-colors">
                     <span>Save As...</span>
                   </button>
                 </div>
               )}
             </div>
             <div className="relative">
-              <button onClick={() => { setEditMenuOpen(!editMenuOpen); setFileMenuOpen(false); setViewMenuOpen(false) }} className="px-2 py-1 hover:bg-gray-700 dark:hover:bg-[#233648] rounded transition-colors">Edit</button>
+              <button onClick={() => { setEditMenuOpen(!editMenuOpen); setFileMenuOpen(false); setViewMenuOpen(false) }} className="px-2 py-1 hover:bg-gray-500/20 rounded transition-colors">Edit</button>
               {editMenuOpen && (
-                <div className="absolute top-full left-0 mt-1 bg-gray-800 dark:bg-gray-800 border border-gray-600 shadow-lg py-1 min-w-[180px] z-50">
-                  <button onClick={() => setEditMenuOpen(false)} className="w-full px-3 py-1 text-left text-white hover:bg-blue-600 flex justify-between text-sm">
-                    <span>Undo</span><span className="text-gray-400">Ctrl+Z</span>
+                <div className="absolute top-full left-0 mt-1 bg-[var(--bg-color)] border border-[var(--border-color)] shadow-lg py-1 min-w-[180px] z-50 rounded">
+                  <button onClick={() => setEditMenuOpen(false)} className="w-full px-3 py-1 text-left text-[var(--text-color)] hover:bg-blue-500 hover:text-white flex justify-between text-sm transition-colors">
+                    <span>Undo</span><span className="opacity-50">Ctrl+Z</span>
                   </button>
-                  <button onClick={() => setEditMenuOpen(false)} className="w-full px-3 py-1 text-left text-white hover:bg-blue-600 flex justify-between text-sm">
-                    <span>Redo</span><span className="text-gray-400">Ctrl+Y</span>
+                  <button onClick={() => setEditMenuOpen(false)} className="w-full px-3 py-1 text-left text-[var(--text-color)] hover:bg-blue-500 hover:text-white flex justify-between text-sm transition-colors">
+                    <span>Redo</span><span className="opacity-50">Ctrl+Y</span>
                   </button>
-                  <div className="border-t border-gray-600 my-1"></div>
-                  <button onClick={() => setEditMenuOpen(false)} className="w-full px-3 py-1 text-left text-white hover:bg-blue-600 flex justify-between text-sm">
-                    <span>Cut</span><span className="text-gray-400">Ctrl+X</span>
+                  <div className="border-t border-[var(--border-color)] my-1"></div>
+                  <button onClick={() => setEditMenuOpen(false)} className="w-full px-3 py-1 text-left text-[var(--text-color)] hover:bg-blue-500 hover:text-white flex justify-between text-sm transition-colors">
+                    <span>Cut</span><span className="opacity-50">Ctrl+X</span>
                   </button>
-                  <button onClick={() => setEditMenuOpen(false)} className="w-full px-3 py-1 text-left text-white hover:bg-blue-600 flex justify-between text-sm">
-                    <span>Copy</span><span className="text-gray-400">Ctrl+C</span>
+                  <button onClick={() => setEditMenuOpen(false)} className="w-full px-3 py-1 text-left text-[var(--text-color)] hover:bg-blue-500 hover:text-white flex justify-between text-sm transition-colors">
+                    <span>Copy</span><span className="opacity-50">Ctrl+C</span>
                   </button>
-                  <button onClick={() => setEditMenuOpen(false)} className="w-full px-3 py-1 text-left text-white hover:bg-blue-600 flex justify-between text-sm">
-                    <span>Paste</span><span className="text-gray-400">Ctrl+V</span>
+                  <button onClick={() => setEditMenuOpen(false)} className="w-full px-3 py-1 text-left text-[var(--text-color)] hover:bg-blue-500 hover:text-white flex justify-between text-sm transition-colors">
+                    <span>Paste</span><span className="opacity-50">Ctrl+V</span>
                   </button>
-                  <div className="border-t border-gray-600 my-1"></div>
-                  <button onClick={() => setEditMenuOpen(false)} className="w-full px-3 py-1 text-left text-white hover:bg-blue-600 flex justify-between text-sm">
-                    <span>Find</span><span className="text-gray-400">Ctrl+F</span>
+                  <div className="border-t border-[var(--border-color)] my-1"></div>
+                  <button onClick={() => setEditMenuOpen(false)} className="w-full px-3 py-1 text-left text-[var(--text-color)] hover:bg-blue-500 hover:text-white flex justify-between text-sm transition-colors">
+                    <span>Find</span><span className="opacity-50">Ctrl+F</span>
                   </button>
-                  <button onClick={() => setEditMenuOpen(false)} className="w-full px-3 py-1 text-left text-white hover:bg-blue-600 flex justify-between text-sm">
-                    <span>Replace</span><span className="text-gray-400">Ctrl+H</span>
+                  <button onClick={() => setEditMenuOpen(false)} className="w-full px-3 py-1 text-left text-[var(--text-color)] hover:bg-blue-500 hover:text-white flex justify-between text-sm transition-colors">
+                    <span>Replace</span><span className="opacity-50">Ctrl+H</span>
                   </button>
-                  <button onClick={() => setEditMenuOpen(false)} className="w-full px-3 py-1 text-left text-white hover:bg-blue-600 flex justify-between text-sm">
-                    <span>Go to Line</span><span className="text-gray-400">Ctrl+G</span>
+                  <button onClick={() => setEditMenuOpen(false)} className="w-full px-3 py-1 text-left text-[var(--text-color)] hover:bg-blue-500 hover:text-white flex justify-between text-sm transition-colors">
+                    <span>Go to Line</span><span className="opacity-50">Ctrl+G</span>
                   </button>
                 </div>
               )}
             </div>
             <div className="relative">
-              <button onClick={() => { setViewMenuOpen(!viewMenuOpen); setFileMenuOpen(false); setEditMenuOpen(false) }} className="px-2 py-1 hover:bg-gray-700 dark:hover:bg-[#233648] rounded transition-colors">View</button>
+              <button onClick={() => { setViewMenuOpen(!viewMenuOpen); setFileMenuOpen(false); setEditMenuOpen(false) }} className="px-2 py-1 hover:bg-gray-500/20 rounded transition-colors">View</button>
               {viewMenuOpen && (
-                <div className="absolute top-full left-0 mt-1 bg-gray-800 dark:bg-gray-800 border border-gray-600 shadow-lg py-1 min-w-[180px] z-50">
-                  <button onClick={() => { setViewMenuOpen(false) }} className="w-full px-3 py-1 text-left text-white hover:bg-blue-600 flex justify-between text-sm">
-                    <span>Help</span><span className="text-gray-400">?</span>
+                <div className="absolute top-full left-0 mt-1 bg-[var(--bg-color)] border border-[var(--border-color)] shadow-lg py-1 min-w-[180px] z-50 rounded">
+                  <button onClick={() => { setViewMenuOpen(false) }} className="w-full px-3 py-1 text-left text-[var(--text-color)] hover:bg-blue-500 hover:text-white flex justify-between text-sm transition-colors">
+                    <span>Help</span><span className="opacity-50">?</span>
                   </button>
-                  <div className="border-t border-gray-600 my-1"></div>
+                  <div className="border-t border-[var(--border-color)] my-1"></div>
                   <button onClick={() => {
                     const words = fileContent.trim().split(/\s+/).filter(w => w.length > 0).length;
                     const chars = fileContent.length;
                     showStatus(`Words: ${words} | Characters: ${chars} | Lines: ${lines}`);
                     setViewMenuOpen(false);
-                  }} className="w-full px-3 py-1 text-left text-white hover:bg-blue-600 text-sm">
+                  }} className="w-full px-3 py-1 text-left text-[var(--text-color)] hover:bg-blue-500 hover:text-white text-sm transition-colors">
                     <span>Word Count</span>
                   </button>
-                  <button onClick={() => { setShowLineNumbers(v => !v); setViewMenuOpen(false) }} className="w-full px-3 py-1 text-left text-white hover:bg-blue-600 text-sm">
+                  <button onClick={() => { setShowLineNumbers(v => !v); setViewMenuOpen(false) }} className="w-full px-3 py-1 text-left text-[var(--text-color)] hover:bg-blue-500 hover:text-white text-sm transition-colors">
                     <span>{showLineNumbers ? 'Hide Line Numbers' : 'Show Line Numbers'}</span>
                   </button>
-                  <button onClick={() => { refreshFiles(); setViewMenuOpen(false) }} className="w-full px-3 py-1 text-left text-white hover:bg-blue-600 text-sm">
+                  <button onClick={() => { refreshFiles(); setViewMenuOpen(false) }} className="w-full px-3 py-1 text-left text-[var(--text-color)] hover:bg-blue-500 hover:text-white text-sm transition-colors">
                     <span>Refresh Files</span>
                   </button>
-                  <button onClick={() => { toggleSidebar(); setViewMenuOpen(false) }} className="w-full px-3 py-1 text-left text-white hover:bg-blue-600 text-sm">
+                  <button onClick={() => { toggleSidebar(); setViewMenuOpen(false) }} className="w-full px-3 py-1 text-left text-[var(--text-color)] hover:bg-blue-500 hover:text-white text-sm transition-colors">
                     <span>Toggle Sidebar</span>
                   </button>
                 </div>
@@ -971,72 +929,44 @@ export default function Workspace() {
             onClick={saveFile}
             disabled={!hasUnsavedChanges || readOnly || !selectedPath}
             aria-label="save"
-            className={`action_has has_saved flex items-center border-1 border-white gap-2 px-3 py-1.5 rounded font-medium transition-colors ${hasUnsavedChanges && !readOnly ? 'bg-primary text-white' : 'bg-slate-100 dark:bg-[#233648] text-slate-700 dark:text-white opacity-60 cursor-not-allowed'}`}
+            className={`action_has has_saved flex items-center border gap-2 px-3 py-1.5 rounded font-medium transition-colors ${
+              hasUnsavedChanges && !readOnly 
+                ? 'bg-blue-600 text-white border-blue-600' 
+                : 'bg-transparent border-[var(--border-color)] text-[var(--text-color)] opacity-60 cursor-not-allowed hover:bg-gray-500/10'
+            }`}
             title="Save"
           >
-            <svg
-              aria-hidden="true"
-              xmlns="http://www.w3.org/2000/svg"
-              width="20"
-              height="20"
-              strokeLinejoin="round"
-              strokeLinecap="round"
-              strokeWidth="2"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-              fill="none"
-            >
-              <path
-                d="m19,21H5c-1.1,0-2-.9-2-2V5c0-1.1.9-2,2-2h11l5,5v11c0,1.1-.9,2-2,2Z"
-                strokeLinejoin="round"
-                strokeLinecap="round"
-                data-path="box"
-              ></path>
-
-              <path
-                d="M7 3L7 8L15 8"
-                strokeLinejoin="round"
-                strokeLinecap="round"
-                data-path="line-top"
-              ></path>
-              <path
-                d="M17 20L17 13L7 13L7 20"
-                strokeLinejoin="round"
-                strokeLinecap="round"
-                data-path="line-bottom"
-              ></path>
-            </svg>
+            <i className="fa-solid fa-floppy-disk"></i>
             <span className="hidden sm:inline">Save</span>
           </button>
-          <div className="flex gap-2 items-center"></div>
         </div>
       </header>
 
       <div className="flex flex-1 overflow-hidden">
         {!sidebarCollapsed && (
           <aside
-            className="flex flex-col border-r border-slate-200 bg-white dark:bg-[#111a22] dark:border-[#233648] bg-slate-50 dark:bg-sidebar-dark shrink-0 relative"
+            className="flex flex-col border-r border-[var(--border-color)] bg-[var(--bg-color)] shrink-0 relative"
             style={{ width: `${sidebarWidth}px` }}
           >
-            <div className="px-4 py-3 flex items-center justify-between border-b border-slate-200 dark:border-[#233648]/50">
-              <span className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-[#92adc9]">Explorer</span>
+            <div className="px-4 py-3 flex items-center justify-between border-b border-[var(--border-color)]">
+              <span className="text-xs font-bold uppercase tracking-wider text-[var(--text-color)] opacity-60">Explorer</span>
               <div className='flex gap-0'>
                 <button
                   onClick={() => { setIsFolderMode(false); setNewFileName(''); setTimeout(() => newEntryInputRef.current?.focus(), 50) }}
-                  className="flex items-center gap-1 p-1 text-s text-slate-600 dark:text-[#92adc9] hover:text-primary transition-colors"
+                  className="flex items-center gap-1 p-1 text-s text-[var(--text-color)] opacity-70 hover:opacity-100 transition-colors"
                   title="New file"
                 >
                   <i className="fa-solid fa-file-circle-plus"></i>
                 </button>
                 <button
                   onClick={handleCreateFolder}
-                  className="flex items-center gap-1 p-1 text-s text-slate-600 dark:text-[#92adc9] hover:text-primary transition-colors"
+                  className="flex items-center gap-1 p-1 text-s text-[var(--text-color)] opacity-70 hover:opacity-100 transition-colors"
                   title="New folder"
                 >
                   <i className="fa-solid fa-folder-plus"></i>                </button>
                 <button
                   onClick={refreshFiles} title="Refresh"
-                  className="flex items-center gap-1 p-1 text-s text-slate-600 dark:text-[#92adc9] hover:text-primary transition-colors">
+                  className="flex items-center gap-1 p-1 text-s text-[var(--text-color)] opacity-70 hover:opacity-100 transition-colors">
                   <i className="fa-solid fa-arrows-rotate"></i>                </button>
               </div>
             </div>
@@ -1049,44 +979,44 @@ export default function Workspace() {
               setExpanded={setExpanded}
               onDirectorySelect={setCurrentDirectory}
             />
-            <div className="p-3 border-t border-slate-200 dark:border-[#233648] bg-slate-100 dark:bg-[#111a22]">
+            <div className="p-3 border-t border-[var(--border-color)] bg-[var(--bg-color)]">
               <div className="relative">
                 <input
                   ref={newEntryInputRef}
-                  className="w-full bg-white dark:bg-[#1a2632] border border-slate-300 dark:border-[#344c63] rounded py-1.5 pl-2 pr-8 text-sm text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary"
+                  className="w-full bg-[var(--bg-color)] border border-[var(--border-color)] rounded py-1.5 pl-2 pr-8 text-sm text-[var(--text-color)] placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
                   placeholder={isFolderMode ? "/home/new-folder" : "/home/new-file.txt"}
                   value={newFileName}
                   onChange={e => setNewFileName(e.target.value)}
                   onKeyDown={e => e.key === 'Enter' && createFile()}
                 />
-                <button className="absolute right-1 top-1.5 p-0.5 text-primary hover:text-blue-400" onClick={createFile} title={isFolderMode ? "Create folder" : "Create file"}>
+                <button className="absolute right-1 top-1.5 p-0.5 text-blue-500 hover:text-blue-400" onClick={createFile} title={isFolderMode ? "Create folder" : "Create file"}>
                   <i className={`fa-solid ${isFolderMode ? 'fa-folder-plus' : 'fa-circle-plus'} text-[18px]`}></i>
                 </button>
               </div>
             </div>
             <div
-              className="absolute top-0 right-0 w-1 h-full cursor-col-resize hover:bg-primary/50 transition-colors"
+              className="absolute top-0 right-0 w-1 h-full cursor-col-resize hover:bg-blue-500/50 transition-colors"
               onMouseDown={startResize}
             />
           </aside>
         )}
 
-        <main className="flex-1 flex flex-col min-w-0 bg-white dark:bg-[#111a22] relative">
-          <div className="flex items-center gap-2 px-4 h-10 border-b border-slate-200 dark:border-[#233648] bg-slate-50 dark:bg-[#111a22]">
-            <div className="flex items-center gap-1 text-sm text-slate-500 dark:text-[#92adc9] truncate">
-              {breadcrumbs.length === 0 && <span className="text-slate-400">No file</span>}
+        <main className="flex-1 flex flex-col min-w-0 bg-[var(--bg-color)] relative">
+          <div className="flex items-center gap-2 px-4 h-10 border-b border-[var(--border-color)] bg-[var(--bg-color)]">
+            <div className="flex items-center gap-1 text-sm text-[var(--text-color)] opacity-70 truncate">
+              {breadcrumbs.length === 0 && <span className="opacity-50">No file</span>}
               {breadcrumbs.map((part, idx) => (
                 <React.Fragment key={idx}>
-                  <span className="hover:underline cursor-pointer" onClick={() => openFile('/' + breadcrumbs.slice(0, idx + 1).join('/'))}>
+                  <span className="hover:underline cursor-pointer hover:opacity-100" onClick={() => openFile('/' + breadcrumbs.slice(0, idx + 1).join('/'))}>
                     {part}
                   </span>
-                  {idx < breadcrumbs.length - 1 && <span className="text-slate-300 dark:text-[#233648]">/</span>}
+                  {idx < breadcrumbs.length - 1 && <span className="opacity-40">/</span>}
                 </React.Fragment>
               ))}
             </div>
             {selectedPath && (
               <div className="flex items-center gap-2 ml-auto">
-                <div className="flex items-center gap-2 text-sm font-medium text-slate-800 dark:text-white bg-slate-200 dark:bg-[#233648] px-3 py-1 rounded-full">
+                <div className="flex items-center gap-2 text-sm font-medium text-[var(--text-color)] bg-gray-500/20 px-3 py-1 rounded-full">
                   <i className="fa-regular fa-file-lines text-[15px] text-blue-500"></i>
                   <span className="truncate max-w-[280px]">{selectedPath}</span>
                   <button className="ml-1 hover:text-red-400 flex items-center" onClick={() => setSelectedPath(null)}>
@@ -1097,10 +1027,11 @@ export default function Workspace() {
                 <button
                   onClick={handlePush}
                   disabled={isSyncing}
-                  className={`flex items-center gap-2 px-3 py-1.5 rounded font-medium transition-colors ${isSyncing
-                      ? 'bg-slate-200 dark:bg-[#1a2635] text-slate-500 dark:text-[#6b8db5] cursor-not-allowed'
+                  className={`flex items-center gap-2 px-3 py-1.5 rounded font-medium transition-colors ${
+                    isSyncing
+                      ? 'bg-transparent border border-[var(--border-color)] text-[var(--text-color)] opacity-50 cursor-not-allowed'
                       : 'bg-blue-600 hover:bg-blue-700 text-white'
-                    }`}
+                  }`}
                   title="Push files to GitHub"
                 >
                   <i className={`${isSyncing ? 'fas fa-spinner fa-spin' : 'fas fa-cloud-upload-alt'}`}></i>
@@ -1108,17 +1039,18 @@ export default function Workspace() {
                 <button
                   onClick={handlePull}
                   disabled={isSyncing}
-                  className={`flex items-center gap-2 px-3 py-1.5 rounded font-medium transition-colors ${isSyncing
-                      ? 'bg-slate-200 dark:bg-[#1a2635] text-slate-500 dark:text-[#6b8db5] cursor-not-allowed'
-                      : 'bg-slate-700 hover:bg-slate-600 text-white'
-                    }`}
+                  className={`flex items-center gap-2 px-3 py-1.5 rounded font-medium transition-colors ${
+                    isSyncing
+                      ? 'bg-transparent border border-[var(--border-color)] text-[var(--text-color)] opacity-50 cursor-not-allowed'
+                      : 'bg-gray-600 hover:bg-gray-500 text-white'
+                  }`}
                   title="Pull files from GitHub"
                 >
                   <i className={`${isSyncing ? 'fas fa-spinner fa-spin' : 'fas fa-cloud-download-alt'}`}></i>
                 </button>
                 <button
                   onClick={downloadFile}
-                  className="p-1.5 text-slate-600 dark:text-[#92adc9] hover:text-blue-500 dark:hover:text-blue-400 transition-colors"
+                  className="p-1.5 text-[var(--text-color)] opacity-70 hover:opacity-100 hover:text-blue-500 transition-colors"
                   title="Download file"
                 >
                   <i className="fa-solid fa-download text-[14px]"></i>
@@ -1134,14 +1066,14 @@ export default function Workspace() {
             )}
           </div>
 
-          <div className="absolute inset-x-0 bottom-0 h-6 bg-[#111A22] text-white flex w-full items-center px-4 justify-between text-xs font-mono shrink-0">
+          <div className="absolute inset-x-0 bottom-0 h-6 border-t border-[var(--border-color)] bg-[var(--bg-color)] text-[var(--text-color)] opacity-80 flex w-full items-center px-4 justify-between text-xs font-mono shrink-0">
             <div className="flex items-center gap-3 overflow-hidden">
               <span className="truncate max-w-[320px]">{selectedPath || 'No file selected'}</span>
               {readOnly && <span className="uppercase tracking-wide">Read only</span>}
-              {hasUnsavedChanges && !readOnly && <span className="uppercase tracking-wide">Unsaved</span>}
+              {hasUnsavedChanges && !readOnly && <span className="uppercase tracking-wide text-blue-500">Unsaved</span>}
               {status && <span className="font-semibold">{status}</span>}
             </div>
-            <div className="flex items-center gap-4 opacity-80">
+            <div className="flex items-center gap-4 opacity-70">
               <span>{lines} lines</span>
               <span>{fileContent.length} chars</span>
               <span>{selectedPath ? getFileTypeDescription(selectedPath) : '-'}</span>

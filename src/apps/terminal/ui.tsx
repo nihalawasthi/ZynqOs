@@ -6,6 +6,7 @@ import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import { WebLinksAddon } from '@xterm/addon-web-links'
 import '@xterm/xterm/css/xterm.css'
+import { useTheme } from '../../hooks/useTheme' // <-- Imported Theme Hook
 
 // Browser WASI shim - pure JS implementation
 import { WASI, File, OpenFile, PreopenDirectory, Directory } from '@bjorn3/browser_wasi_shim'
@@ -79,6 +80,9 @@ export default function TerminalWasi(_: Props) {
   const pythonRemoteModeRef = useRef(false)
   const wasmerReadyRef = useRef(false)
   const [terminalKey, setTerminalKey] = useState(0) // Used to force terminal restart
+  
+  // Bring in the theme state
+  const { isLightMode } = useTheme()
 
   const username = getUsername(cachedProfile)
   const bashCompatCwdRef = useRef(`/home/${username}`)
@@ -442,7 +446,7 @@ export default function TerminalWasi(_: Props) {
       // fds should be an array starting with [stdin, stdout, stderr, ...preopened_dirs]
       const wasi = new WASI(
         [originLabel, ...args],                    // args
-        [],                                         // env
+        [],                                        // env
         [
           new OpenFile(new File(new Uint8Array())), // stdin (fd 0)
           stdout,                                   // stdout (fd 1)
@@ -1826,6 +1830,62 @@ export default function TerminalWasi(_: Props) {
     }
   }
 
+  // --- THEME UPDATE EFFECT ---
+  // This watches the isLightMode variable and updates the xterm theme on the fly
+  useEffect(() => {
+    if (xtermRef.current) {
+      if (isLightMode) {
+        xtermRef.current.options.theme = {
+          background: '#f3f4f6', // Tailwind gray-100
+          foreground: '#111827', // Tailwind gray-900
+          cursor: '#111827',
+          cursorAccent: '#f3f4f6',
+          selectionBackground: '#bfdbfe', // Tailwind blue-200
+          black: '#000000',
+          red: '#b91c1c',
+          green: '#15803d',
+          yellow: '#a16207',
+          blue: '#1d4ed8',
+          magenta: '#7e22ce',
+          cyan: '#0e7490',
+          white: '#111827',
+          brightBlack: '#4b5563',
+          brightRed: '#ef4444',
+          brightGreen: '#22c55e',
+          brightYellow: '#eab308',
+          brightBlue: '#3b82f6',
+          brightMagenta: '#a855f7',
+          brightCyan: '#06b6d4',
+          brightWhite: '#ffffff',
+        };
+      } else {
+        xtermRef.current.options.theme = {
+          background: '#000000',
+          foreground: '#c9d1d9',
+          cursor: '#58a6ff',
+          cursorAccent: '#0d1117',
+          selectionBackground: '#264f78',
+          black: '#0d1117',
+          red: '#ff7b72',
+          green: '#3fb950',
+          yellow: '#d29922',
+          blue: '#58a6ff',
+          magenta: '#bc8cff',
+          cyan: '#39c5cf',
+          white: '#c9d1d9',
+          brightBlack: '#484f58',
+          brightRed: '#ffa198',
+          brightGreen: '#56d364',
+          brightYellow: '#e3b341',
+          brightBlue: '#79c0ff',
+          brightMagenta: '#d2a8ff',
+          brightCyan: '#56d4dd',
+          brightWhite: '#f0f6fc',
+        };
+      }
+    }
+  }, [isLightMode]);
+
   // Initialize xterm.js
   useEffect(() => {
     if (!terminalRef.current || xtermRef.current) return
@@ -1836,7 +1896,30 @@ export default function TerminalWasi(_: Props) {
       fontFamily: '"JetBrains Mono", "Fira Code", "Cascadia Code", Menlo, Monaco, "Courier New", monospace',
       fontSize: 12,
       lineHeight: 1.2,
-      theme: {
+      // Start with the correct theme based on current state
+      theme: isLightMode ? {
+        background: '#f3f4f6', 
+        foreground: '#111827', 
+        cursor: '#111827',
+        cursorAccent: '#f3f4f6',
+        selectionBackground: '#bfdbfe',
+        black: '#000000',
+        red: '#b91c1c',
+        green: '#15803d',
+        yellow: '#a16207',
+        blue: '#1d4ed8',
+        magenta: '#7e22ce',
+        cyan: '#0e7490',
+        white: '#111827',
+        brightBlack: '#4b5563',
+        brightRed: '#ef4444',
+        brightGreen: '#22c55e',
+        brightYellow: '#eab308',
+        brightBlue: '#3b82f6',
+        brightMagenta: '#a855f7',
+        brightCyan: '#06b6d4',
+        brightWhite: '#ffffff',
+      } : {
         background: '#000000',
         foreground: '#c9d1d9',
         cursor: '#58a6ff',
@@ -2201,7 +2284,7 @@ export default function TerminalWasi(_: Props) {
       xtermRef.current = null
       fitAddonRef.current = null
     }
-  }, [writePrompt])
+  }, [writePrompt, isLightMode]) // Added isLightMode to dependency array
 
   // Fit terminal when container changes
   useEffect(() => {
@@ -2216,7 +2299,7 @@ export default function TerminalWasi(_: Props) {
   }, [])
 
   return (
-    <div key={terminalKey} className="flex flex-col h-full bg-black pb-2 overflow-hidden">
+    <div key={terminalKey} className="flex flex-col h-full bg-[var(--bg-color)] pb-2 overflow-hidden">
       <div
         ref={terminalRef}
         className="flex-1 p-2 pr-0 terminal-scrollbar overflow-hidden"

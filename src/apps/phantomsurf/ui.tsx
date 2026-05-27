@@ -24,7 +24,7 @@ export default function PhantomSurf() {
   const iframeRef = useRef(null)
   const lastRequestTimeRef = useRef<number>(0)
   const progressIntervalRef = useRef<number | null>(null)
-  const REQUEST_THROTTLE_MS = 1000 // 1 second between requests to avoid rate limiting
+  const REQUEST_THROTTLE_MS = 1000 
 
   const quickLinks = [
     { label: 'Gmail', url: 'https://mail.google.com' },
@@ -161,7 +161,6 @@ export default function PhantomSurf() {
   }
 
   const navigateToUrl = (newUrl: string) => {
-    // Throttle requests to avoid rate limiting
     const now = Date.now()
     if (now - lastRequestTimeRef.current < REQUEST_THROTTLE_MS) {
       setError(`Please wait ${Math.ceil((REQUEST_THROTTLE_MS - (now - lastRequestTimeRef.current)) / 1000)}s before next request`)
@@ -179,7 +178,6 @@ export default function PhantomSurf() {
     setInput(newUrl)
     setShowBrowser(true)
     
-    // Add to history
     setHistory(prev => {
       const newHistory = prev.slice(0, historyIndex + 1)
       newHistory.push(newUrl)
@@ -221,7 +219,6 @@ export default function PhantomSurf() {
       setIsLoading(true)
       setIframeError(false)
       startProgress()
-      // Force reload by triggering onLoad
       if (iframeRef.current) {
         (iframeRef.current as any).src = url
       }
@@ -327,14 +324,14 @@ export default function PhantomSurf() {
     }}>
       <div style={{
         width: 420,
-        background: '#121212',
-        border: '1px solid #333',
+        background: 'var(--bg-color)',
+        border: '1px solid var(--border-color)',
         borderRadius: 12,
         padding: 16,
         boxShadow: '0 20px 40px rgba(0,0,0,0.45)'
       }}>
-        <div style={{ color: '#fff', fontSize: 16, marginBottom: 8 }}>Open HTML from VFS</div>
-        <div style={{ color: '#777', fontSize: 12, marginBottom: 10 }}>Example: /home/index.html</div>
+        <div style={{ color: 'var(--text-color)', fontSize: 16, marginBottom: 8 }}>Open HTML from VFS</div>
+        <div style={{ color: 'var(--text-color)', opacity: 0.6, fontSize: 12, marginBottom: 10 }}>Example: /home/index.html</div>
         <input
           value={vfsPath}
           onChange={(e) => setVfsPath(e.target.value)}
@@ -343,9 +340,9 @@ export default function PhantomSurf() {
             width: '100%',
             padding: '8px 10px',
             borderRadius: 8,
-            border: '1px solid #333',
-            background: '#1b1b1b',
-            color: '#fff',
+            border: '1px solid var(--border-color)',
+            background: 'var(--bg-color)',
+            color: 'var(--text-color)',
             outline: 'none'
           }}
           onKeyDown={(e) => {
@@ -355,9 +352,9 @@ export default function PhantomSurf() {
         {vfsError && (
           <div style={{ color: '#ff8a8a', fontSize: 12, marginTop: 8 }}>{vfsError}</div>
         )}
-        <div style={{ marginTop: 12, maxHeight: 160, overflowY: 'auto', borderTop: '1px solid #222', paddingTop: 10 }}>
+        <div style={{ marginTop: 12, maxHeight: 160, overflowY: 'auto', borderTop: '1px solid var(--border-color)', paddingTop: 10 }}>
           {vfsLoading ? (
-            <div style={{ color: '#777', fontSize: 12 }}>Loading VFS files...</div>
+            <div style={{ color: 'var(--text-color)', opacity: 0.6, fontSize: 12 }}>Loading VFS files...</div>
           ) : vfsFiles.length > 0 ? (
             vfsFiles.map((path) => (
               <button
@@ -371,7 +368,8 @@ export default function PhantomSurf() {
                   borderRadius: 6,
                   border: '1px solid transparent',
                   background: 'transparent',
-                  color: '#cfcfcf',
+                  color: 'var(--text-color)',
+                  opacity: 0.8,
                   cursor: 'pointer'
                 }}
               >
@@ -379,7 +377,7 @@ export default function PhantomSurf() {
               </button>
             ))
           ) : (
-            <div style={{ color: '#777', fontSize: 12 }}>No HTML files found in /home</div>
+            <div style={{ color: 'var(--text-color)', opacity: 0.6, fontSize: 12 }}>No HTML files found in /home</div>
           )}
         </div>
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 14 }}>
@@ -388,9 +386,10 @@ export default function PhantomSurf() {
             style={{
               padding: '6px 12px',
               borderRadius: 6,
-              border: '1px solid #333',
-              background: '#1f1f1f',
-              color: '#aaa',
+              border: '1px solid var(--border-color)',
+              background: 'var(--bg-color)',
+              color: 'var(--text-color)',
+              opacity: 0.8,
               cursor: 'pointer'
             }}
           >
@@ -427,10 +426,10 @@ export default function PhantomSurf() {
         className={clsx(
           "relative flex flex-col items-center justify-between",
           "w-[70px] h-[40px] rounded-[4px] px-[6px] py-[8px]",
-          "bg-[#2a2a2a] border-t border-[#383838]",
+          "bg-[var(--bg-color)] border border-[var(--border-color)]", // <-- Updated to variables
           "transition-all duration-100 ease-linear",
           active &&
-          "mt-[6px] rounded-b-[4px] border-green-400 border-2 shadow-[inset_0_-20px_15px_0_rgba(0,0,0,0.5)]"
+          "mt-[6px] rounded-b-[4px] border-green-400 border-2 shadow-[inset_0_-20px_15px_0_rgba(0,0,0,0.2)]"
         )}
         style={{
           transform: active
@@ -439,24 +438,22 @@ export default function PhantomSurf() {
           transformOrigin: "50% 40%",
         }}
       >
-  {/* Top-right circle */}
-  <div
-    className={clsx(
-      "absolute top-[4px] right-[4px] w-[6px] h-[6px] rounded-full",
-      "transition-all duration-150",
-      active
-        ? "bg-green-400 shadow-[0_0_6px_rgba(37,138,195,0.8)]"
-        : "bg-white/20"
-    )}
-  />
-        {/* Title text */}
+        <div
+          className={clsx(
+            "absolute top-[4px] right-[4px] w-[6px] h-[6px] rounded-full",
+            "transition-all duration-150",
+            active
+              ? "bg-green-400 shadow-[0_0_6px_rgba(37,138,195,0.8)]"
+              : "bg-gray-400/50"
+          )}
+        />
         <span
           className={clsx(
             "font-extrabold uppercase text-[15px]",
             "transition-all duration-100 ease-linear",
             active
-              ? "text-green-400/50 drop-shadow-[0_0_8px_rgb(37,138,195),1px_1px_2px_black]"
-              : "text-white/40"
+              ? "text-green-500"
+              : "text-[var(--text-color)] opacity-50"
           )}
         >
           {label}
@@ -465,20 +462,16 @@ export default function PhantomSurf() {
     );
   };
 
-  const handleBack = () => {
-    goBack()
-  }
-
   if (showBrowser) {
     const suggestions = getSuggestions(input)
 
     return (
-      <div style={{ height: '100%', display: 'flex', flexDirection: 'column', background: '#1a1a1a' }}>
+      <div style={{ height: '100%', display: 'flex', flexDirection: 'column', background: 'var(--bg-color)' }}>
         {/* Browser Navigation Bar */}
         <div style={{
           padding: '8px 12px',
-          background: '#0a0a0a',
-          borderBottom: '1px solid #333',
+          background: 'var(--bg-color)',
+          borderBottom: '1px solid var(--border-color)',
           display: 'flex',
           alignItems: 'center',
           gap: 8
@@ -486,12 +479,12 @@ export default function PhantomSurf() {
           <button
             onClick={goBack}
             disabled={historyIndex <= 0}
-            className='flex items-center justify-center hover:bg-gray-800 rounded-full p-4'
+            className='flex items-center justify-center hover:bg-gray-500/20 rounded-full p-4'
             style={{
-              color: historyIndex <= 0 ? '#555' : '#aaa',
+              color: 'var(--text-color)',
               cursor: historyIndex <= 0 ? 'not-allowed' : 'pointer',
               fontSize: 14,
-              opacity: historyIndex <= 0 ? 0.5 : 1,
+              opacity: historyIndex <= 0 ? 0.3 : 0.7,
             }}
           >
             <svg fill="currentColor" height="18px" width="18px" version="1.1" id="Capa_1" xmlns="http://www.w3.org/2000/svg" xmlnsXlink="http://www.w3.org/1999/xlink" viewBox="0 0 219.151 219.151" xmlSpace="preserve"><g id="SVGRepo_bgCarrier" strokeWidth="0"></g><g id="SVGRepo_tracerCarrier" strokeLinecap="round" strokeLinejoin="round"></g><g id="SVGRepo_iconCarrier"> <g> <path d="M109.576,219.151c60.419,0,109.573-49.156,109.573-109.576C219.149,49.156,169.995,0,109.576,0S0.002,49.156,0.002,109.575 C0.002,169.995,49.157,219.151,109.576,219.151z M109.576,15c52.148,0,94.573,42.426,94.574,94.575 c0,52.149-42.425,94.575-94.574,94.576c-52.148-0.001-94.573-42.427-94.573-94.577C15.003,57.427,57.428,15,109.576,15z"></path> <path d="M94.861,156.507c2.929,2.928,7.678,2.927,10.606,0c2.93-2.93,2.93-7.678-0.001-10.608l-28.82-28.819l83.457-0.008 c4.142-0.001,7.499-3.358,7.499-7.502c-0.001-4.142-3.358-7.498-7.5-7.498l-83.46,0.008l28.827-28.825 c2.929-2.929,2.929-7.679,0-10.607c-1.465-1.464-3.384-2.197-5.304-2.197c-1.919,0-3.838,0.733-5.303,2.196l-41.629,41.628 c-1.407,1.406-2.197,3.313-2.197,5.303c0.001,1.99,0.791,3.896,2.198,5.305L94.861,156.507z"></path> </g> </g></svg>
@@ -499,24 +492,24 @@ export default function PhantomSurf() {
           <button
             onClick={goForward}
             disabled={historyIndex >= history.length - 1}
-            className='flex items-center justify-center hover:bg-gray-800 rounded-full p-4'
+            className='flex items-center justify-center hover:bg-gray-500/20 rounded-full p-4'
             style={{
-              color: historyIndex >= history.length - 1 ? '#555' : '#aaa',
+              color: 'var(--text-color)',
               cursor: historyIndex >= history.length - 1 ? 'not-allowed' : 'pointer',
               fontSize: 14,
-              opacity: historyIndex >= history.length - 1 ? 0.5 : 1,
+              opacity: historyIndex >= history.length - 1 ? 0.3 : 0.7,
             }}
           >
             <svg fill="currentColor" height="18px" width="18px" version="1.1" id="Capa_1" xmlns="http://www.w3.org/2000/svg" xmlnsXlink="http://www.w3.org/1999/xlink" viewBox="0 0 219.151 219.151" xmlSpace="preserve" transform="matrix(-1, 0, 0, 1, 0, 0)"><g id="SVGRepo_bgCarrier" strokeWidth="0"></g><g id="SVGRepo_tracerCarrier" strokeLinecap="round" strokeLinejoin="round"></g><g id="SVGRepo_iconCarrier"> <g> <path d="M109.576,219.151c60.419,0,109.573-49.156,109.573-109.576C219.149,49.156,169.995,0,109.576,0S0.002,49.156,0.002,109.575 C0.002,169.995,49.157,219.151,109.576,219.151z M109.576,15c52.148,0,94.573,42.426,94.574,94.575 c0,52.149-42.425,94.575-94.574,94.576c-52.148-0.001-94.573-42.427-94.573-94.577C15.003,57.427,57.428,15,109.576,15z"></path> <path d="M94.861,156.507c2.929,2.928,7.678,2.927,10.606,0c2.93-2.93,2.93-7.678-0.001-10.608l-28.82-28.819l83.457-0.008 c4.142-0.001,7.499-3.358,7.499-7.502c-0.001-4.142-3.358-7.498-7.5-7.498l-83.46,0.008l28.827-28.825 c2.929-2.929,2.929-7.679,0-10.607c-1.465-1.464-3.384-2.197-5.304-2.197c-1.919,0-3.838,0.733-5.303,2.196l-41.629,41.628 c-1.407,1.406-2.197,3.313-2.197,5.303c0.001,1.99,0.791,3.896,2.198,5.305L94.861,156.507z"></path> </g> </g></svg>
           </button>
           <button
             onClick={refresh}
-            className='flex items-center justify-center hover:bg-gray-800 rounded-full p-4'
+            className='flex items-center justify-center hover:bg-gray-500/20 rounded-full p-4'
             style={{
-              color: '#aaa',
+              color: 'var(--text-color)',
               cursor: 'pointer',
               fontSize: 14,
-              opacity: 1,
+              opacity: 0.7,
             }}
             title="Refresh page"
           >
@@ -524,12 +517,12 @@ export default function PhantomSurf() {
           </button>
           <button
             onClick={goHome}
-            className='flex items-center justify-center hover:bg-gray-800 rounded-full p-4'
+            className='flex items-center justify-center hover:bg-gray-500/20 rounded-full p-4'
             style={{
-              color: '#aaa',
+              color: 'var(--text-color)',
               cursor: 'pointer',
               fontSize: 14,
-              opacity: 1,
+              opacity: 0.7,
             }}
             title="Go to home"
           >
@@ -546,55 +539,12 @@ export default function PhantomSurf() {
                   width: '100%',
                   padding: '8px 16px',
                   borderRadius: 20,
-                  border: '1px solid #444',
-                  background: '#222',
-                  color: '#fff',
+                  border: '1px solid var(--border-color)',
+                  background: 'var(--bg-color)',
+                  color: 'var(--text-color)',
                   outline: 'none'
                 }}
               />
-              {/* {suggestions.length > 0 && (
-                <div style={{
-                  position: 'absolute',
-                  top: 'calc(100% + 8px)',
-                  left: 0,
-                  right: 0,
-                  background: '#111',
-                  border: '1px solid #333',
-                  borderRadius: 10,
-                  padding: 6,
-                  zIndex: 1000,
-                  boxShadow: '0 10px 30px rgba(0,0,0,0.4)'
-                }}>
-                  {suggestions.map(item => (
-                    <button
-                      key={item.id}
-                      type="button"
-                      onClick={() => {
-                        setInput(item.value)
-                        navigateToUrl(item.url)
-                      }}
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: 8,
-                        width: '100%',
-                        textAlign: 'left',
-                        padding: '8px 10px',
-                        borderRadius: 8,
-                        border: 'none',
-                        background: 'transparent',
-                        color: '#ddd',
-                        cursor: 'pointer'
-                      }}
-                    >
-                      <span style={{ fontSize: 12, color: '#777' }}>
-                        {item.kind === 'history' ? 'History' : item.kind === 'quick' ? 'Quick' : 'Go'}
-                      </span>
-                      <span style={{ fontSize: 13 }}>{item.label}</span>
-                    </button>
-                  ))}
-                </div>
-              )} */}
             </div>
             <button
               type="submit"
@@ -613,7 +563,7 @@ export default function PhantomSurf() {
           </form>
 
           <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginLeft: 8 }}>
-            <div className="flex items-center gap-[6px] bg-black p-[6px] rounded-[8px] h-[40px] overflow-hidden scale-75 origin-right">
+            <div className="flex items-center gap-[6px] bg-[var(--bg-color)] border border-[var(--border-color)] p-[6px] rounded-[8px] h-[40px] overflow-hidden scale-75 origin-right">
               <ToggleButton label="VPN" active={vpn} onToggle={() => setVpn(!vpn)} />
               <ToggleButton label="TOR" active={tor} onToggle={() => setTor(!tor)} />
             </div>
@@ -622,11 +572,12 @@ export default function PhantomSurf() {
               style={{
                 padding: '6px 12px',
                 borderRadius: 6,
-                border: '1px solid #444',
-                background: '#222',
-                color: '#aaa',
+                border: '1px solid var(--border-color)',
+                background: 'var(--bg-color)',
+                color: 'var(--text-color)',
                 cursor: 'pointer',
-                fontSize: 13
+                fontSize: 13,
+                opacity: 0.8
               }}
             >
               📁 HTML
@@ -644,7 +595,7 @@ export default function PhantomSurf() {
               left: 0,
               right: 0,
               height: 3,
-              background: '#333',
+              background: 'var(--border-color)',
               zIndex: 999,
               overflow: 'hidden'
             }}>
@@ -660,7 +611,7 @@ export default function PhantomSurf() {
           {error && (
             <div style={{
               padding: '12px 16px',
-              background: '#3a2a2a',
+              background: 'var(--bg-color)',
               borderBottom: '1px solid #8b5a5a',
               color: '#ff9999',
               fontSize: 13,
@@ -693,7 +644,7 @@ export default function PhantomSurf() {
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              background: 'rgba(0, 0, 0, 0.3)',
+              background: 'rgba(0, 0, 0, 0.1)',
               zIndex: 900,
               backdropFilter: 'blur(2px)',
               pointerEvents: 'none'
@@ -703,12 +654,12 @@ export default function PhantomSurf() {
                   width: 40,
                   height: 40,
                   margin: '0 auto 12px',
-                  border: '3px solid rgba(255,255,255,0.2)',
+                  border: '3px solid rgba(102, 126, 234, 0.2)',
                   borderTop: '3px solid #667eea',
                   borderRadius: '50%',
                   animation: 'spin 1s linear infinite'
                 }} />
-                <p style={{ color: '#aaa', margin: 0, fontSize: 12 }}>
+                <p style={{ color: 'var(--text-color)', opacity: 0.8, margin: 0, fontSize: 12 }}>
                   {Math.round(progress)}%
                 </p>
               </div>
@@ -724,10 +675,10 @@ export default function PhantomSurf() {
               gap: 20,
               padding: 40,
               textAlign: 'center',
-              background: '#1a1a1a'
+              background: 'var(--bg-color)'
             }}>
-              <h2 style={{ color: '#fff', fontSize: 24, margin: 0 }}>⚠️ Website Blocked</h2>
-              <p style={{ color: '#aaa', margin: 0, maxWidth: 400 }}>
+              <h2 style={{ color: 'var(--text-color)', fontSize: 24, margin: 0 }}>⚠️ Website Blocked</h2>
+              <p style={{ color: 'var(--text-color)', opacity: 0.7, margin: 0, maxWidth: 400 }}>
                 This website doesn't allow being embedded in iframes for security reasons. You can still open it in a new window.
               </p>
               <div style={{ display: 'flex', gap: 12 }}>
@@ -753,9 +704,9 @@ export default function PhantomSurf() {
                   style={{
                     padding: '10px 24px',
                     borderRadius: 6,
-                    border: '1px solid #444',
-                    background: '#222',
-                    color: '#aaa',
+                    border: '1px solid var(--border-color)',
+                    background: 'var(--bg-color)',
+                    color: 'var(--text-color)',
                     cursor: 'pointer'
                   }}
                 >
@@ -801,7 +752,7 @@ export default function PhantomSurf() {
       height: '100%',
       display: 'flex',
       flexDirection: 'column',
-      background: '#000000',
+      background: 'var(--bg-color)',
       position: 'relative',
       overflow: 'hidden'
     }}>
@@ -815,7 +766,7 @@ export default function PhantomSurf() {
         zIndex: 10
       }}>
 
-        <div className="flex items-center gap-[6px] bg-black p-[6px] rounded-[8px] h-[54px] overflow-hidden">
+        <div className="flex items-center gap-[6px] bg-[var(--bg-color)] border border-[var(--border-color)] p-[6px] rounded-[8px] h-[54px] overflow-hidden">
           <ToggleButton label="VPN" active={vpn} onToggle={() => setVpn(!vpn)} />
           <ToggleButton label="TOR" active={tor} onToggle={() => setTor(!tor)} />
         </div>
@@ -838,7 +789,7 @@ export default function PhantomSurf() {
           <h1 style={{
             fontSize: 48,
             fontWeight: 700,
-            color: '#fff',
+            color: 'var(--text-color)',
             margin: 0,
             textAlign: 'center',
             letterSpacing: 1
@@ -851,9 +802,9 @@ export default function PhantomSurf() {
               style={{
                 display: 'flex',
                 alignItems: 'center',
-                background: '#222',
+                background: 'var(--bg-color)',
                 borderRadius: 50,
-                border: '1px solid rgba(255,255,255,0.1)',
+                border: '1px solid var(--border-color)',
                 gap: 12,
                 marginBottom: 24
               }}>
@@ -867,7 +818,7 @@ export default function PhantomSurf() {
                     padding: '12px 20px',
                     background: 'transparent',
                     border: 'none',
-                    color: '#fff',
+                    color: 'var(--text-color)',
                     outline: 'none',
                     fontSize: 14
                   }}
@@ -878,8 +829,8 @@ export default function PhantomSurf() {
                     top: 'calc(100% + 8px)',
                     left: 0,
                     right: 0,
-                    background: '#111',
-                    border: '1px solid #333',
+                    background: 'var(--bg-color)',
+                    border: '1px solid var(--border-color)',
                     borderRadius: 10,
                     padding: 6,
                     zIndex: 10,
@@ -903,11 +854,11 @@ export default function PhantomSurf() {
                           borderRadius: 8,
                           border: 'none',
                           background: 'transparent',
-                          color: '#ddd',
+                          color: 'var(--text-color)',
                           cursor: 'pointer'
                         }}
                       >
-                        <span style={{ fontSize: 12, color: '#777' }}>
+                        <span style={{ fontSize: 12, color: 'var(--text-color)', opacity: 0.5 }}>
                           {item.kind === 'history' ? 'History' : item.kind === 'quick' ? 'Quick' : 'Go'}
                         </span>
                         <span style={{ fontSize: 13 }}>{item.label}</span>
@@ -955,15 +906,16 @@ export default function PhantomSurf() {
         display: 'flex',
         justifyContent: 'space-between',
         alignItems: 'center',
-        borderTop: '1px solid rgba(255,255,255,0.05)',
+        borderTop: '1px solid var(--border-color)',
         fontSize: 12,
-        color: '#666'
+        color: 'var(--text-color)',
+        opacity: 0.6
       }}>
         <span>© 2025 PhantomSurf. All rights reserved.</span>
         <div style={{ display: 'flex', gap: 20 }}>
-          <a href="#" style={{ color: '#888', textDecoration: 'none' }}>Terms</a>
-          <a href="#" style={{ color: '#888', textDecoration: 'none' }}>Privacy</a>
-          <a href="#" style={{ color: '#888', textDecoration: 'none' }}>Contact</a>
+          <a href="#" style={{ color: 'var(--text-color)', textDecoration: 'none' }}>Terms</a>
+          <a href="#" style={{ color: 'var(--text-color)', textDecoration: 'none' }}>Privacy</a>
+          <a href="#" style={{ color: 'var(--text-color)', textDecoration: 'none' }}>Contact</a>
         </div>
       </div>
     </div>
@@ -980,22 +932,20 @@ function QuickButton({ icon, label, onClick }: { icon: string | React.ReactNode;
         gap: 8,
         padding: '10px 20px',
         borderRadius: 25,
-        border: '1px solid rgba(255,255,255,0.1)',
-        background: 'rgba(255,255,255,0.05)',
-        color: '#aaa',
+        border: '1px solid var(--border-color)',
+        background: 'var(--taskbar-bg)',
+        color: 'var(--text-color)',
         cursor: 'pointer',
         fontSize: 14,
         transition: 'all 0.3s',
         backdropFilter: 'blur(10px)'
       }}
       onMouseEnter={(e) => {
-        e.currentTarget.style.background = 'rgba(255,255,255,0.1)'
-        e.currentTarget.style.borderColor = 'rgba(102,126,234,0.3)'
+        e.currentTarget.style.background = 'var(--border-color)'
         e.currentTarget.style.transform = 'translateY(-2px)'
       }}
       onMouseLeave={(e) => {
-        e.currentTarget.style.background = 'rgba(255,255,255,0.05)'
-        e.currentTarget.style.borderColor = 'rgba(255,255,255,0.1)'
+        e.currentTarget.style.background = 'var(--taskbar-bg)'
         e.currentTarget.style.transform = 'translateY(0)'
       }}
     >

@@ -1033,6 +1033,14 @@ body,
 
 body {
   font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
+  background-image: var(--wallpaper);
+  background-color: var(--bg-color); /* Fallback if image fails */
+  background-position: center center;
+  background-repeat: no-repeat;
+
+  background-size: 900px auto;
+  color: var(--text-color);
+  transition: background-image 0.3s ease, background-color 0.3s ease, color 0.3s ease;
 }
 
 /* Toast Progress Animation */

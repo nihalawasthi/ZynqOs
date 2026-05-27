@@ -28,11 +28,24 @@ export default function WasmRunnerUI() {
   }
 
   return (
-    <div className="p-4 text-sm text-gray-200">
+    <div className="p-4 text-sm text-[var(--text-color)] bg-[var(--bg-color)] h-full transition-colors duration-300">
       <h2 className="text-lg font-semibold mb-2">WASM/WASI Runner</h2>
-      <p className="mb-3">Select a `.wasm` file or `.zip` (for wasm-bindgen) to upload and run instantly.</p>
-      <input type="file" accept=".wasm,.zip" onChange={handleFile} className="mb-3" />
-      <div className="text-xs text-gray-400">{status}</div>
+      <p className="mb-3 opacity-80">
+        Select a `.wasm` file or `.zip` (for wasm-bindgen) to upload and run instantly.
+      </p>
+      <input 
+        type="file" 
+        accept=".wasm,.zip" 
+        onChange={handleFile} 
+        className="mb-3 block w-full text-sm text-[var(--text-color)]
+          file:mr-4 file:py-2 file:px-4
+          file:rounded-md file:border-0
+          file:text-sm file:font-semibold
+          file:bg-blue-600 file:text-white
+          hover:file:bg-blue-700
+          cursor-pointer" 
+      />
+      <div className="text-xs opacity-60 font-mono">{status}</div>
     </div>
   )
 }
