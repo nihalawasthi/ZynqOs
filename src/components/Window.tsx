@@ -155,8 +155,18 @@ export default function Window({
         if (isTiled) return // Don't allow resizing when tiled
         const deltaX = e.clientX - resizeStart.x
         const deltaY = e.clientY - resizeStart.y
-        setResizedWidth(Math.max(600, resizeStart.width + deltaX))
-        setResizedHeight(Math.max(400, resizeStart.height + deltaY))
+       setResizedWidth(
+  Math.max(
+    Math.min(600, window.innerWidth * 0.9),
+    resizeStart.width + deltaX
+  )
+)
+       setResizedHeight(
+  Math.max(
+    Math.min(400, window.innerHeight * 0.7),
+    resizeStart.height + deltaY
+  )
+)
       }
     }
 
@@ -306,10 +316,15 @@ export default function Window({
       zIndex: 10
     }
     : {
-      left: `${position.x}px`,
-      top: `${position.y}px`,
-      width: resizedWidth ? `${resizedWidth}px` : '800px',
-      height: resizedHeight ? `${resizedHeight}px` : '600px',
+     left: window.innerWidth < 640 ? 8 : position.x,
+top: window.innerWidth < 640 ? 8 : position.y,
+     width: resizedWidth
+  ? `${Math.min(resizedWidth, window.innerWidth * 0.96)}px`
+  : '96vw',
+
+height: resizedHeight
+  ? `${Math.min(resizedHeight, window.innerHeight * 0.85)}px`
+  : '85vh',
       maxWidth: '90vw',
       maxHeight: '90vh',
       zIndex: isActive ? 999 : 10
@@ -322,8 +337,8 @@ export default function Window({
         role="dialog"
         aria-label={title}
         tabIndex={0}
-        className={`absolute select-none will-change-transform bg-[#1F1F1F] flex flex-col
-          ${isMaximized ? 'inset-0 rounded-none' : 'rounded-[5px]'}
+     className={`absolute select-none will-change-transform bg-[#1F1F1F] flex flex-col overflow-hidden max-w-[96vw] max-h-[85vh]
+  ${isMaximized ? 'inset-0 rounded-none' : 'rounded-[5px]'}
           ${isDragging || isResizing ? '' : 'transition-all duration-300'}
           ${isTransferring ? 'opacity-70' : 'opacity-100'}
           ${isTiled ? 'pointer-events-auto' : ''}
@@ -496,7 +511,7 @@ export default function Window({
 
       {/* Content area — glass sheet with subtle border */}
       <div
-        className="bg-gray-700 flex-1 overflow-hidden"
+        className="bg-gray-700 flex-1 overflow-auto"
         style={{
           borderBottomLeftRadius: isMaximized ? 0 : 5,
           borderBottomRightRadius: isMaximized ? 0 : 5,

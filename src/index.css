@@ -1,10 +1,18 @@
 @import "tailwindcss";
 
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
 html,
 body,
 #root {
   height: 100%;
+  overflow-x: hidden;
+  max-width: 100%;
 }
+
+
 
 /* ZynqOS boot loader overlay */
 .zynq-loader-overlay {

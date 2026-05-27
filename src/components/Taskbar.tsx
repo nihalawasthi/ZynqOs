@@ -70,10 +70,10 @@ export default function Taskbar() {
       <div className="mr-auto ml-4">
         {/* future components */}
       </div>
-      <div className="absolute bottom-1 left-1/2 transform -translate-x-1/2 w-[calc(60%-48px)] max-w-[980px] px-4 py-2 bg-[#1A1A1A] backdrop-blur-md border border-white/10 rounded-full shadow-2xl flex items-center gap-2">
+      <div className="absolute bottom-1 left-1/2 transform -translate-x-1/2 w-[calc(100%-16px)] sm:w-[calc(60%-48px)] max-w-[980px] px-4 py-2 bg-[#1A1A1A] backdrop-blur-md border border-white/10 rounded-full shadow-2xl flex items-center gap-2">
         <StartMenu />
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 overflow-x-auto scrollbar-none">
           <button
             onClick={() => handleAppClick('file-browser', 'File Browser', window.__FILE_BROWSER_UI__ ?? <div>Loading...</div>)}
             title={isAppMinimized('file-browser') ? 'Restore File Browser' : 'File Browser'}
@@ -118,7 +118,7 @@ export default function Taskbar() {
 
         {/* Dynamic apps (opened but not in fixed taskbar) */}
         {dynamicOpenedApps.length > 0 && (
-          <div className="flex items-center gap-2 px-2 border-l border-gray-700/50">
+         <div className="flex items-center gap-2 px-2 border-l border-gray-700/50 overflow-x-auto scrollbar-none">
             {dynamicOpenedApps.map(app => (
               <button
                 key={app.id}
@@ -137,10 +137,10 @@ export default function Taskbar() {
           <Clock />
         </div>
       </div>
-      <div className="ml-auto mr-4 flex items-center gap-2">
-        <SessionTimerBadge />
-        <MultiWindowIndicator />
-      </div>
+     <div className="hidden sm:flex ml-auto mr-4 items-center gap-2">
+  <SessionTimerBadge/>
+  <MultiWindowIndicator/>
+</div>
     </div>
   )
 }

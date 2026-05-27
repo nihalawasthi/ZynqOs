@@ -569,7 +569,9 @@ export default function StartMenu() {
 
                     <div
                         ref={menuRef}
-                        className="flex fixed bottom-20 left-1/2 -translate-x-1/2 min-w-[calc(60%-48px)] max-w-[980px] gap-1 z-50"
+                       className="flex fixed bottom-20 left-1/2 -translate-x-1/2 w-[calc(100vw-16px)] sm:min-w-[calc(60%-48px)] max-w-[980px] gap-1 z-50 flex-col sm:flex-row"
+
+
                     >
                         {/* Hidden file input for imports */}
                         <input
@@ -581,7 +583,7 @@ export default function StartMenu() {
                         />
 
                         {/* Main Menu */}
-                        <div className="w-[420px] bg-black backdrop-blur-xl border border-[#333] rounded-xl shadow-2xl overflow-hidden">
+                        <div className="w-full sm:w-[420px] bg-black backdrop-blur-xl border border-[#333] rounded-xl shadow-2xl overflow-hidden">
                             {/* Search bar */}
                             <div className="px-5 py-4">
                                 <div className="relative">
@@ -702,7 +704,7 @@ export default function StartMenu() {
                                                     </button>
                                                 </div>
                                             </div>
-                                            <div className="grid grid-cols-5 gap-2">
+                                            <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-2">
                                                 {pinnedApps.map((app) => {
                                                     const selected = selectedForRemoval.has(app.id)
                                                     const isDragOver = dragOverId === app.id
@@ -810,7 +812,7 @@ export default function StartMenu() {
                         </div>
 
                         {/* User Profile Panel */}
-                        <div className="w-56 bg-black backdrop-blur-xl border border-[#333] rounded-xl shadow-2xl overflow-hidden flex flex-col">
+                        <div className="w-full sm:w-56 bg-black backdrop-blur-xl border border-[#333] rounded-xl shadow-2xl overflow-hidden flex flex-col">
                             {/* Profile Header */}
                             <div className="p-5 pb-0 bg-black relative border-b border-[#333]">
                                 {/* About & setting */}
