@@ -108,13 +108,17 @@ export default function WednesdayUI() {
             body: JSON.stringify({ model: 'llama-3.1-8b-instant', messages: [{ role: 'user', content: currentCommand }] })
           }, 'Groq')
           aiResponseText = data.choices[0].message.content
-        } else if (selectedModel === 'gemini' && apiKeys.gemini) {
-          const data = await fetchWithDetails(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKeys.gemini}`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ contents: [{ parts: [{ text: currentCommand }] }] })
-          }, 'Gemini')
-          aiResponseText = data.candidates[0].content.parts[0].text
+        } else if (selectedModel === 'gemini') {
+   const data = await fetchWithDetails('https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=' + apiKeys.gemini, {
+    method: 'POST',
+    
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ contents: [{ parts: [{ text: currentCommand }] }] })
+   
+  },'gemini'
+);
+  aiResponseText = data.candidates[0].content.parts[0].text;
+
         } else if (selectedModel === 'openai' && apiKeys.openai) {
           const data = await fetchWithDetails('https://api.openai.com/v1/chat/completions', {
             method: 'POST',
