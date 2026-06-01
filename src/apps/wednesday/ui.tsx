@@ -108,13 +108,17 @@ export default function WednesdayUI() {
             body: JSON.stringify({ model: 'llama-3.1-8b-instant', messages: [{ role: 'user', content: currentCommand }] })
           }, 'Groq')
           aiResponseText = data.choices[0].message.content
-        } else if (selectedModel === 'gemini' && apiKeys.gemini) {
-          const data = await fetchWithDetails(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKeys.gemini}`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ contents: [{ parts: [{ text: currentCommand }] }] })
-          }, 'Gemini')
-          aiResponseText = data.candidates[0].content.parts[0].text
+        } else if (selectedModel === 'gemini') {
+   const data = await fetchWithDetails('https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=' + apiKeys.gemini, {
+    method: 'POST',
+    
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ contents: [{ parts: [{ text: currentCommand }] }] })
+   
+  },'gemini'
+);
+  aiResponseText = data.candidates[0].content.parts[0].text;
+
         } else if (selectedModel === 'openai' && apiKeys.openai) {
           const data = await fetchWithDetails('https://api.openai.com/v1/chat/completions', {
             method: 'POST',
@@ -163,6 +167,24 @@ export default function WednesdayUI() {
   function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]; if (file) { const fileMsg: Message = { id: Date.now().toString(), type: 'system', content: `📎 Attached file: ${file.name}`, timestamp: new Date() }; setMessages(prev => [...prev, fileMsg]); e.target.value = '' }
   }
+  function handleSpeech() {
+  const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+  if (!SpeechRecognition) {
+    alert("Speech Recognition is not supported in this browser.");
+    return;
+  }
+  
+  const recognition = new SpeechRecognition();
+  recognition.continuous = false;
+  recognition.lang = 'en-US';
+  
+  recognition.onresult = (event: any) => {
+    const transcript = event.results[0][0].transcript;
+    setCommand(transcript);
+  };
+  
+  recognition.start();
+}
 
   return (
     <div className='h-full bg-[var(--bg-color)] text-[var(--text-color)] flex flex-col font-mono overflow-hidden relative'>
@@ -264,7 +286,7 @@ export default function WednesdayUI() {
               <button className='p-1 hover:bg-gray-500/20 rounded' type='button' onClick={() => setShowSettings(true)}>
                 <i className='fa fa-cog text-[var(--text-color)] opacity-60 hover:opacity-100 hover:text-blue-500 transition-colors' />
               </button>
-              <button className='p-1 hover:bg-gray-500/20 rounded' type='button'>
+              <button className='p-1 hover:bg-gray-500/20 rounded' type='button'onClick={handleSpeech}>
                 <i className='fa fa-microphone text-[var(--text-color)] opacity-60 hover:opacity-100 transition-colors' />
               </button>
               <button className='p-1 hover:bg-gray-500/20 rounded' type='button' onClick={insertAtSign}>
