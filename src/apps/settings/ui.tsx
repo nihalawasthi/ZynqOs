@@ -674,6 +674,19 @@ export default function SettingsUI() {
         window.location.reload()
     }
 
+    const handleSystemReset = () => {
+        try {
+            window.localStorage.removeItem('zynqos_theme')
+            window.localStorage.removeItem('zynqos_wallpaper')
+            window.localStorage.removeItem('zynqos_workspace_positions')
+            window.localStorage.removeItem('zynqos_window_positions')
+            window.localStorage.removeItem('zynqos_layout_positions')
+        } catch (error) {
+            console.error('Failed to clear system defaults storage keys:', error)
+        }
+        window.location.reload()
+    }
+
     const refreshRemoteConflicts = async () => {
         setRemoteConflictLoading(true)
         setRemoteConflictError(null)
@@ -1508,6 +1521,19 @@ export default function SettingsUI() {
                                 })}
                             </div>
                         )}
+                    </div>
+
+                    <div className="border border-red-200 rounded-lg bg-[#e06c75] p-4 text-white shadow-sm">
+                        <div className="flex flex-col gap-3">
+                            <p className="font-semibold text-sm">Factory Reset</p>
+                            <p className="text-[0.85rem] opacity-90">Clear local configuration and restore default layout settings immediately.</p>
+                            <button
+                                onClick={handleSystemReset}
+                                className="w-full px-4 py-3 bg-white text-[#e06c75] font-semibold rounded shadow hover:bg-gray-100 transition cursor-pointer"
+                            >
+                                Reset System Defaults
+                            </button>
+                        </div>
                     </div>
                 </div>
             </div>
