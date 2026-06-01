@@ -1,6 +1,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
 import crypto from 'crypto'
 import cookie from 'cookie'
+import { ENV } from './config'
 import {
   getOrCreateUser,
   updateUserActiveTime,
@@ -17,7 +18,7 @@ type ProviderSession = {
 
 function decodeSession(token: string): ProviderSession | null {
   try {
-    const secret = process.env.SESSION_SECRET || 'dev-default-session-secret-change-in-production'
+    const secret = ENV.SESSION_SECRET
     const parts = token.split('.')
     if (parts.length !== 3) return null
 
