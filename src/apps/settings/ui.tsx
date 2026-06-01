@@ -84,7 +84,31 @@ type SyncStatus = {
 const REMOTE_PY_API_KEY_STORAGE = 'zynqos_remote_python_api_key'
 
 export default function SettingsUI() {
-    const [settings, setSettings] = useState<UserSettings>(DEFAULT_SETTINGS)
+    // 1. Load configuration from localStorage on mount, fall back to defaults
+    const [settings, setSettings] = useState<UserSettings>(() => {
+        try {
+            const savedSettings = localStorage.getItem('zynqos_user_settings')
+            if (savedSettings) {
+                const parsed = JSON.parse(savedSettings)
+                if (parsed && parsed.version === '1.0.0') {
+                    return parsed
+                }
+            }
+        } catch (e) {
+            console.error("Failed to load persistent settings:", e)
+        }
+        return DEFAULT_SETTINGS
+    })
+
+    // 2. Automatically save configuration whenever state values change
+    useEffect(() => {
+        try {
+            localStorage.setItem('zynqos_user_settings', JSON.stringify(settings))
+        } catch (e) {
+            console.error("Failed to persist settings state:", e)
+        }
+    }, [settings])
+
     const [activeTab, setActiveTab] = useState<TabType>('about')
     const [storageStatus, setStorageStatus] = useState<StorageStatus>({ connected: false })
     const [sessionTime, setSessionTime] = useState<string>('0s')
@@ -101,25 +125,26 @@ export default function SettingsUI() {
         error: null,
         pendingChanges: 0
     })
-    const [autoSyncEnabled, setAutoSyncEnabled] = useState(DEFAULT_SETTINGS.sync.autoSyncEnabled)
-    const [autoSyncInterval, setAutoSyncInterval] = useState<number>(DEFAULT_SETTINGS.sync.autoSyncIntervalMinutes)
-    const [remotePythonEnabled, setRemotePythonEnabled] = useState(DEFAULT_SETTINGS.remotePython.enabled)
-    const [remotePythonBaseUrl, setRemotePythonBaseUrl] = useState(DEFAULT_SETTINGS.remotePython.baseUrl || 'http://13.233.236.112:8000')
-    const [remotePythonUserId, setRemotePythonUserId] = useState(DEFAULT_SETTINGS.remotePython.userId)
-    const [remotePythonOverwriteOnPull, setRemotePythonOverwriteOnPull] = useState(DEFAULT_SETTINGS.remotePython.overwriteOnPull)
-    const [remotePythonPullIntervalSec, setRemotePythonPullIntervalSec] = useState(DEFAULT_SETTINGS.remotePython.pullIntervalSec)
-    const [remotePythonApiKey, setRemotePythonApiKey] = useState('')
-    const [remoteConflictFiles, setRemoteConflictFiles] = useState<string[]>([])
-    const [remoteConflictLoading, setRemoteConflictLoading] = useState(false)
-    const [remoteConflictError, setRemoteConflictError] = useState<string | null>(null)
     const [auditSyncStatus, setAuditSyncStatus] = useState({
         syncing: false,
         pendingCount: 0,
         lastSyncTime: null as number | null,
-        autoSync: true
+        autoSync: false
     })
-    const [showSyncedLogs, setShowSyncedLogs] = useState(false)
     const [syncedAuditEntries, setSyncedAuditEntries] = useState<AuditSyncEntry[]>([])
+    const [showSyncedLogs, setShowSyncedLogs] = useState(false)
+    const [remoteConflictLoading, setRemoteConflictLoading] = useState(false)
+    const [remoteConflictError, setRemoteConflictError] = useState<string | null>(null)
+    const [remoteConflictFiles, setRemoteConflictFiles] = useState<string[]>([])
+
+    const [autoSyncEnabled, setAutoSyncEnabled] = useState(settings.sync.autoSyncEnabled)
+    const [autoSyncInterval, setAutoSyncInterval] = useState(settings.sync.autoSyncIntervalMinutes)
+    const [remotePythonEnabled, setRemotePythonEnabled] = useState(settings.remotePython.enabled)
+    const [remotePythonBaseUrl, setRemotePythonBaseUrl] = useState(settings.remotePython.baseUrl)
+    const [remotePythonUserId, setRemotePythonUserId] = useState(settings.remotePython.userId)
+    const [remotePythonOverwriteOnPull, setRemotePythonOverwriteOnPull] = useState(settings.remotePython.overwriteOnPull)
+    const [remotePythonPullIntervalSec, setRemotePythonPullIntervalSec] = useState(settings.remotePython.pullIntervalSec)
+    const [remotePythonApiKey, setRemotePythonApiKey] = useState('')
 
     const { isLightMode, toggleTheme } = useTheme()
 
