@@ -1943,7 +1943,7 @@ export default function TerminalWasi(_: Props) {
         brightWhite: '#f0f6fc',
       },
       allowTransparency: true,
-      scrollback: 10000,
+      scrollback: 5000,
     })
 
     const fitAddon = new FitAddon()
