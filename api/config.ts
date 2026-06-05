@@ -1,3 +1,5 @@
+import crypto from 'crypto'
+
 /**
  * Centralized API Configuration and Constants
  * Eliminates scattered environment variable access and magic strings
@@ -23,7 +25,12 @@ export const ENV = {
   GITHUB_WEBHOOK_SECRET: process.env.GITHUB_WEBHOOK_SECRET || '',
 
   // Session & Security
-  SESSION_SECRET: process.env.SESSION_SECRET || '',
+  SESSION_SECRET: process.env.SESSION_SECRET || (() => {
+    if (process.env.NODE_ENV === 'production') {
+      console.error('[SECURITY] SESSION_SECRET is not set! Using a generated fallback. Set SESSION_SECRET in production.')
+    }
+    return crypto.randomBytes(32).toString('hex')
+  })(),
   VITE_AUTH_REDIRECT_URI: process.env.VITE_AUTH_REDIRECT_URI || 'http://localhost:3000',
 
   // Rate limiting
