@@ -96,9 +96,9 @@ export async function downloadGitHubFile(
 export async function uploadGitHubFile(options: GitHubUploadOptions): Promise<void> {
   const { owner, repo, path, content, message, sha } = options
 
-  // Encode content to base64
+  // Encode content to base64 (skip if already base64 to prevent double encoding)
   const base64Content = typeof content === 'string'
-    ? stringToBase64Legacy(content)
+    ? (() => { try { atob(content); return content; } catch { return stringToBase64Legacy(content); } })()
     : uint8ArrayToBase64(content)
 
   const res = await fetch('/api?route=storage&provider=github&action=upload', {
