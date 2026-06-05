@@ -84,7 +84,6 @@ export default function Taskbar() {
             className={`flex items-center gap-2 px-3 py-1 rounded-[2px] transition text-[var(--text-color)] border border-gray-300/20 ${isAppMinimized('file-browser') ? 'bg-gray-600/50 opacity-75' : 'bg-transparent hover:bg-gray-200/30'}`}
           >
             <span className="text-lg"><i className="fas fa-folder"></i></span>
-            {isAppMinimized('file-browser')}
           </button>
           <button
             onClick={() => handleAppClick('store', 'App Store', window.__STORE_UI__ ?? <div>Loading...</div>)}
@@ -92,7 +91,6 @@ export default function Taskbar() {
             className={`flex items-center gap-2 px-3 py-1 rounded-[2px] transition text-[var(--text-color)] border border-gray-300/20 ${isAppMinimized('store') ? 'bg-gray-600/50 opacity-75' : 'bg-transparent hover:bg-gray-200/30'}`}
           >
             <span className="text-lg"><i className="fa-solid fa-store"></i></span>
-            {isAppMinimized('store')}
           </button>
           <button
             onClick={() => handleAppClick('phantomsurf', 'Phantom Surf', window.__PHANTOMSURF_UI__ ?? <div>Loading...</div>)}
@@ -100,7 +98,6 @@ export default function Taskbar() {
             className={`flex items-center gap-2 px-3 py-1 rounded-[2px] transition text-[var(--text-color)] border border-gray-300/20 ${isAppMinimized('phantomsurf') ? 'bg-gray-600/50 opacity-75' : 'bg-transparent hover:bg-gray-200/30'}`}
           >
             <span className="text-lg"><i className="fas fa-globe"></i></span>
-            {isAppMinimized('phantomsurf')}
           </button>
           <button
             onClick={() => handleAppClick('terminal', 'Terminal', window.__TERMINAL_UI__ ?? <div>Loading Terminal...</div>)}
@@ -108,7 +105,6 @@ export default function Taskbar() {
             className={`flex items-center gap-2 px-3 py-1 rounded-[2px] transition text-[var(--text-color)] border border-gray-300/20 ${isAppMinimized('terminal') ? 'bg-gray-600/50 opacity-75' : 'bg-transparent hover:bg-gray-200/30'}`}
           >
             <span className="text-lg"><i className="fa fa-terminal"></i></span>
-            {isAppMinimized('terminal')}
           </button>
           <button
             onClick={() => handleAppClick('wednesday', 'Wednesday AI', window.__WEDNESDAY_UI__ ?? <div>Loading Wednesday...</div>)}
@@ -116,7 +112,6 @@ export default function Taskbar() {
             className={`flex items-center gap-2 px-3 py-1 rounded-[2px] transition text-[var(--text-color)] border border-gray-300/20 ${isAppMinimized('wednesday') ? 'bg-gray-600/50 opacity-75' : 'bg-transparent hover:bg-gray-200/30'}`}
           >
             <span className="text-lg font-thin"><i className="scale-90 fa-solid fa-wand-magic-sparkles"></i></span>
-            {isAppMinimized('wednesday')}
           </button>
         </div>
 
@@ -131,7 +126,6 @@ export default function Taskbar() {
                 className={`flex items-center gap-2 px-3 py-1 rounded-[2px] transition text-[var(--text-color)] border border-gray-300/20 ${isAppMinimized(app.appType) ? 'bg-gray-600/50 opacity-75' : 'bg-transparent hover:bg-gray-200/30'}`}
               >
                 <span className="text-lg"><i className={getIconForAppType(app.appType)}></i></span>
-                {isAppMinimized(app.appType)}
               </button>
             ))}
           </div>
