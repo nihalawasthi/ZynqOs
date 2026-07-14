@@ -228,6 +228,8 @@ pip install requests
 
 # List installed packages
 pip list
+
+> **Note:** Pyodide supports many Python packages, but packages that require native compiled extensions may not install or function correctly in the browser environment.
 ```
 
 Python can access ZynqOS VFS files using the built-in `open_vfs()` function:
