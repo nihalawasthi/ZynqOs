@@ -554,6 +554,10 @@ export default function TerminalWasi(_: Props) {
       
       current += char
     }
+
+    if (escaped || inSingleQuote || inDoubleQuote) {
+      throw new Error('Unterminated quote or escape sequence')
+    }
     
     if (current) {
       args.push(current)
@@ -564,9 +568,21 @@ export default function TerminalWasi(_: Props) {
 
   // parse and run user-entered command
   async function handleCommandLine(term: Terminal, line: string) {
-    const trimmed = line.trim()
+    const sanitizedLine = line.replace(/[\u0000-\u001F\u007F]/g, ' ')
+    if (sanitizedLine.length > 4096) {
+      writeLine(term, '\x1b[31mCommand exceeds the 4096 character limit\x1b[0m')
+      return
+    }
+
+    const trimmed = sanitizedLine.trim()
     if (!trimmed) return
-    const parts = parseCommandLine(trimmed)
+    let parts: string[]
+    try {
+      parts = parseCommandLine(trimmed)
+    } catch (error) {
+      writeLine(term, `\x1b[31m${String(error)}\x1b[0m`)
+      return
+    }
     const c = parts[0]
     const args = parts.slice(1)
 
@@ -1778,7 +1794,14 @@ export default function TerminalWasi(_: Props) {
         }
       }
 
-      // Try remote tools as fallback for unknown commands (non-sudo only)
+      // Only explicitly supported remote tools may cross the runtime boundary.
+      if (!remoteToolCommands.has(c)) {
+        writeLine(term, `\x1b[31m${c}: command not found\x1b[0m`)
+        writeLine(term, `\x1b[90mTip: Type 'help' for available commands${coiCheck.supported ? " or try running via 'bash -c \\\"command\\\"'" : ''}\x1b[0m`)
+        return
+      }
+
+      // Try remote tools as a fallback for supported commands (non-sudo only)
       try {
         const { getRemotePythonConfig } = await import('../../remotePython/config')
         const remoteConfig = await getRemotePythonConfig()
