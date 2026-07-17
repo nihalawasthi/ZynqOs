@@ -2300,8 +2300,15 @@ export default function TerminalWasi(_: Props) {
 
   return (
     <div key={terminalKey} className="flex flex-col h-full bg-[var(--bg-color)] pb-2 overflow-hidden">
+      <p id="terminal-accessibility-help" className="sr-only">
+        Interactive terminal. Type commands and press Enter to run them. Use the Up and Down arrow keys to navigate command history.
+      </p>
       <div
         ref={terminalRef}
+        role="application"
+        aria-label="ZynqOS terminal"
+        aria-describedby="terminal-accessibility-help"
+        aria-live="polite"
         className="flex-1 p-2 pr-0 terminal-scrollbar overflow-hidden"
         style={{ minHeight: 0, maxHeight: '100%' }}
       />
