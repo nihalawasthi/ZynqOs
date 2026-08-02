@@ -201,7 +201,7 @@ export default function TextEditor() {
         {['file', 'edit', 'view'].map((m) => (
           <div key={m} className="relative">
             <button className={`px-3 py-1 hover:bg-gray-500/20 ${menu.open === m ? 'bg-gray-500/20' : ''}`} onClick={() => setMenu({ open: menu.open === m ? null : m })}>
-              {m.charAt(0).toUpperCase() + m.slice(1)}
+              {m[0].toUpperCase() + m.slice(1)}
             </button>
             {menu.open === m && (
               <div className="absolute top-full left-0 bg-[var(--bg-color)] border border-[var(--border-color)] shadow-lg min-w-40 z-50">
