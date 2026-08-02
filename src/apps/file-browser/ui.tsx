@@ -92,7 +92,7 @@ function LineNumbers({ content, innerRef }: { content: string; innerRef?: React.
       ref={innerRef as any}
       className="w-12 flex flex-col items-end pr-3 pt-4 text-[var(--text-color)] bg-[var(--bg-color)] select-none border-r border-[var(--border-color)] shrink-0 overflow-hidden h-full opacity-60"
     >
-      {lines.map((_, idx) => (
+      {(lines ?? []).map((_, idx) => (
         <div key={idx}>{idx + 1}</div>
       ))}
     </div>

@@ -1534,7 +1534,7 @@ export default function TerminalWasi(_: Props) {
             
             if (c === 'zip') {
               // Resolve file paths to absolute paths
-              const resolvedArgs = cmdArgs.map((arg) => {
+              const resolvedArgs = (cmdArgs ?? []).map((arg) => {
                 if (!arg.startsWith('-')) {
                   const resolved = resolveRelativePath(arg, currentDirRef.current)
                   return resolved.startsWith('/') ? resolved : '/' + resolved

@@ -628,7 +628,7 @@ async function chatSend(req: VercelRequest, res: VercelResponse) {
   if (!chatId || !text) return res.status(400).json({ error: 'Missing chatId or body' })
 
   const urls = extractUrls(text)
-  const linkPreviews = urls.length ? await Promise.all(urls.map(fetchLinkPreview)) : []
+  const linkPreviews = urls.length ? await Promise.all((urls ?? []).map(fetchLinkPreview)) : []
 
   const message: ChatMessage = {
     id: crypto.randomUUID(),

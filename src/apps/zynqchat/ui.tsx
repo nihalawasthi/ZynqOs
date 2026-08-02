@@ -230,7 +230,7 @@ export default function ZynqChatUI() {
     useEffect(() => {
         const unsubscribe = connectChatEvents((event) => {
             if (event.type === 'presence') {
-                setChats(prev => prev.map(chat => (
+                setChats(prev => (prev ?? []).map(chat => (
                     chat.kind === 'dm' && normalizeHandle(chat.name) === normalizeHandle(event.userId)
                         ? { ...chat, presence: event.presence }
                         : chat
