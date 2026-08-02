@@ -470,7 +470,7 @@ export async function runCoreutil(
   }
 
   // Rewrite args to use mounted paths
-  const rewrittenArgs = args.map(arg => {
+  const rewrittenArgs = (args ?? []).map(arg => {
     // Don't rewrite flags
     if (arg.startsWith('-')) return arg
     
