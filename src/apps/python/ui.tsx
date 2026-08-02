@@ -331,7 +331,7 @@ export default function PythonUI() {
               <div className="text-gray-500 text-center py-8">No Python files found in VFS</div>
             ) : (
               <div className="space-y-1">
-                {vfsFiles.map(file => (
+                {(vfsFiles ?? []).map(file => (
                   <button
                     key={file}
                     className="w-full text-left px-3 py-2 rounded bg-[#222] hover:bg-[#2a2a2a] transition text-sm"
