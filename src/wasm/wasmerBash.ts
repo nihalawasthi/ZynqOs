@@ -1162,7 +1162,7 @@ export function jsAwk(args: string[], fileContent: string): BashResult {
   
   const printExpr = printMatch[1]
   const fieldRefs = printExpr.match(/\$\d+/g) || []
-  const fieldIndices = fieldRefs.map(ref => parseInt(ref.slice(1), 10))
+  const fieldIndices = fieldRefs.map(ref => parseInt(ref.slice(1, 10), 10))
   
   const outputLines: string[] = []
   const lines = fileContent.split('\n')
