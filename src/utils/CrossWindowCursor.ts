@@ -96,7 +96,7 @@ class CrossWindowCursor {
       // Clean up stale cursors (>2 seconds old)
       const now = Date.now();
       Object.keys(allCursors).forEach((key) => {
-        const id = parseInt(key);
+        const id = parseInt(key, 10);
         if (now - allCursors[id].timestamp > 2000) {
           delete allCursors[id];
         }
