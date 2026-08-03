@@ -436,7 +436,7 @@ export default function SettingsUI() {
             if (storageStatus.connected && (storageStatus.provider === 'github' || storageStatus.provider === 'github-app')) {
                 // Track new entries (non-blocking)
                 entries.forEach(entry => {
-                    auditSync.trackAuditEntry(entry).catch(() => {})
+                    auditSync.trackAuditEntry(entry).catch( => console.error())
                 })
             }
         } catch (e) {
