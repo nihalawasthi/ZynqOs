@@ -482,7 +482,7 @@ export default function StoreUI() {
               <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
                 {installedFiltered.map((pkg) => {
                   // Type guards
-                  const isSystem = (pkg as any).system === true
+                  const isSystem = (pkg as any).system 
                   const id = (pkg as any).id as string
                   const name = (pkg as any).name as string
                   const description = (pkg as any).description as string
