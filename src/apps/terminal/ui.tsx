@@ -62,7 +62,7 @@ getAuthProfile().then(profile => {
     cachedProfile = profile
     sessionStorage.setItem('zynqos_profile_cache', JSON.stringify(profile))
   }
-}).catch(() => {})
+}).catch( => console.error())
 
 export default function TerminalWasi(_: Props) {
   const terminalRef = useRef<HTMLDivElement>(null)
