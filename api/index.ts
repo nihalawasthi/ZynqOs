@@ -1398,7 +1398,7 @@ async function authExchangeGitHub(req: VercelRequest, res: VercelResponse) {
     // If installation_id is present, use GitHub App flow
     if (installation_id && typeof installation_id === 'string') {
       const instIdNum = parseInt(installation_id, 10)
-      if (isNaN(instIdNum)) {
+      if (Number.isNaN(instIdNum)) {
         recordAudit(req, res, { route: 'auth', action: 'exchange_github', event: 'auth.exchange_github', status: 'error', provider: 'github-app', message: 'Invalid installation_id format' })
         return res.status(400).json({ error: 'Invalid installation_id' })
       }
