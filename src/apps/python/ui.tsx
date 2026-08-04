@@ -201,7 +201,7 @@ export default function PythonUI() {
               value={timeoutMs}
               onChange={(e) => {
                 const val = parseInt((e.target as HTMLInputElement).value || '8000', 10)
-                setTimeoutMs(isNaN(val) || val < 1000 ? 8000 : val)
+                setTimeoutMs(Number.isNaN(val) || val < 1000 ? 8000 : val)
               }}
             />
           </div>
