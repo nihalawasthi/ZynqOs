@@ -1482,3 +1482,5 @@ export function getWasmerStatus(): {
     crossOriginIsolated: typeof crossOriginIsolated !== 'undefined' && crossOriginIsolated,
   }
 }
+
+.catch(err => console.error("Promise.all failed:", err));
