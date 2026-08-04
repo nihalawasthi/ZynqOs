@@ -22,7 +22,7 @@ if (isOAuthPopup) {
   // Minimal loading overlay for popup
   const root = document.getElementById('root')
   if (root) {
-    root.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100vh;font-family:system-ui;color:#666">Processing authentication...</div>'
+    root.textContent = '<div style="display:flex;align-items:center;justify-content:center;height:100vh;font-family:system-ui;color:#666">Processing authentication...</div>'
   }
   // Let the script modules load and handle the OAuth callback
 } else {
