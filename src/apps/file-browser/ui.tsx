@@ -377,7 +377,7 @@ export default function Workspace() {
 
   const refreshFiles = async () => {
     const all = await readdir('')
-    setPaths(all.sort())
+    setPaths(all.sort((a, b) => a - b))
     const normalizedSet = new Set(all.map(p => normalizePath(p)))
     if (selectedPath && !normalizedSet.has(normalizePath(selectedPath))) {
       setSelectedPath(null)

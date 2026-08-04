@@ -24,7 +24,7 @@ export async function githubAppCallback(req: any, res: any) {
     }
 
     const instIdNum = parseInt(installation_id, 10)
-    if (isNaN(instIdNum)) {
+    if (Number.isNaN(instIdNum)) {
       return res.status(400).json({ error: 'Invalid installation_id' })
     }
 
