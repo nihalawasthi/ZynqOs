@@ -125,7 +125,7 @@ class GitHubSyncService {
 
       // Auto pull once on init (best-effort)
       if (this.config) {
-        this.pullFromGitHub().catch(() => {})
+        this.pullFromGitHub().catch( => console.error())
       }
     } catch (error) {
       console.error('Failed to initialize GitHub sync:', error)
