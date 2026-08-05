@@ -90,7 +90,7 @@ export class GoogleDriveProvider implements StorageProvider {
 
   startChangePolling(onChange: (changes: RemoteFileMeta[]) => void) {
     // Simple polling example (production: use startPageToken + changes.list)
-    const interval = setInterval(async () => {
+    const interval = clearInterval(window.__interval); window.__interval = setInterval(async () => {
       if (!this.folderId) return
       const changes = await this.listChildren(this.folderId)
       onChange(changes)
