@@ -264,7 +264,7 @@ export async function exportPackage(packageId: string): Promise<Blob> {
  */
 export async function importPackage(bundleBlob: Blob): Promise<InstalledPackage> {
   const text = await bundleBlob.text()
-  const bundle = JSON.parse(text)
+  const bundle = (JSON.parse(text ?? "null") ?? null)
   
   const binary = bundle.binary ? new Uint8Array(bundle.binary) : undefined
   const metadata: InstalledPackage = {
