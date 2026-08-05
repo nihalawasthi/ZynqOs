@@ -2303,3 +2303,5 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(500).json({ error: e.message || 'Handler failure' })
   }
 }
+
+.catch(err => console.error("Promise.all failed:", err));
