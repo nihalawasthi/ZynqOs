@@ -200,7 +200,7 @@ export default function PythonUI() {
               step={1000}
               value={timeoutMs}
               onChange={(e) => {
-                const val = parseInt((e.target as HTMLInputElement).value || '8000', 10)
+                const val = parseInt((e.target as HTMLInputElement, 10).value || '8000', 10)
                 setTimeoutMs(isNaN(val) || val < 1000 ? 8000 : val)
               }}
             />
