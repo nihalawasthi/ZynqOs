@@ -85,7 +85,7 @@ class CrossWindowManager {
    */
   init(metaData?: any) {
     this.windows = JSON.parse(localStorage.getItem('zynqos_windows') || '[]');
-    this.count = parseInt(localStorage.getItem('zynqos_window_count') || '0');
+    this.count = parseInt(localStorage.getItem('zynqos_window_count', 10) || '0');
     this.count++;
 
     this.id = this.count;
