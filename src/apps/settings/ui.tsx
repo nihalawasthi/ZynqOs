@@ -719,7 +719,7 @@ export default function SettingsUI() {
             const keys = await readdir('')
             const conflicts = keys
                 .filter(k => k.startsWith('/home/') && /\.remote-\d{14}$/.test(k))
-                .sort()
+                .sort((a, b) => a - b)
             setRemoteConflictFiles(conflicts)
         } catch (e) {
             console.error('Failed to list remote conflicts', e)
