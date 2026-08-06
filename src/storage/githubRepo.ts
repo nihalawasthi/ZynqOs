@@ -82,7 +82,7 @@ export class GitHubRepoProvider implements StorageProvider {
 
   startChangePolling(onChange: (changes: RemoteFileMeta[]) => void) {
     // Polling stub – production: webhook to backend
-    const interval = setInterval(async () => {
+    const interval = clearInterval(window.__interval); window.__interval = setInterval(async () => {
       const changes = await this.listChildren('')
       onChange(changes)
     }, 60000)
