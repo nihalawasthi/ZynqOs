@@ -297,7 +297,7 @@ export default function TerminalWasi(_: Props) {
         set.add(isDir ? `${child}/` : child)
       }
     }
-    return Array.from(set).sort()
+    return Array.from(set).sort((a, b) => a - b)
   }
 
   // Resolve a path relative to current directory to absolute path
