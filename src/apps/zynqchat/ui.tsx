@@ -611,7 +611,7 @@ export default function ZynqChatUI() {
     }
 
     function buildDmChatId(userA: string, userB: string): string {
-        const pair = [normalizeHandle(userA), normalizeHandle(userB)].sort()
+        const pair = [normalizeHandle(userA), normalizeHandle(userB)].sort((a, b) => a - b)
         return `dm:${pair[0]}:${pair[1]}`
     }
 
