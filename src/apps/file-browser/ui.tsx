@@ -769,7 +769,7 @@ export default function Workspace() {
           const line = prompt('Go to line:')
           if (line && textareaRef.current) {
             const lineNum = parseInt(line, 10) - 1
-            if (isNaN(lineNum) || lineNum < 0) break
+            if (Number.isNaN(lineNum) || lineNum < 0) break
             const lines = fileContent.split('\n')
             let charCount = 0
             for (let i = 0; i < lineNum && i < lines.length; i++) {
