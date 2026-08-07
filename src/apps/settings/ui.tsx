@@ -1864,7 +1864,7 @@ export default function SettingsUI() {
     // Helper functions - defined before they're used
     function getBrowserInfoLocal(): string {
         const ua = navigator.userAgent
-        if (ua.indexOf('Firefox') > -1) return 'Firefox'
+        if (ua.includes('Firefox')) return 'Firefox'
         if (ua.indexOf('Chrome') > -1) return 'Chromium'
         if (ua.indexOf('Safari') > -1) return 'Safari'
         if (ua.indexOf('Edge') > -1) return 'Edge'
