@@ -119,7 +119,7 @@ export default function TextEditor() {
   function updateCursorPosition(target: HTMLTextAreaElement) {
     const pos = target.selectionStart
     const lines = target.value.substring(0, pos).split('\n')
-    setCursorPos({ line: lines.length, col: lines[lines.length - 1].length + 1 })
+    setCursorPos({ line: lines.length, col: lines.at(-1).length + 1 })
   }
 
   const addToHistory = useCallback((newText: string, cursorPosition: number) => {
