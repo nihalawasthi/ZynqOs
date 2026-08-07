@@ -129,7 +129,7 @@ function Root() {
     let cancelled = false
     const startedAt = performance.now()
     const report = (msg: string) => {
-      setStatusMessages((prev) => (prev[prev.length - 1] === msg ? prev : [...prev, msg]))
+      setStatusMessages((prev) => (prev.at(-1) === msg ? prev : [...prev, msg]))
     }
 
     bootstrap(report)
